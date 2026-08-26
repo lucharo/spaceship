@@ -63,6 +63,7 @@ import {
   type QueuedMessageInlineEditor,
 } from "@/components/promptbox/banner/QueuedMessagesList";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
+import type { EnvironmentWorkspaceTypeLabel } from "@/lib/environment-workspace-display";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
 import { useLatestRef } from "@/hooks/useLatestRef";
@@ -159,6 +160,7 @@ interface ThreadDetailPromptAreaProps {
   environmentHostId?: string;
   environmentIcon?: IconName;
   environmentLabel?: string;
+  environmentTypeLabel?: EnvironmentWorkspaceTypeLabel;
   onCreateNewThreadInWorktree?: () => void;
   onPullRequestDraft?: () => void;
   onPullRequestMerge?: (method: PullRequestMergeMethod) => void;
@@ -413,6 +415,7 @@ export function ThreadDetailPromptArea({
   environmentHostId,
   environmentIcon,
   environmentLabel,
+  environmentTypeLabel,
   onCreateNewThreadInWorktree,
   onPullRequestDraft,
   onPullRequestMerge,
@@ -1264,6 +1267,7 @@ export function ThreadDetailPromptArea({
           environmentLabel={environmentLabel}
           environmentCompactLabel={environmentCompactLabel}
           environmentIcon={environmentIcon}
+          environmentTypeLabel={environmentTypeLabel}
           environmentCheckout={environmentCheckout}
           onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
         />
@@ -1273,6 +1277,7 @@ export function ThreadDetailPromptArea({
       environmentCompactLabel,
       environmentIcon,
       environmentLabel,
+      environmentTypeLabel,
       onCreateNewThreadInWorktree,
       projectName,
     ],
