@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-27T07:46:30Z",
+  "harnessSha256": "6531a2dc2df9d4d69e89c67b68b104678c2d27a4d4797cbb518e7abd46dd5603",
+  "fixture": {
+    "project": "Automations project",
+    "query": "@automations",
+    "nativeWindowBounds": {
+      "x": 80,
+      "y": 80,
+      "width": 1280,
+      "height": 900
+    },
+    "fictional": true
+  },
+  "coreLayer": {
+    "baseline": "ad79bbb5ec909524f8f281e62d860c588a86f332",
+    "candidate": "bbf34d7960901ca6c5506efec32d552c4b5f4d5d",
+    "providerFixture": {
+      "id": "at-plugin",
+      "version": "0.0.0",
+      "label": "Automations",
+      "detail": "Fictional QA plugin"
+    },
+    "beforeLog": "core-before-main.json",
+    "afterLog": "core-after-bottom.json"
+  },
+  "childLayer": {
+    "baseline": "bbf34d7960901ca6c5506efec32d552c4b5f4d5d",
+    "candidate": "22ca168b73b6120c112efe8dd9e6bab9a345a993",
+    "candidatePlugin": {
+      "id": "at-plugin",
+      "version": "0.1.0",
+      "source": "examples/plugins/at-plugin"
+    },
+    "beforeLog": "child-before-bottom.json",
+    "afterLog": "child-after-child.json"
+  },
+  "viewports": [
+    { "name": "mobile", "width": 390, "height": 844, "deviceScaleFactor": 3 },
+    { "name": "small-narrow", "width": 768, "height": 900, "deviceScaleFactor": 2 },
+    { "name": "normal-desktop", "width": 1440, "height": 900, "deviceScaleFactor": 2 },
+    { "name": "very-large-desktop", "width": 3440, "height": 1440, "deviceScaleFactor": 1 }
+  ],
+  "transitionWidths": [389, 390, 391, 767, 768, 769, 1023, 1024, 1025, 1919, 1920, 1921],
+  "cyclesPerRevision": 5,
+  "result": "PASS"
+}
