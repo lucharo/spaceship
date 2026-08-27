@@ -13,11 +13,18 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
                                           List available providers
   bb provider models [providerId] [--machine <id-or-name> | --environment <id>]
                                           List models for a provider
+  bb provider sessions <providerId> [--archived] [--cursor <cursor>]
+      [--cwd <path>] [--limit <1-100>] [--search <text>]
+      [--machine <id-or-name> | --environment <id>]
+                                          List native session metadata
 
 Use these before spawning threads if you are unsure which provider or model to use.
 `--host` is an alias for `--machine`. Machine and environment selectors are
 mutually exclusive because an environment already selects its machine. When no
-selector is supplied, both commands intentionally inspect the primary machine.
+selector is supplied, these commands intentionally inspect the primary machine.
+`bb provider sessions` returns metadata only, never transcript content. Use the
+opaque provider thread ID to open or adopt a selected session through a client
+that supports native sessions.
 When provider and model are omitted from bb thread spawn, the project's
 remembered defaults apply. If the project has no remembered choice, bb uses
 the explicitly requested provider or Codex, then resolves the model marked

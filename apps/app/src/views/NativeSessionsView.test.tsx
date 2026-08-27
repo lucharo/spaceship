@@ -141,4 +141,34 @@ describe("NativeSessionsView", () => {
       }),
     );
   });
+
+  it("loads later native catalogue pages", async () => {
+    vi.mocked(sdk.providers.nativeSessions)
+      .mockResolvedValueOnce({
+        ...nativeSessions,
+        nextCursor: "page-2",
+      })
+      .mockResolvedValueOnce({
+        ...nativeSessions,
+        sessions: [
+          {
+            ...nativeSessions.sessions[0],
+            providerThreadId: "native-thread-2",
+            title: "Older session",
+          },
+        ],
+      });
+
+    renderView();
+    await screen.findByText("Recover the app");
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+
+    expect(await screen.findByText("Older session")).toBeTruthy();
+    expect(sdk.providers.nativeSessions).toHaveBeenLastCalledWith("codex", {
+      hostId: "host_primary",
+      archived: false,
+      cursor: "page-2",
+      limit: 100,
+    });
+  });
 });

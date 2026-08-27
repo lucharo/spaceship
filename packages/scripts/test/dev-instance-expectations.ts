@@ -31,6 +31,8 @@ function expectedPortOffset(repoRoot: string): number {
 function reservePackagedAppPorts(port: number): number {
   if (port === 38_886) return 59_000;
   if (port === 38_887) return 59_001;
+  if (port === 38_896) return 59_002;
+  if (port === 38_897) return 59_003;
   return port;
 }
 

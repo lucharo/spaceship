@@ -223,7 +223,7 @@ export const nativeSessionSummarySchema = z.object({
 export type NativeSessionSummary = z.infer<typeof nativeSessionSummarySchema>;
 
 export const nativeSessionListResultSchema = z.object({
-  sessions: z.array(nativeSessionSummarySchema),
+  sessions: z.array(nativeSessionSummarySchema).max(100),
   nextCursor: z.string().min(1).nullable(),
   backwardsCursor: z.string().min(1).nullable(),
 });

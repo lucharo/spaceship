@@ -336,6 +336,10 @@ environment pull-request show <id>`. Diff commands require an explicit target
   (alias `--host`) or `--environment <id>` to inspect the machine where work
   will run; the selectors cannot be combined. With neither selector they
   intentionally inspect the primary machine.
+- Use `bb provider sessions <provider-id> [--archived] [--cursor <cursor>]
+[--cwd <path>] [--limit <1-100>] [--search <text>]` to list native session
+  metadata. Add `--machine <id-or-name>` or `--environment <id>` to choose the
+  host. The command never returns transcript content.
 - Known ACP agents can appear automatically when their CLI is installed on the
   host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
   `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,

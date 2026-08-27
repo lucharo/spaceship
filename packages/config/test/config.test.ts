@@ -15,6 +15,7 @@ import { parseProviderModelConfig } from "../src/inference-model.js";
 import { loadLoggerConfig } from "../src/logger.js";
 import {
   resolveConfiguredDataDir,
+  resolveDevInstanceConfig,
   parsePortValue,
   resolvePortFromEnv,
   resolveRuntimeDataDir,
@@ -195,6 +196,21 @@ describe("data-dir helpers", () => {
 });
 
 describe("port helpers", () => {
+  it("reserves packaged Spaceship ports from development allocations", () => {
+    expect(
+      resolveDevInstanceConfig({
+        homeDir: "/tmp",
+        repoRoot: "/tmp/spaceship-port-3896-5655",
+      }).ports.cloudPort,
+    ).toBe(59_002);
+    expect(
+      resolveDevInstanceConfig({
+        homeDir: "/tmp",
+        repoRoot: "/tmp/spaceship-port-3897-14482",
+      }).ports.cloudPort,
+    ).toBe(59_003);
+  });
+
   it("accepts the TCP port boundary values", () => {
     expect(
       parsePortValue({

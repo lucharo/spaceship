@@ -102,7 +102,14 @@ export const systemNativeSessionsQuerySchema = z
     ...systemProviderHostQueryFields,
     archived: z.enum(["true", "false"]).optional(),
     cursor: z.string().min(1).optional(),
-    limit: z.string().regex(/^\d+$/u).optional(),
+    limit: z
+      .string()
+      .regex(/^\d+$/u)
+      .refine((value) => {
+        const limit = Number(value);
+        return limit >= 1 && limit <= 100;
+      }, "limit must be between 1 and 100")
+      .optional(),
     cwd: z.string().min(1).optional(),
     searchTerm: z.string().min(1).max(256).optional(),
   })

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
+import type { SystemNativeSessionsResponse } from "@bb/server-contract";
 import { useNavigate } from "react-router-dom";
 import { sdk } from "@/lib/sdk";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -9,19 +10,24 @@ export function NativeSessionsView() {
   const navigate = useNavigate();
   const [archived, setArchived] = useState(false);
   const hostId = useSystemConfig().data?.primaryHostId ?? null;
-  const sessions = useQuery({
+  const sessions = useInfiniteQuery({
     queryKey: ["native-sessions", "codex", hostId, archived],
     enabled: hostId !== null,
-    queryFn: () =>
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
       sdk.providers.nativeSessions("codex", {
         hostId: hostId as string,
         archived,
+        cursor: pageParam ?? undefined,
         limit: 100,
       }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
   });
+  const sessionRows =
+    sessions.data?.pages.flatMap((page) => page.sessions) ?? [];
   const adopt = useMutation({
     mutationFn: async (
-      session: NonNullable<typeof sessions.data>["sessions"][number],
+      session: SystemNativeSessionsResponse["sessions"][number],
     ) => {
       if (hostId === null || session.cwd === null) {
         throw new Error("This session has no usable working directory");
@@ -69,7 +75,7 @@ export function NativeSessionsView() {
         </p>
       ) : null}
       <div className="divide-y rounded-lg border">
-        {sessions.data?.sessions.map((session) => (
+        {sessionRows.map((session) => (
           <button
             key={session.providerThreadId}
             type="button"
@@ -89,7 +95,17 @@ export function NativeSessionsView() {
           </button>
         ))}
       </div>
-      {sessions.data?.sessions.length === 0 ? (
+      {sessions.hasNextPage ? (
+        <button
+          type="button"
+          className="self-center rounded-md border px-3 py-1.5 text-sm"
+          disabled={sessions.isFetchingNextPage}
+          onClick={() => void sessions.fetchNextPage()}
+        >
+          {sessions.isFetchingNextPage ? "Loading…" : "Load more"}
+        </button>
+      ) : null}
+      {sessionRows.length === 0 && !sessions.isPending ? (
         <p className="text-sm text-muted-foreground">No sessions found.</p>
       ) : null}
       {adopt.isError ? (

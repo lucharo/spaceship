@@ -113,6 +113,22 @@ describe("native session catalogue", () => {
         limit: 101,
       }).success,
     ).toBe(false);
+
+    expect(
+      nativeSessionListResultSchema.safeParse({
+        sessions: Array.from({ length: 101 }, (_, index) => ({
+          providerThreadId: `native-${index}`,
+          title: null,
+          cwd: null,
+          createdAt: index,
+          updatedAt: index,
+          archived: false,
+          source: null,
+        })),
+        nextCursor: null,
+        backwardsCursor: null,
+      }).success,
+    ).toBe(false);
   });
 });
 
