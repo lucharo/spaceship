@@ -335,16 +335,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   post(routes.adoptNative, async (context, payload) => {
     requireNonDestroyedHostWithStatus(deps, payload.hostId);
     requireBridgeLaunchForProviderId(deps, payload.providerId);
-    const existing = findThreadByNativeIdentity(deps.db, payload);
-    if (existing) {
-      return context.json(
-        {
-          created: false,
-          thread: toThreadResponseFromThread(deps, { thread: existing }),
-        },
-        200,
-      );
-    }
     const nativeSession = await readProviderNativeSession(deps, payload);
     if (nativeSession.providerThreadId !== payload.providerThreadId) {
       throw new ApiError(
@@ -374,6 +364,16 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         409,
         "native_session_cwd_invalid",
         pathValidationMessage,
+      );
+    }
+    const existing = findThreadByNativeIdentity(deps.db, payload);
+    if (existing) {
+      return context.json(
+        {
+          created: false,
+          thread: toThreadResponseFromThread(deps, { thread: existing }),
+        },
+        200,
       );
     }
     const inspection = await callHostRetryableOnlineRpc(deps, {

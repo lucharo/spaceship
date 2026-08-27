@@ -128,3 +128,24 @@ it("reports archived state from the native Codex catalogue", async () => {
   });
   expect(readdirSync(recordingDir)).toEqual([]);
 });
+
+it("does not expose app-server error details while reading native metadata", async () => {
+  harness.sendRequest(1, "initialize", {
+    protocolVersion: 2,
+    client: { name: "test", version: "1" },
+    grammarVersions: [3, 3],
+  });
+  await harness.waitForResponse(1);
+
+  harness.sendRequest(2, "native/session/read", {
+    providerThreadId: "codex-sensitive-error",
+  });
+
+  const response = await harness.waitForResponse(2);
+  expect(response).toMatchObject({
+    error: { message: "Could not read native Codex session metadata" },
+  });
+  expect(JSON.stringify(response)).not.toContain("private preview");
+  expect(JSON.stringify(response)).not.toContain("/Users/example");
+  expect(readdirSync(recordingDir)).toEqual([]);
+});

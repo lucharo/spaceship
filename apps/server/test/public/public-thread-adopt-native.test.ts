@@ -100,7 +100,7 @@ describe("public native thread adoption", () => {
         await readJson(firstResponse),
       );
 
-      const secondResponse = await harness.app.request(
+      const secondResponsePromise = harness.app.request(
         "/api/v1/threads/adopt-native",
         {
           method: "POST",
@@ -108,6 +108,22 @@ describe("public native thread adoption", () => {
           body: JSON.stringify(request),
         },
       );
+      const secondRead = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.read" &&
+          command.providerThreadId === request.providerThreadId,
+      );
+      await reportQueuedCommandSuccess(harness, secondRead, {
+        providerThreadId: request.providerThreadId,
+        title: "Recovered session",
+        cwd: "/tmp/native-adoption",
+        createdAt: 1_777_000_000,
+        updatedAt: 1_777_000_100,
+        archived: false,
+        source: "cli",
+      });
+      const secondResponse = await secondResponsePromise;
       expect(secondResponse.status).toBe(200);
       const second = adoptNativeThreadResponseSchema.parse(
         await readJson(secondResponse),
@@ -191,6 +207,50 @@ describe("public native thread adoption", () => {
 
       expect(response.status).toBe(409);
       await expect(readJson(response)).resolves.toMatchObject({
+        code: "native_session_archived",
+      });
+    });
+  });
+
+  it("revalidates an existing projection against native archive state", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-revalidate",
+      });
+      const request = {
+        hostId: host.id,
+        providerId: "codex",
+        providerThreadId: "native-thread-revalidate",
+      };
+      const first = await postAdoptNativeThread(harness, request);
+      expect(first.status).toBe(200);
+      await readJson(first);
+
+      const secondPromise = harness.app.request(
+        "/api/v1/threads/adopt-native",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(request),
+        },
+      );
+      const read = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "provider.native_sessions.read",
+      );
+      await reportQueuedCommandSuccess(harness, read, {
+        providerThreadId: request.providerThreadId,
+        title: "Archived later",
+        cwd: "/tmp/native-adoption",
+        createdAt: 1,
+        updatedAt: 2,
+        archived: true,
+        source: "cli",
+      });
+
+      const second = await secondPromise;
+      expect(second.status).toBe(409);
+      await expect(readJson(second)).resolves.toMatchObject({
         code: "native_session_archived",
       });
     });

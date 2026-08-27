@@ -389,6 +389,14 @@ async function handleRequest(message) {
       });
       return;
     case "thread/read":
+      if (params.threadId === "codex-sensitive-error") {
+        respondError(
+          id,
+          -32603,
+          "private preview at /Users/example/.codex/sessions/rollout.jsonl",
+        );
+        return;
+      }
       respond(id, {
         thread: {
           id: params.threadId,
