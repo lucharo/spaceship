@@ -149,3 +149,16 @@ it("does not expose app-server error details while reading native metadata", asy
   expect(JSON.stringify(response)).not.toContain("/Users/example");
   expect(readdirSync(recordingDir)).toEqual([]);
 });
+
+it("keeps missing Codex installation guidance actionable", async () => {
+  vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", "/definitely/missing/codex");
+  vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_ARGS", "[]");
+
+  harness.sendRequest(1, "native/session/read", {
+    providerThreadId: "codex-native-1",
+  });
+
+  await expect(harness.waitForResponse(1)).resolves.toMatchObject({
+    error: { message: expect.stringContaining("Install Codex") },
+  });
+});

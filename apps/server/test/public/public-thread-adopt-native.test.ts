@@ -443,6 +443,34 @@ describe("public native thread adoption", () => {
     });
   });
 
+  it("rejects an unowned path beneath the managed workspace root without creating a project", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-managed-root",
+      });
+      const managedPath = `/tmp/bb-host-data/${host.id}/worktrees/env_pending/repo`;
+      const response = await postAdoptNativeThread(
+        harness,
+        {
+          hostId: host.id,
+          providerId: "codex",
+          providerThreadId: "native-thread-managed-root",
+        },
+        {
+          providerThreadId: "native-thread-managed-root",
+          title: "Pending managed workspace",
+          cwd: managedPath,
+        },
+      );
+
+      expect(response.status).toBe(409);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_request",
+      });
+      expect(listPublicProjects(harness.db)).toEqual([]);
+    });
+  });
+
   it("rejects a provider with no runnable bridge", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

@@ -415,8 +415,21 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       hostId: payload.hostId,
       path: inspectedPath,
     });
-    const project = payload.projectId
+    const requestedProject = payload.projectId
       ? requirePublicProject(deps.db, payload.projectId)
+      : null;
+    const refusal = unmanagedAttachRefusal(deps.db, {
+      checksOutBranch: false,
+      dataDir: findHostDataDir(deps, payload.hostId),
+      hostId: payload.hostId,
+      path: inspectedPath,
+      projectId: requestedProject?.id ?? managedEnvironment?.projectId ?? null,
+    });
+    if (refusal) {
+      throw new ApiError(409, "invalid_request", refusal.message);
+    }
+    const project = payload.projectId
+      ? requestedProject!
       : managedEnvironment
         ? requirePublicProject(deps.db, managedEnvironment.projectId)
         : findOrCreateProjectByLocalPathSource(deps.db, deps.hub, {
@@ -427,16 +440,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
               path: inspectedPath,
             },
           }).project;
-    const refusal = unmanagedAttachRefusal(deps.db, {
-      checksOutBranch: false,
-      dataDir: findHostDataDir(deps, payload.hostId),
-      hostId: payload.hostId,
-      path: inspectedPath,
-      projectId: project.id,
-    });
-    if (refusal) {
-      throw new ApiError(409, "invalid_request", refusal.message);
-    }
     let environment = payload.environmentId
       ? requireEnvironment(deps.db, payload.environmentId)
       : findProjectEnvironmentByHostPath(

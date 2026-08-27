@@ -1557,7 +1557,9 @@ async function handleNativeSessionList(
     sendError(
       id,
       BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-      "Could not list native Codex sessions",
+      error instanceof CodexAppServerExitedError && error.spawnFailed
+        ? describeCodexLaunchError(error)
+        : "Could not list native Codex sessions",
     );
   }
 }
@@ -1654,7 +1656,9 @@ async function handleNativeSessionRead(
     sendError(
       id,
       BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-      "Could not read native Codex session metadata",
+      error instanceof CodexAppServerExitedError && error.spawnFailed
+        ? describeCodexLaunchError(error)
+        : "Could not read native Codex session metadata",
     );
   }
 }
