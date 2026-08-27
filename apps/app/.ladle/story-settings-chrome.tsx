@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ComponentProps, CSSProperties, ReactNode } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 import { AppPageHeader } from "@/components/layout/AppPageHeader";
 import { SettingsSidebarContent } from "@/components/settings/SettingsSidebar";
@@ -20,7 +20,20 @@ import {
 
 export type SettingsStoryRoute =
   | { kind: "machine"; id: string }
-  | { kind: "section"; id: SettingsSectionId };
+  | { kind: "section"; id: SettingsStorySectionId };
+
+export type SettingsStorySectionId = SettingsSectionId | "threads";
+
+const THREADS_SETTINGS_ROUTE_PATH = "/settings/threads";
+const SETTINGS_STORY_NAV_SECTIONS = [
+  SETTINGS_NAV_SECTIONS[0],
+  { icon: "MessageSquare", id: "threads", label: "Threads" },
+  ...SETTINGS_NAV_SECTIONS.slice(1),
+] as const;
+
+type SettingsSidebarNavigation = ComponentProps<
+  typeof SettingsSidebarContent
+>["navigation"];
 
 /** Resolve the story's real Settings links without depending on live app data. */
 export function useSettingsStoryRoute(): SettingsStoryRoute {
@@ -28,6 +41,9 @@ export function useSettingsStoryRoute(): SettingsStoryRoute {
   const machineMatch = matchPath(SETTINGS_MACHINE_ROUTE_PATH, pathname);
   if (machineMatch?.params.hostId !== undefined) {
     return { kind: "machine", id: machineMatch.params.hostId };
+  }
+  if (pathname === THREADS_SETTINGS_ROUTE_PATH) {
+    return { kind: "section", id: "threads" };
   }
   const section = SETTINGS_NAV_SECTIONS.find((entry) =>
     entry.id === "general"
@@ -43,7 +59,7 @@ export function SettingsStoryChrome({
   children,
   contentOwnsPageShell = false,
 }: {
-  activeSection?: SettingsSectionId;
+  activeSection?: SettingsStorySectionId;
   children: ReactNode;
   /** Detail routes already render their production PageShell. */
   contentOwnsPageShell?: boolean;
@@ -60,12 +76,14 @@ export function SettingsStoryChrome({
       <SettingsSidebarContent
         appRoutePath="/"
         isResizing={false}
-        navigation={{
-          activePluginId: null,
-          activeSection: resolvedActiveSection,
-          pluginEntries: [],
-          sections: SETTINGS_NAV_SECTIONS,
-        }}
+        navigation={
+          {
+            activePluginId: null,
+            activeSection: resolvedActiveSection,
+            pluginEntries: [],
+            sections: SETTINGS_STORY_NAV_SECTIONS,
+          } as SettingsSidebarNavigation
+        }
         onResizeMouseDown={() => {}}
         showTopReserve
         testIdPrefix="settings-story"

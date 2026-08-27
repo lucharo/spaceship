@@ -14,13 +14,27 @@ import type {
   WorkspaceOpenTarget,
   WorkspaceOpenTargetId,
 } from "@bb/host-daemon-contract";
+import { Button } from "@bb/shared-ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon } from "@bb/shared-ui/icon";
+import { Switch } from "@bb/shared-ui/switch";
 import { UsageLimitsSettingsSectionContent } from "@/components/settings/UsageLimitsSettingsSection";
 import { VoiceInputSettingsSectionContent } from "@/components/settings/VoiceInputSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
+import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
+import {
+  SettingsSection,
+  SettingsWithControl,
+} from "@/components/ui/settings-section";
 import {
   SettingsStoryChrome,
   type SettingsStoryRoute,
@@ -38,7 +52,6 @@ import {
   AppearanceSettingsSection,
   DebugSettingsSection,
   ExperimentsSettingsSection,
-  GeneralSettingsSection,
   LocalOpenTargetSettingsSection,
   type LocalOpenTargetSettingsSectionProps,
 } from "./SettingsView";
@@ -271,32 +284,151 @@ function GeneralSettingsStory({
   const state = useSettingsStoryState();
 
   return (
-    <>
-      <GeneralSettingsSection
-        desktopBrowserAvailable={desktopBrowserAvailable}
-        navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
-        onNavigateToThreadAfterCreateChange={
-          state.setNavigateToThreadAfterCreate
-        }
-        onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
-        onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
-        onRichTextEditingChange={state.setRichTextEditing}
-        onSteerActiveThreadOnEnterChange={state.setSteerActiveThreadOnEnter}
-        onStreamerModeChange={state.setStreamerMode}
-        openLinksInAppBrowser={state.openLinksInAppBrowser}
-        rewriteLocalhostLinks={state.rewriteLocalhostLinks}
-        richTextEditing={state.richTextEditing}
-        steerActiveThreadOnEnter={state.steerActiveThreadOnEnter}
-        steerActiveThreadOnEnterDisabled={false}
-        streamerMode={state.streamerMode}
-        streamerModeDisabled={false}
-      />
-      <DebugSettingsSection
-        disabled={false}
-        enabled={state.showUnhandledProviderEvents}
-        onEnabledChange={state.setShowUnhandledProviderEvents}
-      />
-    </>
+    <SettingsSection title="General">
+      <div className="space-y-5">
+        {desktopBrowserAvailable ? (
+          <SettingsWithControl
+            label="Open links in the in-app browser"
+            description="Open web links inside bb."
+          >
+            <Switch
+              checked={state.openLinksInAppBrowser}
+              onCheckedChange={state.setOpenLinksInAppBrowser}
+              aria-label="Open links in the in-app browser"
+            />
+          </SettingsWithControl>
+        ) : null}
+
+        <SettingsWithControl
+          label="Rewrite localhost links"
+          description="Point localhost links at this host."
+        >
+          <Switch
+            checked={state.rewriteLocalhostLinks}
+            onCheckedChange={state.setRewriteLocalhostLinks}
+            aria-label="Rewrite localhost links"
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label="Streamer mode"
+          description="Hide the custom models from config.json in every model picker, so a screen share does not show them."
+        >
+          <Switch
+            checked={state.streamerMode}
+            onCheckedChange={state.setStreamerMode}
+            aria-label="Streamer mode"
+          />
+        </SettingsWithControl>
+      </div>
+    </SettingsSection>
+  );
+}
+
+function DebugSettingsStory() {
+  const state = useSettingsStoryState();
+
+  return (
+    <DebugSettingsSection
+      disabled={false}
+      enabled={state.showUnhandledProviderEvents}
+      onEnabledChange={state.setShowUnhandledProviderEvents}
+    />
+  );
+}
+
+const ARCHIVED_CONVERSATION_RETENTION_OPTIONS = [
+  { label: "Keep forever", value: "forever" },
+  { label: "Delete after 30 days", value: "30-days" },
+] as const;
+
+type ArchivedConversationRetention =
+  (typeof ARCHIVED_CONVERSATION_RETENTION_OPTIONS)[number]["value"];
+
+function ThreadsSettingsStory() {
+  const state = useSettingsStoryState();
+  const [archivedConversationRetention, setArchivedConversationRetention] =
+    useState<ArchivedConversationRetention>("forever");
+  const selectedRetentionLabel =
+    ARCHIVED_CONVERSATION_RETENTION_OPTIONS.find(
+      (option) => option.value === archivedConversationRetention,
+    )?.label ?? "Keep forever";
+
+  return (
+    <SettingsSection title="Threads">
+      <div className="space-y-5">
+        <SettingsWithControl label="Navigate to threads on creation">
+          <Switch
+            checked={state.navigateToThreadAfterCreate}
+            onCheckedChange={state.setNavigateToThreadAfterCreate}
+            aria-label="Navigate to threads on creation"
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl label="Markdown formatting in prompt box">
+          <Switch
+            checked={state.richTextEditing}
+            onCheckedChange={state.setRichTextEditing}
+            aria-label="Markdown formatting in prompt box"
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label="Steer running threads on Enter"
+          description="Use Enter to steer the current run and Command+Enter to queue a follow-up."
+        >
+          <Switch
+            checked={state.steerActiveThreadOnEnter}
+            onCheckedChange={state.setSteerActiveThreadOnEnter}
+            aria-label="Steer running threads on Enter"
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl label="Archived conversations">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-36"
+                aria-label="Archived conversations"
+              >
+                <span className="min-w-0 truncate">
+                  {selectedRetentionLabel}
+                </span>
+                <Icon
+                  name="ChevronDown"
+                  className="size-3.5 text-muted-foreground"
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="min-w-[var(--radix-dropdown-menu-trigger-width)]"
+            >
+              {ARCHIVED_CONVERSATION_RETENTION_OPTIONS.map((option) => (
+                <DropdownMenuItem
+                  key={option.value}
+                  onSelect={() =>
+                    setArchivedConversationRetention(option.value)
+                  }
+                >
+                  {option.label}
+                  <Icon
+                    name="Check"
+                    className={
+                      archivedConversationRetention === option.value
+                        ? "ml-auto size-3.5"
+                        : "ml-auto size-3.5 opacity-0"
+                    }
+                  />
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SettingsWithControl>
+      </div>
+    </SettingsSection>
   );
 }
 
@@ -439,6 +571,8 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
   }
 
   switch (route.id) {
+    case "threads":
+      return <ThreadsSettingsStory />;
     case "providers":
       return <ProvidersSettingsStory />;
     case "appearance":
@@ -465,7 +599,9 @@ function SettingsStoryContent({ route }: { route: SettingsStoryRoute }) {
       return (
         <>
           <GeneralSettingsStory desktopBrowserAvailable />
+          <CliSkillsSettingsSection />
           <VoiceInputStory />
+          <DebugSettingsStory />
         </>
       );
   }
