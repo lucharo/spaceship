@@ -1,4 +1,9 @@
-import { getEnvironment, getLastStoredProviderThreadId } from "@bb/db";
+import {
+  getEnvironment,
+  getLastStoredProviderThreadId,
+  listEnvironments,
+  listPublicProjects,
+} from "@bb/db";
 import { adoptNativeThreadResponseSchema } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -6,7 +11,11 @@ import {
   waitForQueuedCommand,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
-import { seedHostSession } from "../helpers/seed.js";
+import {
+  seedEnvironment,
+  seedHostSession,
+  seedProjectWithSource,
+} from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 async function postAdoptNativeThread(
@@ -184,6 +193,127 @@ describe("public native thread adoption", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         code: "native_session_archived",
       });
+    });
+  });
+
+  it("rejects mismatched provider identity before creating local records", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-mismatch",
+      });
+      const responsePromise = harness.app.request(
+        "/api/v1/threads/adopt-native",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            hostId: host.id,
+            providerId: "codex",
+            providerThreadId: "native-thread-requested",
+          }),
+        },
+      );
+      const read = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "provider.native_sessions.read",
+      );
+      await reportQueuedCommandSuccess(harness, read, {
+        providerThreadId: "native-thread-other",
+        title: "Wrong session",
+        cwd: "/tmp/native-mismatch",
+        createdAt: 1,
+        updatedAt: 2,
+        archived: false,
+        source: "cli",
+      });
+
+      const response = await responsePromise;
+      expect(response.status).toBe(409);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "native_session_identity_mismatch",
+      });
+      expect(listPublicProjects(harness.db)).toEqual([]);
+      expect(listEnvironments(harness.db)).toEqual([]);
+    });
+  });
+
+  it("rejects an invalid provider working directory before inspection", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-invalid-path",
+      });
+      const responsePromise = harness.app.request(
+        "/api/v1/threads/adopt-native",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            hostId: host.id,
+            providerId: "codex",
+            providerThreadId: "native-thread-invalid-path",
+          }),
+        },
+      );
+      const read = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "provider.native_sessions.read",
+      );
+      await reportQueuedCommandSuccess(harness, read, {
+        providerThreadId: "native-thread-invalid-path",
+        title: "Invalid path",
+        cwd: "/",
+        createdAt: 1,
+        updatedAt: 2,
+        archived: false,
+        source: "cli",
+      });
+
+      const response = await responsePromise;
+      expect(response.status).toBe(409);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "native_session_cwd_invalid",
+      });
+    });
+  });
+
+  it("reuses the project and environment that own a managed workspace", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-managed",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Owner",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/native-managed-worktree",
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      const response = await postAdoptNativeThread(
+        harness,
+        {
+          hostId: host.id,
+          providerId: "codex",
+          providerThreadId: "native-thread-managed",
+        },
+        {
+          providerThreadId: "native-thread-managed",
+          title: "Managed session",
+          cwd: "/tmp/native-managed-worktree",
+        },
+      );
+
+      expect(response.status).toBe(200);
+      const result = adoptNativeThreadResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(result.thread.projectId).toBe(project.id);
+      expect(result.thread.environmentId).toBe(environment.id);
+      expect(listEnvironments(harness.db)).toHaveLength(1);
     });
   });
 
