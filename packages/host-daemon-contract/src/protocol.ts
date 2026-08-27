@@ -331,6 +331,10 @@
 // replaces the owning turn retains it. The wire shape is unchanged, but the
 // server-to-daemon payload semantics differ.
 //
+// Version 174 makes project.inspect require an existing directory and return
+// its real path. This keeps native-session workspace validation identical on
+// every connected host, including symlink and deleted-directory handling.
+//
 // Version 173 adds the retryable provider.native_sessions.read RPC so adoption
 // resolves metadata from the provider rather than trusting a client copy.
 // Older daemons cannot answer it, so connected hosts update.
@@ -345,7 +349,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 173 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 174 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
