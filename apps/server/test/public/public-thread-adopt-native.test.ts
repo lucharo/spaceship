@@ -2,6 +2,7 @@ import {
   archiveThread,
   getEnvironment,
   getLastStoredProviderThreadId,
+  getThread,
   listEnvironments,
   listPublicProjects,
 } from "@bb/db";
@@ -218,6 +219,65 @@ describe("public native thread adoption", () => {
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
         status: "ready",
       });
+    });
+  });
+
+  it("rejects an unusable environment without unarchiving the projection", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-unusable",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/native-unusable-source",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/native-adoption",
+        managed: true,
+        status: "ready",
+        workspaceProvisionType: "managed-worktree",
+      });
+      const request = {
+        hostId: host.id,
+        providerId: "codex",
+        providerThreadId: "native-thread-unusable",
+      };
+      const firstResponse = await postAdoptNativeThread(harness, request);
+      const first = adoptNativeThreadResponseSchema.parse(
+        await readJson(firstResponse),
+      );
+      archiveThread(harness.db, harness.deps.hub, first.thread.id);
+      requireEnvironmentLifecycleEventApplied(
+        applyEnvironmentLifecycleEvent(harness.db, harness.deps.hub, {
+          environmentId: environment.id,
+          event: { type: "retire.requested" },
+        }),
+      );
+      requireEnvironmentLifecycleEventApplied(
+        applyEnvironmentLifecycleEvent(harness.db, harness.deps.hub, {
+          environmentId: environment.id,
+          event: {
+            type: "destroy.started",
+            destroyAttemptId: "rpc_native_unusable",
+          },
+        }),
+      );
+      requireEnvironmentLifecycleEventApplied(
+        applyEnvironmentLifecycleEvent(harness.db, harness.deps.hub, {
+          environmentId: environment.id,
+          event: { type: "destroy.lost" },
+        }),
+      );
+
+      const secondResponse = await postAdoptNativeThread(harness, request);
+
+      expect(secondResponse.status).toBe(409);
+      await expect(readJson(secondResponse)).resolves.toMatchObject({
+        code: "environment_not_ready",
+      });
+      expect(getThread(harness.db, first.thread.id)?.archivedAt).not.toBeNull();
     });
   });
 

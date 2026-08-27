@@ -44,6 +44,7 @@ import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { parseOptionalInteger } from "../../services/lib/validation.js";
+import { throwEnvironmentNotReady } from "../../services/lib/lifecycle-api-errors.js";
 import {
   requestEnvironmentCleanup,
   requestEnvironmentCleanupAdvance,
@@ -400,16 +401,26 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
           "The native session workspace no longer matches its Spaceship projection",
         );
       }
-      const reconciled =
-        existing.archivedAt === null
-          ? existing
-          : (unarchiveThread(deps.db, deps.hub, existing.id) ?? existing);
+      let reopenEnvironment = existingEnvironment;
       if (existingEnvironment.status === "retiring") {
         applyLoggedEnvironmentLifecycleEvent(deps, {
           environmentId: existingEnvironment.id,
           event: { type: "retire.cancelled" },
         });
+        reopenEnvironment =
+          getEnvironment(deps.db, existingEnvironment.id) ??
+          existingEnvironment;
       }
+      if (
+        reopenEnvironment.status !== "ready" ||
+        reopenEnvironment.path === null
+      ) {
+        throwEnvironmentNotReady(reopenEnvironment);
+      }
+      const reconciled =
+        existing.archivedAt === null
+          ? existing
+          : (unarchiveThread(deps.db, deps.hub, existing.id) ?? existing);
       return context.json(
         {
           created: false,
