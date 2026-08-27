@@ -98,9 +98,9 @@ const REGISTRATION_FIELDS = {
 } as const satisfies Record<string, DeclarationPath | Gap>;
 
 type DeclarationGapKeys = {
-  [K in keyof typeof REGISTRATION_FIELDS]: (typeof REGISTRATION_FIELDS)[K] extends Gap
-    ? K
-    : never;
+  [
+    K in keyof typeof REGISTRATION_FIELDS
+  ]: (typeof REGISTRATION_FIELDS)[K] extends Gap ? K : never;
 }[keyof typeof REGISTRATION_FIELDS];
 type DeclarationGapsNotLanded = Extract<
   DeclarationGapKeys,
@@ -118,6 +118,7 @@ const HANDSHAKE_FIELDS = {
   approvalEnforcedBy: "approvalEnforcedBy",
   steerMode: "steerMode",
   skills: "skills",
+  nativeSessions: "nativeSessions",
 } as const satisfies Record<
   string,
   keyof z.infer<typeof bridgeCapabilitiesSchema> | Gap
@@ -197,7 +198,10 @@ const TIMELINE_ROW_FIELDS = {
   },
   presentation: "presentation",
 } as const satisfies Record<string, keyof TimelineCommandWorkRow | Gap>;
-type TimelineRowGapsNotLanded = Extract<"payload", keyof TimelineCommandWorkRow>;
+type TimelineRowGapsNotLanded = Extract<
+  "payload",
+  keyof TimelineCommandWorkRow
+>;
 
 /** §5 `app.slots.timelineRenderer` → `PluginAppSlots` (experimental_ until audited). */
 type TimelineRendererSlot = PluginAppSlots["experimental_timelineRenderer"];

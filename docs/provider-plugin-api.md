@@ -366,7 +366,7 @@ plugin renders its own extension kinds and the generic `tool` items its
 provider emitted:
 
 ```ts
-app.slots.experimental_timelineRenderer({ kind, component });
+app.slots.experimental_timelineRenderer({ kind, component })
 // component props: { row, payload, presentation, thread, Original }
 ```
 
