@@ -134,8 +134,9 @@ export function registerProviderCommands(
         async (providerId: string, opts: ProviderSessionsCommandOptions) => {
           const serverUrl = getUrl();
           const sdk = createCliBbSdk(serverUrl);
-          const limit = Number.parseInt(opts.limit ?? "50", 10);
-          if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+          const limitText = opts.limit ?? "50";
+          const limit = Number.parseInt(limitText, 10);
+          if (!/^\d+$/u.test(limitText) || limit < 1 || limit > 100) {
             throw new Error("--limit must be an integer from 1 to 100");
           }
           const result = await sdk.providers.nativeSessions(providerId, {

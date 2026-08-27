@@ -13,6 +13,37 @@ import { ExpectedCommandDispatchError } from "../command-dispatch-support.js";
 
 const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;
 
+async function resolveExistingProjectDirectory(
+  projectPath: string,
+): Promise<string> {
+  const resolvedPath = path.resolve(projectPath);
+  try {
+    const stat = await fs.stat(resolvedPath);
+    if (!stat.isDirectory()) {
+      throw new ExpectedCommandDispatchError(
+        "path_not_found",
+        `Project path is not a directory: ${resolvedPath}`,
+      );
+    }
+    return await fs.realpath(resolvedPath);
+  } catch (error) {
+    if (error instanceof ExpectedCommandDispatchError) {
+      throw error;
+    }
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    ) {
+      throw new ExpectedCommandDispatchError(
+        "path_not_found",
+        `Project path does not exist: ${resolvedPath}`,
+      );
+    }
+    throw error;
+  }
+}
+
 function normalizeProjectSlug(value: string): string {
   const slug = value
     .trim()
@@ -62,7 +93,7 @@ export async function inspectProjectPath(
   isWorktree: boolean;
   path: string;
 }> {
-  const resolvedPath = path.resolve(projectPath);
+  const resolvedPath = await resolveExistingProjectDirectory(projectPath);
   const isGitRepo = await detectGitRepo(resolvedPath, options);
   if (!isGitRepo) {
     return {

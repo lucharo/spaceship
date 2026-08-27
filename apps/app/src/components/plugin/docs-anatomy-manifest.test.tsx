@@ -23,7 +23,10 @@ import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
-import { AppSidebar } from "@/components/sidebar/AppSidebar";
+import {
+  AppSidebar,
+  BUG_REPORT_NEW_ISSUE_URL,
+} from "@/components/sidebar/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { MessageActionBar } from "@/components/thread/timeline/MessageActionBar";
 import {
@@ -167,6 +170,12 @@ function renderAppSidebar() {
 }
 
 describe("docs anatomy manifest", () => {
+  it("routes bug reports to the Spaceship repository", () => {
+    expect(BUG_REPORT_NEW_ISSUE_URL).toBe(
+      "https://github.com/lucharo/spaceship/issues/new",
+    );
+  });
+
   it("keeps every surface fixture anchored to current product source", () => {
     for (const [fixtureId, fixture] of Object.entries(
       manifest.surfaceFixtures,

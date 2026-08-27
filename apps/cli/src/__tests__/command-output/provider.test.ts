@@ -128,6 +128,28 @@ describe("bb provider command output", () => {
     );
   });
 
+  it("rejects a malformed native-session limit", async () => {
+    const get = vi.fn(async () => ({
+      sessions: [],
+      nextCursor: null,
+      backwardsCursor: null,
+    }));
+    stubServerApi({
+      "v1.system.providers.:id.native-sessions.$get": get,
+    });
+
+    await expect(
+      runCommand(
+        ["provider", "sessions", "codex", "--limit", "10abc"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: --limit must be an integer from 1 to 100",
+    );
+    expect(get).not.toHaveBeenCalled();
+  });
+
   it("bb provider adopt links a known native session on a selected machine", async () => {
     const adopt = vi.fn(async () => ({
       created: true,
