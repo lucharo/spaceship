@@ -2,6 +2,7 @@ import path from "node:path";
 import {
   adoptNativeThread,
   createEnvironment,
+  findManagedEnvironmentAtHostPath,
   findThreadByNativeIdentity,
   findOrCreateProjectByLocalPathSource,
   findProjectEnvironmentByHostPath,
@@ -9,13 +10,13 @@ import {
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
   getEnvironment,
-  listEnvironments,
   getThreadSectionById,
   listThreadMentionRowsByIds,
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
   searchThreadsWithPendingInteractionState,
   updateThread,
+  unarchiveThread,
   type ThreadSearchResultGroup as DbThreadSearchResultGroup,
   type UpdateThreadInput,
 } from "@bb/db";
@@ -366,45 +367,71 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         pathValidationMessage,
       );
     }
-    const existing = findThreadByNativeIdentity(deps.db, payload);
-    if (existing) {
-      return context.json(
-        {
-          created: false,
-          thread: toThreadResponseFromThread(deps, { thread: existing }),
-        },
-        200,
-      );
-    }
     const inspection = await callHostRetryableOnlineRpc(deps, {
       hostId: payload.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
       command: { type: "project.inspect", path: nativePath },
     });
-    const managedEnvironment = listEnvironments(deps.db).find(
-      (environment) =>
-        environment.hostId === payload.hostId &&
-        environment.path === inspection.path &&
-        environment.managed &&
-        environment.status !== "destroyed",
-    );
+    const inspectedPath = normalizeProjectPathInput(inspection.path);
+    const inspectedPathValidationMessage =
+      getProjectPathValidationMessage(inspectedPath);
+    if (inspectedPathValidationMessage !== null) {
+      throw new ApiError(
+        409,
+        "native_session_cwd_invalid",
+        inspectedPathValidationMessage,
+      );
+    }
+    const existing = findThreadByNativeIdentity(deps.db, payload);
+    if (existing) {
+      const existingEnvironment =
+        existing.environmentId === null
+          ? null
+          : getEnvironment(deps.db, existing.environmentId);
+      if (
+        existingEnvironment === null ||
+        existingEnvironment.hostId !== payload.hostId ||
+        existingEnvironment.path !== inspectedPath
+      ) {
+        throw new ApiError(
+          409,
+          "native_session_workspace_changed",
+          "The native session workspace no longer matches its Spaceship projection",
+        );
+      }
+      const reconciled =
+        existing.archivedAt === null
+          ? existing
+          : (unarchiveThread(deps.db, deps.hub, existing.id) ?? existing);
+      return context.json(
+        {
+          created: false,
+          thread: toThreadResponseFromThread(deps, { thread: reconciled }),
+        },
+        200,
+      );
+    }
+    const managedEnvironment = findManagedEnvironmentAtHostPath(deps.db, {
+      hostId: payload.hostId,
+      path: inspectedPath,
+    });
     const project = payload.projectId
       ? requirePublicProject(deps.db, payload.projectId)
       : managedEnvironment
         ? requirePublicProject(deps.db, managedEnvironment.projectId)
         : findOrCreateProjectByLocalPathSource(deps.db, deps.hub, {
-            name: path.basename(inspection.path) || "Workspace",
+            name: path.basename(inspectedPath) || "Workspace",
             source: {
               type: "local_path",
               hostId: payload.hostId,
-              path: inspection.path,
+              path: inspectedPath,
             },
           }).project;
     const refusal = unmanagedAttachRefusal(deps.db, {
       checksOutBranch: false,
       dataDir: findHostDataDir(deps, payload.hostId),
       hostId: payload.hostId,
-      path: inspection.path,
+      path: inspectedPath,
       projectId: project.id,
     });
     if (refusal) {
@@ -416,14 +443,14 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
           deps.db,
           project.id,
           payload.hostId,
-          inspection.path,
+          inspectedPath,
         );
     if (!environment) {
       environment = createEnvironment(deps.db, deps.hub, {
         projectId: project.id,
         hostId: payload.hostId,
         workspaceProvisionType: "unmanaged",
-        path: inspection.path,
+        path: inspectedPath,
         managed: false,
         isGitRepo: inspection.isGitRepo,
         isWorktree: inspection.isWorktree,

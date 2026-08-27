@@ -209,6 +209,7 @@ export {
 export {
   createEnvironment,
   getEnvironment,
+  findManagedEnvironmentAtHostPath,
   findProjectEnvironmentByHostPath,
   listEnvironments,
   findForeignManagedEnvironmentAtHostPath,

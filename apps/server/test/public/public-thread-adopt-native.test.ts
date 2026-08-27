@@ -1,4 +1,5 @@
 import {
+  archiveThread,
   getEnvironment,
   getLastStoredProviderThreadId,
   listEnvironments,
@@ -100,30 +101,8 @@ describe("public native thread adoption", () => {
         await readJson(firstResponse),
       );
 
-      const secondResponsePromise = harness.app.request(
-        "/api/v1/threads/adopt-native",
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(request),
-        },
-      );
-      const secondRead = await waitForQueuedCommand(
-        harness,
-        ({ command }) =>
-          command.type === "provider.native_sessions.read" &&
-          command.providerThreadId === request.providerThreadId,
-      );
-      await reportQueuedCommandSuccess(harness, secondRead, {
-        providerThreadId: request.providerThreadId,
-        title: "Recovered session",
-        cwd: "/tmp/native-adoption",
-        createdAt: 1_777_000_000,
-        updatedAt: 1_777_000_100,
-        archived: false,
-        source: "cli",
-      });
-      const secondResponse = await secondResponsePromise;
+      archiveThread(harness.db, harness.deps.hub, first.thread.id);
+      const secondResponse = await postAdoptNativeThread(harness, request);
       expect(secondResponse.status).toBe(200);
       const second = adoptNativeThreadResponseSchema.parse(
         await readJson(secondResponse),
@@ -136,7 +115,15 @@ describe("public native thread adoption", () => {
         status: "idle",
         title: "Recovered session",
       });
-      expect(second).toEqual({ created: false, thread: first.thread });
+      expect(second).toMatchObject({
+        created: false,
+        thread: {
+          id: first.thread.id,
+          projectId: first.thread.projectId,
+          environmentId: first.thread.environmentId,
+        },
+      });
+      expect(second.thread.archivedAt).toBeNull();
       expect(emitThreadCreated).toHaveBeenCalledTimes(1);
       expect(emitThreadCreated).toHaveBeenCalledWith(
         expect.objectContaining({ id: first.thread.id }),
@@ -256,6 +243,33 @@ describe("public native thread adoption", () => {
     });
   });
 
+  it("rejects an existing projection when the native workspace changed", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-moved",
+      });
+      const request = {
+        hostId: host.id,
+        providerId: "codex",
+        providerThreadId: "native-thread-moved",
+      };
+      const first = await postAdoptNativeThread(harness, request);
+      expect(first.status).toBe(200);
+      await readJson(first);
+
+      const second = await postAdoptNativeThread(harness, request, {
+        providerThreadId: request.providerThreadId,
+        title: "Moved session",
+        cwd: "/tmp/native-adoption-moved",
+      });
+
+      expect(second.status).toBe(409);
+      await expect(readJson(second)).resolves.toMatchObject({
+        code: "native_session_workspace_changed",
+      });
+    });
+  });
+
   it("rejects mismatched provider identity before creating local records", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -333,6 +347,58 @@ describe("public native thread adoption", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         code: "native_session_cwd_invalid",
       });
+    });
+  });
+
+  it("rejects a provider path that canonicalizes to the filesystem root", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-canonical-root",
+      });
+      const responsePromise = harness.app.request(
+        "/api/v1/threads/adopt-native",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            hostId: host.id,
+            providerId: "codex",
+            providerThreadId: "native-thread-canonical-root",
+          }),
+        },
+      );
+      const read = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "provider.native_sessions.read",
+      );
+      await reportQueuedCommandSuccess(harness, read, {
+        providerThreadId: "native-thread-canonical-root",
+        title: "Canonical root",
+        cwd: "/tmp/..",
+        createdAt: 1,
+        updatedAt: 2,
+        archived: false,
+        source: "cli",
+      });
+      const inspection = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "project.inspect",
+      );
+      await reportQueuedCommandSuccess(harness, inspection, {
+        path: "/",
+        gitRemoteUrl: null,
+        isGitRepo: false,
+        isWorktree: false,
+        branchName: null,
+        defaultBranch: null,
+      });
+
+      const response = await responsePromise;
+      expect(response.status).toBe(409);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "native_session_cwd_invalid",
+      });
+      expect(listPublicProjects(harness.db)).toEqual([]);
     });
   });
 
