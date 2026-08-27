@@ -12,6 +12,7 @@ import {
 import { adoptNativeThreadResponseSchema } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
 import {
+  listQueuedCommands,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
@@ -395,6 +396,7 @@ describe("public native thread adoption", () => {
       await expect(readJson(response)).resolves.toMatchObject({
         code: "native_session_cwd_invalid",
       });
+      expect(listQueuedCommands(harness, "project.inspect")).toEqual([]);
     });
   });
 
