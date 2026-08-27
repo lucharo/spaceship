@@ -9,6 +9,7 @@ import {
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
   getEnvironment,
+  listEnvironments,
   getThreadSectionById,
   listThreadMentionRowsByIds,
   listThreadsWithPendingInteractionState,
@@ -18,7 +19,13 @@ import {
   type ThreadSearchResultGroup as DbThreadSearchResultGroup,
   type UpdateThreadInput,
 } from "@bb/db";
-import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
+import {
+  getProjectPathValidationMessage,
+  normalizeProjectPathInput,
+  type Environment,
+  type Thread,
+  type ThreadListEntry,
+} from "@bb/domain";
 import {
   threadIncludeOptionSchema,
   publicApiRoutes,
@@ -42,6 +49,7 @@ import {
 } from "../../services/environments/environment-cleanup-internal.js";
 import {
   getNonDestroyedHostWithStatus,
+  findHostDataDir,
   requireNonDestroyedHostWithStatus,
   requireEnvironment,
   requirePublicProject,
@@ -65,6 +73,7 @@ import {
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
+import { unmanagedAttachRefusal } from "../../services/threads/workspace-path-claims.js";
 import {
   emitPluginThreadCreated,
   emitPluginThreadDeleted,
@@ -337,6 +346,13 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       );
     }
     const nativeSession = await readProviderNativeSession(deps, payload);
+    if (nativeSession.providerThreadId !== payload.providerThreadId) {
+      throw new ApiError(
+        409,
+        "native_session_identity_mismatch",
+        "The provider returned a different native session",
+      );
+    }
     if (nativeSession.archived) {
       throw new ApiError(
         409,
@@ -351,21 +367,49 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         "The native session has no usable working directory",
       );
     }
+    const nativePath = normalizeProjectPathInput(nativeSession.cwd);
+    const pathValidationMessage = getProjectPathValidationMessage(nativePath);
+    if (pathValidationMessage !== null) {
+      throw new ApiError(
+        409,
+        "native_session_cwd_invalid",
+        pathValidationMessage,
+      );
+    }
     const inspection = await callHostRetryableOnlineRpc(deps, {
       hostId: payload.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
-      command: { type: "project.inspect", path: nativeSession.cwd },
+      command: { type: "project.inspect", path: nativePath },
     });
+    const managedEnvironment = listEnvironments(deps.db).find(
+      (environment) =>
+        environment.hostId === payload.hostId &&
+        environment.path === inspection.path &&
+        environment.managed &&
+        environment.status !== "destroyed",
+    );
     const project = payload.projectId
       ? requirePublicProject(deps.db, payload.projectId)
-      : findOrCreateProjectByLocalPathSource(deps.db, deps.hub, {
-          name: path.basename(inspection.path) || "Workspace",
-          source: {
-            type: "local_path",
-            hostId: payload.hostId,
-            path: inspection.path,
-          },
-        }).project;
+      : managedEnvironment
+        ? requirePublicProject(deps.db, managedEnvironment.projectId)
+        : findOrCreateProjectByLocalPathSource(deps.db, deps.hub, {
+            name: path.basename(inspection.path) || "Workspace",
+            source: {
+              type: "local_path",
+              hostId: payload.hostId,
+              path: inspection.path,
+            },
+          }).project;
+    const refusal = unmanagedAttachRefusal(deps.db, {
+      checksOutBranch: false,
+      dataDir: findHostDataDir(deps, payload.hostId),
+      hostId: payload.hostId,
+      path: inspection.path,
+      projectId: project.id,
+    });
+    if (refusal) {
+      throw new ApiError(409, "invalid_request", refusal.message);
+    }
     let environment = payload.environmentId
       ? requireEnvironment(deps.db, payload.environmentId)
       : findProjectEnvironmentByHostPath(
