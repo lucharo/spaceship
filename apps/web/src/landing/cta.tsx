@@ -3,7 +3,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
-import { trackLandingEvent } from "./analytics";
 import type { CtaPlacement } from "./site";
 import {
   DISCORD_URL,
@@ -30,58 +29,30 @@ export function DownloadLink({ placement, className, children }: CtaLinkProps) {
   );
 }
 
-export function GitHubLink({ placement, className, children }: CtaLinkProps) {
+export function GitHubLink({ className, children }: CtaLinkProps) {
   return (
-    <a
-      className={className}
-      href={GITHUB_URL}
-      target="_blank"
-      rel="noreferrer"
-      onClick={() =>
-        trackLandingEvent({
-          name: "landing_github_clicked",
-          properties: { placement },
-        })
-      }
-    >
+    <a className={className} href={GITHUB_URL} target="_blank" rel="noreferrer">
       {children}
     </a>
   );
 }
 
-export function DiscordLink({ placement, className, children }: CtaLinkProps) {
+export function DiscordLink({ className, children }: CtaLinkProps) {
   return (
     <a
       className={className}
       href={DISCORD_URL}
       target="_blank"
       rel="noreferrer"
-      onClick={() =>
-        trackLandingEvent({
-          name: "landing_discord_clicked",
-          properties: { placement },
-        })
-      }
     >
       {children}
     </a>
   );
 }
 
-export function XLink({ placement, className, children }: CtaLinkProps) {
+export function XLink({ className, children }: CtaLinkProps) {
   return (
-    <a
-      className={className}
-      href={X_URL}
-      target="_blank"
-      rel="noreferrer"
-      onClick={() =>
-        trackLandingEvent({
-          name: "landing_x_clicked",
-          properties: { placement },
-        })
-      }
-    >
+    <a className={className} href={X_URL} target="_blank" rel="noreferrer">
       {children}
     </a>
   );
@@ -100,7 +71,7 @@ export function focusSubscribeEmail() {
   document.getElementById(SUBSCRIBE_EMAIL_ID)?.focus();
 }
 
-export function EmailSignup({ placement }: { placement: CtaPlacement }) {
+export function EmailSignup(_props: { placement: CtaPlacement }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<SubscribeStatus>("idle");
   const [error, setError] = useState("");
@@ -133,10 +104,6 @@ export function EmailSignup({ placement }: { placement: CtaPlacement }) {
         setStatus("error");
         return;
       }
-      trackLandingEvent({
-        name: "landing_email_subscribed",
-        properties: { placement },
-      });
       setStatus("success");
     } catch {
       setError("Could not reach the server. Try again.");

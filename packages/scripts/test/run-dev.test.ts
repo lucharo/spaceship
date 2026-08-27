@@ -262,7 +262,6 @@ describe("run-dev", () => {
       baseEnv: {
         BB_DATA_DIR: "/Users/tester/.bb",
         BB_DEV_APP_PORT: "5173",
-        BB_TELEMETRY: "true",
         NODE_ENV: "development",
         OPENAI_API_KEY: "test-key",
       },
@@ -275,7 +274,6 @@ describe("run-dev", () => {
       BB_HOST_DAEMON_PORT: String(config.ports.hostDaemonPort),
       BB_SERVER_PORT: String(config.ports.serverPort),
       BB_SERVER_URL: config.serverUrl,
-      BB_TELEMETRY: "false",
       NODE_ENV: "production",
       OPENAI_API_KEY: "test-key",
     });

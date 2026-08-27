@@ -1,12 +1,10 @@
 import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute, notFound } from "@tanstack/react-router";
-import { useEffect } from "react";
 
 import { PostBlocks, PostHeader, PostLede } from "../blog/post-body";
 import { getPost } from "../blog/posts";
 import { stripMarkdown } from "../blog/parse-post";
-import { initAnalytics } from "../landing/analytics";
 import { EmailSignup } from "../landing/cta";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { unfurlMeta } from "../landing/site";
@@ -53,10 +51,6 @@ export const Route = createFileRoute("/blog_/$slug")({
 
 function BlogPostRoute() {
   const { post } = Route.useLoaderData();
-  useEffect(() => {
-    initAnalytics();
-  }, []);
-
   return (
     <div className="wrap">
       <SiteNav current="blog" />

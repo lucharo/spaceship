@@ -419,6 +419,19 @@ describe("consumer-specific config", () => {
     expect(serverConfig.BB_APP_VERSION).toBe("0.1.2");
   });
 
+  it("does not expose telemetry configuration", () => {
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
+        BB_POSTHOG_API_KEY: "ignored",
+        BB_TELEMETRY: "true",
+        NODE_ENV: "production",
+      }),
+    });
+
+    expect(serverConfig).not.toHaveProperty("BB_POSTHOG_API_KEY");
+    expect(serverConfig).not.toHaveProperty("BB_TELEMETRY");
+  });
+
   it("parses the internal app surface marker for server telemetry", () => {
     const serverConfig = loadServerConfig({
       env: createServerRuntimeEnv({

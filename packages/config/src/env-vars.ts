@@ -199,7 +199,7 @@ export const BB_SERVER_LAUNCH_ID_ENV = defineEnvVar<string>({
 
 export const BB_APP_SURFACE_ENV = defineEnvVar<AppSurface>({
   description:
-    "Internal launcher marker for telemetry attribution. Set by bb-app and desktop launchers.",
+    "Internal launcher marker for surface-specific behaviour. Set by bb-app and desktop launchers.",
   name: APP_SURFACE_ENV_NAME,
   parse: parseAppSurfaceEnvValue,
 });
@@ -249,20 +249,6 @@ export const OPENAI_API_KEY_ENV = defineEnvVar<string>({
     "OpenAI API key used when an explicit OpenAI provider route is configured",
   name: "OPENAI_API_KEY",
   parse: parseStringEnvValue,
-});
-
-export const BB_POSTHOG_API_KEY_ENV = defineEnvVar<string>({
-  description:
-    "PostHog project API key for anonymous usage telemetry. Telemetry is disabled when empty.",
-  name: "BB_POSTHOG_API_KEY",
-  parse: parseStringEnvValue,
-});
-
-export const BB_TELEMETRY_ENV = defineEnvVar<boolean>({
-  description:
-    "Anonymous usage telemetry (app starts, thread creation counts, user message counts, and plugin installs). Set to false to opt out.",
-  name: "BB_TELEMETRY",
-  parse: parseBooleanEnvValue,
 });
 
 export const BB_FF_PLACEHOLDER_ENV = defineEnvVar<boolean>({
@@ -368,12 +354,6 @@ export const DEFAULT_BB_APP_URL = "";
 export const DEFAULT_BB_SERVER_BIND_HOST: ServerBindHost = BB_LOOPBACK_HOST;
 export const DEFAULT_BB_EXTERNAL_URL = "";
 export const DEFAULT_OPENAI_API_KEY = "";
-// Public write-only PostHog ingestion key (these are safe to ship; they can
-// only create events). Telemetry still only activates in production server
-// runs and can always be disabled with BB_TELEMETRY=false.
-export const DEFAULT_BB_POSTHOG_API_KEY =
-  "phc_tejoYoNLV6vG8QAd5eYXXvcsENFYnP4brpZDGqG7zvpy";
-export const DEFAULT_BB_TELEMETRY = true;
 export const DEFAULT_BB_DEV_APP_HOST = "";
 /** Published by the registry repository through the getbb.app worker's R2 route. */
 export const DEFAULT_BB_MARKETPLACE_URL =

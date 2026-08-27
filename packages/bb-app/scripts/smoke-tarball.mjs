@@ -54,9 +54,7 @@ const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptsDir, "..");
 const tempRoot = await mkdtemp(join(tmpdir(), "bb-app-tarball-"));
-const smokeProcessEnv = {
-  BB_TELEMETRY: "false",
-};
+const smokeProcessEnv = {};
 
 function delay(ms) {
   return new Promise((resolvePromise) => {

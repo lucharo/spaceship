@@ -13,7 +13,7 @@
         "$TURBO_ROOT$/pnpm-workspace.yaml",
         "$TURBO_ROOT$/turbo.json"
       ],
-      "env": ["CLOUDFLARE_ENV", "VITE_POSTHOG_KEY", "VITE_POSTHOG_HOST"],
+      "env": ["CLOUDFLARE_ENV"],
       "outputs": ["dist/**"]
     },
     // Mirrors "build" but also caches bundle-stats.json, which the
@@ -23,10 +23,7 @@
     // The docs' UI-anatomy manifest is the contract this test checks the real
     // app components against, so a manifest edit must re-run it.
     "@bb/app#test": {
-      "dependsOn": [
-        "//#ensure-native-modules",
-        "topo"
-      ],
+      "dependsOn": ["//#ensure-native-modules", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/plugin-api-map/src/anatomy-manifest.json",
@@ -192,9 +189,7 @@
     "@bb/desktop#smoke:appimage-lifecycle": {
       "cache": false,
       "outputs": [],
-      "passThroughEnv": [
-        "*"
-      ]
+      "passThroughEnv": ["*"]
     },
     "@bb/desktop#dev": {
       "dependsOn": ["bb-app#build"],
@@ -760,10 +755,7 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-monaco-editor#typecheck": {
-      "dependsOn": [
-        "@get-bb/plugin-sdk#build:types",
-        "topo"
-      ]
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-pdf-preview#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]

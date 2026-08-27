@@ -1,11 +1,9 @@
 import { ArrowRight01Icon, Mail01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect } from "react";
 
 import { POSTS } from "../blog/posts";
 import { PostHeader, PostLede } from "../blog/post-body";
-import { initAnalytics } from "../landing/analytics";
 import {
   EmailSignup,
   focusSubscribeEmail,
@@ -43,10 +41,6 @@ export const Route = createFileRoute("/blog")({
 });
 
 function BlogIndexRoute() {
-  useEffect(() => {
-    initAnalytics();
-  }, []);
-
   return (
     <div className="wrap">
       <SiteNav current="blog" />

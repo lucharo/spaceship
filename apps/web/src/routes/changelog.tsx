@@ -1,11 +1,10 @@
 import { Loading03Icon, Mail01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Fragment, useEffect } from "react";
+import { Fragment } from "react";
 import type { ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
-import { initAnalytics } from "../landing/analytics";
 import type { Release, ReleaseBlock } from "../landing/changelog";
 import { RELEASE_META, parseChangelog } from "../landing/changelog";
 import { ChangelogInline } from "../landing/changelog-inline";
@@ -47,9 +46,6 @@ export const Route = createFileRoute("/changelog")({
 });
 
 function ChangelogRoute() {
-  useEffect(() => {
-    initAnalytics();
-  }, []);
   return <ChangelogPage />;
 }
 
@@ -86,7 +82,9 @@ function ByMachineSidebar() {
             </li>
             <li>
               <div className="trow">
-                <span className="trow-title">Desloppify High-Priority Worker</span>
+                <span className="trow-title">
+                  Desloppify High-Priority Worker
+                </span>
               </div>
               <ul className="threads thread-kids">
                 <li>

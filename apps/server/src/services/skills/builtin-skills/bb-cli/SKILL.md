@@ -69,7 +69,7 @@ message agents, or inspect projects, providers, and environments.
   `bb-app config set BB_TRANSCRIPTION <provider/model>`.
 - `bb-app config` and `bb-app env` reload runtime settings in a running server,
   but the CLI identifies server and launcher settings that are startup-only,
-  including binding/ports, data and the dev-app port, telemetry, inherited skill
+  including binding/ports, data and the dev-app port, inherited skill
   roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
   `bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`,
   `BB_INFERENCE_FALLBACK`, or `BB_TRANSCRIPTION` live. After a startup-only
@@ -800,8 +800,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     name, description, category, or tag; status shows installed / compatible /
     requires newer bb. An **Installs** column appears once the curated
     marketplace's `stats.json` sidecar has been read (`installs` in `--json`,
-    null when unknown): anonymous-telemetry install counts, published only for
-    bundled plugins and `bb-community` entries, never for third-party ones.
+    null when unknown): registry-provided install counts.
 - **Third-party marketplaces** (routes under `/api/v1/marketplaces`):
   - `bb marketplace add <source>` — add a marketplace from an https manifest
     URL, `git:<url>[@<ref>]` (bb reads `marketplace.json` from the checkout),

@@ -10,7 +10,7 @@
 // Deploy prod:    CLOUDFLARE_ENV=production pnpm --filter @bb/web build
 //                 && pnpm --filter @bb/web exec wrangler deploy
 // Secrets (per worker): wrangler secret put [--name bb-web] GITHUB_CLIENT_ID /
-//   GITHUB_CLIENT_SECRET / BETTER_AUTH_SECRET / LANDING_POSTHOG_KEY / RESEND_API_KEY
+//   GITHUB_CLIENT_SECRET / BETTER_AUTH_SECRET / RESEND_API_KEY
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bb-web-staging",
@@ -31,7 +31,6 @@
       "GITHUB_CLIENT_ID",
       "GITHUB_CLIENT_SECRET",
       "BETTER_AUTH_SECRET",
-      "LANDING_POSTHOG_KEY",
       "RESEND_API_KEY",
     ],
   },
@@ -79,7 +78,6 @@
           "GITHUB_CLIENT_ID",
           "GITHUB_CLIENT_SECRET",
           "BETTER_AUTH_SECRET",
-          "LANDING_POSTHOG_KEY",
           "RESEND_API_KEY",
         ],
       },

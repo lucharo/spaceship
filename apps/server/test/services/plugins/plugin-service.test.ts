@@ -595,7 +595,7 @@ describe("plugin service", () => {
     } as unknown as Logger;
     const makeService = (appVersion: string) =>
       createPluginService({
-      aiServices: createAiServiceRegistry(),
+        aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
         hub: {
@@ -834,7 +834,7 @@ describe("plugin service", () => {
     ).toBe("tasks");
   });
 
-  it("names public plugins in the install event so PostHog can rank them", () => {
+  it("names public plugins in the legacy install event", () => {
     expect(
       pluginInstalledTelemetryEvent(
         "tasks",
@@ -1108,9 +1108,7 @@ describe("plugin service", () => {
       version: "0.2.0",
       status: "running",
     });
-    expect((globalThis as Record<string, unknown>).__brittleCheckout).toBe(
-      "a",
-    );
+    expect((globalThis as Record<string, unknown>).__brittleCheckout).toBe("a");
     expect(service.getApi("brittle")).toBeDefined();
     expect((await service.getSettings("brittle"))?.values).toEqual({
       token: { set: true },
