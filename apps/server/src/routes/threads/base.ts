@@ -48,6 +48,7 @@ import {
   requestEnvironmentCleanup,
   requestEnvironmentCleanupAdvance,
 } from "../../services/environments/environment-cleanup-internal.js";
+import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
 import {
   getNonDestroyedHostWithStatus,
   findHostDataDir,
@@ -403,6 +404,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         existing.archivedAt === null
           ? existing
           : (unarchiveThread(deps.db, deps.hub, existing.id) ?? existing);
+      if (existingEnvironment.status === "retiring") {
+        applyLoggedEnvironmentLifecycleEvent(deps, {
+          environmentId: existingEnvironment.id,
+          event: { type: "retire.cancelled" },
+        });
+      }
       return context.json(
         {
           created: false,

@@ -5,6 +5,10 @@ import {
   listEnvironments,
   listPublicProjects,
 } from "@bb/db";
+import {
+  applyEnvironmentLifecycleEvent,
+  requireEnvironmentLifecycleEventApplied,
+} from "@bb/db/internal-environment-lifecycle";
 import { adoptNativeThreadResponseSchema } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -168,6 +172,50 @@ describe("public native thread adoption", () => {
           providerId: "codex",
           providerThreadId: "native-thread-1",
         },
+      });
+    });
+  });
+
+  it("revives a retiring managed environment when reopening a projection", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-retiring",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/native-retiring-source",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/native-adoption",
+        managed: true,
+        status: "ready",
+        workspaceProvisionType: "managed-worktree",
+      });
+      const request = {
+        hostId: host.id,
+        providerId: "codex",
+        providerThreadId: "native-thread-retiring",
+      };
+
+      const firstResponse = await postAdoptNativeThread(harness, request);
+      const first = adoptNativeThreadResponseSchema.parse(
+        await readJson(firstResponse),
+      );
+      archiveThread(harness.db, harness.deps.hub, first.thread.id);
+      requireEnvironmentLifecycleEventApplied(
+        applyEnvironmentLifecycleEvent(harness.db, harness.deps.hub, {
+          environmentId: environment.id,
+          event: { type: "retire.requested" },
+        }),
+      );
+
+      const secondResponse = await postAdoptNativeThread(harness, request);
+
+      expect(secondResponse.status).toBe(200);
+      expect(getEnvironment(harness.db, environment.id)).toMatchObject({
+        status: "ready",
       });
     });
   });
