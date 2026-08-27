@@ -1,3 +1,5 @@
+Read and follow [AGENTS.spaceship.md](AGENTS.spaceship.md) for fork-specific rules.
+
 # Codebase Guidelines
 
 ## Simplicity First

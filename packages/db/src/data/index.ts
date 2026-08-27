@@ -52,6 +52,8 @@ export {
   deleteProjectSource,
 } from "./project-sources.js";
 export {
+  adoptNativeThread,
+  findThreadByNativeIdentity,
   createThread,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
@@ -90,6 +92,7 @@ export {
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
 } from "./threads.js";
 export type {
+  AdoptNativeThreadInput,
   ApplyThreadLifecycleEventArgs,
   ApplyThreadLifecycleEventOutcome,
   ReorderPinnedThreadResult,

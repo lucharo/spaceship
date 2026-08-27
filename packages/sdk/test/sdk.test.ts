@@ -625,6 +625,55 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("adopts a provider-native session into an existing environment", async () => {
+    const queue = createFetchQueue([
+      {
+        body: {
+          created: true,
+          thread: {
+            id: "thr_1",
+            projectId: "proj_1",
+            environmentId: "env_1",
+            providerId: "codex",
+          },
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.adoptNative({
+      hostId: "host_1",
+      cwd: "/workspace",
+      projectId: "proj_1",
+      environmentId: "env_1",
+      providerId: "codex",
+      providerThreadId: "native-1",
+      title: "Recovered thread",
+    });
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({
+          hostId: "host_1",
+          cwd: "/workspace",
+          projectId: "proj_1",
+          environmentId: "env_1",
+          providerId: "codex",
+          providerThreadId: "native-1",
+          title: "Recovered thread",
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/adopt-native",
+      },
+    ]);
+  });
+
   it("targets provider usage at an explicit machine", async () => {
     const usage = {
       codex: { status: "unauthenticated" as const },

@@ -1,4 +1,10 @@
+import path from "node:path";
 import {
+  adoptNativeThread,
+  createEnvironment,
+  findThreadByNativeIdentity,
+  findOrCreateProjectByLocalPathSource,
+  findProjectEnvironmentByHostPath,
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
@@ -28,6 +34,7 @@ import {
 import type { Hono } from "hono";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
+import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { parseOptionalInteger } from "../../services/lib/validation.js";
 import {
   requestEnvironmentCleanup,
@@ -35,10 +42,13 @@ import {
 } from "../../services/environments/environment-cleanup-internal.js";
 import {
   getNonDestroyedHostWithStatus,
+  requireNonDestroyedHostWithStatus,
   requireEnvironment,
   requirePublicProject,
   requirePublicThread,
 } from "../../services/lib/entity-lookup.js";
+import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
+import { requireBridgeLaunchForProviderId } from "../../services/system/provider-bridge-launch.js";
 import { dispatchThreadRenameCommand } from "../../services/threads/thread-commands.js";
 import {
   finalizeStoppedThread,
@@ -307,6 +317,83 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       origin: payload.origin,
     });
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
+  });
+
+  post(routes.adoptNative, async (context, payload) => {
+    requireNonDestroyedHostWithStatus(deps, payload.hostId);
+    requireBridgeLaunchForProviderId(deps, payload.providerId);
+    const existing = findThreadByNativeIdentity(deps.db, payload);
+    if (existing) {
+      return context.json(
+        {
+          created: false,
+          thread: toThreadResponseFromThread(deps, { thread: existing }),
+        },
+        200,
+      );
+    }
+    const inspection = await callHostRetryableOnlineRpc(deps, {
+      hostId: payload.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: { type: "project.inspect", path: payload.cwd },
+    });
+    const project = payload.projectId
+      ? requirePublicProject(deps.db, payload.projectId)
+      : findOrCreateProjectByLocalPathSource(deps.db, deps.hub, {
+          name: path.basename(inspection.path) || "Workspace",
+          source: {
+            type: "local_path",
+            hostId: payload.hostId,
+            path: inspection.path,
+          },
+        }).project;
+    let environment = payload.environmentId
+      ? requireEnvironment(deps.db, payload.environmentId)
+      : findProjectEnvironmentByHostPath(
+          deps.db,
+          project.id,
+          payload.hostId,
+          inspection.path,
+        );
+    if (!environment) {
+      environment = createEnvironment(deps.db, deps.hub, {
+        projectId: project.id,
+        hostId: payload.hostId,
+        workspaceProvisionType: "unmanaged",
+        path: inspection.path,
+        managed: false,
+        isGitRepo: inspection.gitRemoteUrl !== null,
+        status: "ready",
+      });
+    }
+    if (
+      environment.projectId !== project.id ||
+      environment.hostId !== payload.hostId ||
+      environment.path !== inspection.path ||
+      environment.status !== "ready" ||
+      environment.path === null
+    ) {
+      throw new ApiError(
+        409,
+        "environment_not_ready",
+        "Native sessions can only be adopted into a ready project environment",
+      );
+    }
+    const result = adoptNativeThread(deps.db, deps.hub, {
+      projectId: project.id,
+      environmentId: environment.id,
+      hostId: environment.hostId,
+      providerId: payload.providerId,
+      providerThreadId: payload.providerThreadId,
+      title: payload.title ?? null,
+    });
+    return context.json(
+      {
+        created: result.created,
+        thread: toThreadResponseFromThread(deps, { thread: result.thread }),
+      },
+      200,
+    );
   });
 
   post(routes.fork, async (context, payload) => {

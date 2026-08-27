@@ -94,6 +94,37 @@ describe("bb provider command output", () => {
     ]);
   });
 
+  it("bb provider sessions lists metadata without transcript content", async () => {
+    const get = vi.fn(async () => ({
+      sessions: [
+        {
+          providerThreadId: "native-1",
+          title: "Release checklist",
+          cwd: "/workspace",
+          createdAt: 1,
+          updatedAt: 2,
+          archived: false,
+          source: "cli",
+        },
+      ],
+      nextCursor: null,
+      backwardsCursor: null,
+    }));
+    stubServerApi({
+      "v1.system.providers.:id.native-sessions.$get": get,
+    });
+
+    await runCommand(["provider", "sessions", "codex"], register);
+
+    expect(get).toHaveBeenCalledWith({
+      param: { id: "codex" },
+      query: { archived: "false", limit: "50" },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "native-1",
+    );
+  });
+
   it("bb provider models includes a matching selected-only model", async () => {
     const get = vi.fn(async () => ({
       providers: [],

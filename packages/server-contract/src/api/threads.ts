@@ -160,6 +160,32 @@ export const createThreadRequestSchema = z
   });
 export type CreateThreadRequest = z.infer<typeof createThreadRequestSchema>;
 
+export const adoptNativeThreadRequestSchema = z
+  .object({
+    hostId: z.string().min(1),
+    cwd: z.string().min(1),
+    projectId: z.string().min(1).optional(),
+    environmentId: z.string().min(1).optional(),
+    providerId: z.string().min(1),
+    providerThreadId: z.string().min(1),
+    title: z.string().min(1).nullable().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (
+      (value.projectId === undefined) !==
+      (value.environmentId === undefined)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "projectId and environmentId must be provided together",
+      });
+    }
+  });
+export type AdoptNativeThreadRequest = z.infer<
+  typeof adoptNativeThreadRequestSchema
+>;
+
 const agentOnlyPromptInputSchema = promptInputSchema.and(
   z.object({ visibility: z.literal("agent-only") }),
 );
@@ -398,6 +424,16 @@ export const threadResponseSchema = threadWithRuntimeSchema.extend({
   canSpawnChild: z.boolean(),
 });
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;
+
+export const adoptNativeThreadResponseSchema = z
+  .object({
+    created: z.boolean(),
+    thread: threadResponseSchema,
+  })
+  .strict();
+export type AdoptNativeThreadResponse = z.infer<
+  typeof adoptNativeThreadResponseSchema
+>;
 
 export const threadIncludeOptionSchema = z.enum(["environment", "host"]);
 export type ThreadIncludeOption = z.infer<typeof threadIncludeOptionSchema>;

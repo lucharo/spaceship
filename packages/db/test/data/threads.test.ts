@@ -4,6 +4,7 @@ import { createConnection } from "../../src/connection.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
+  adoptNativeThread,
   createThread,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
@@ -32,6 +33,7 @@ import {
   requireThreadLifecycleEventApplied,
 } from "../../src/data/threads.js";
 import { createPendingInteraction } from "../../src/data/pending-interactions.js";
+import { getLastStoredProviderThreadId } from "../../src/data/events.js";
 import {
   createThreadSection,
   deleteThreadSection,
@@ -138,6 +140,41 @@ describe("threads", () => {
     const fetched = getThread(db, thread.id);
     expect(fetched?.visibility).toBe("visible");
     expect(fetched).toMatchObject({ id: thread.id });
+  });
+
+  it("adopts a native provider thread idempotently without copying history", () => {
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "unmanaged",
+      path: "/tmp/test",
+      status: "ready",
+    });
+
+    const first = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      hostId: host.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-1",
+      title: "Recovered thread",
+    });
+    const second = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      hostId: host.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-1",
+      title: "Ignored duplicate title",
+    });
+
+    expect(first.created).toBe(true);
+    expect(first.thread.status).toBe("idle");
+    expect(second).toEqual({ created: false, thread: first.thread });
+    expect(getLastStoredProviderThreadId(db, first.thread.id)).toBe(
+      "native-thread-1",
+    );
   });
 
   it("resolves only exact non-deleted mention thread rows", () => {

@@ -288,7 +288,8 @@
     "approvalEnforcedBy": "default",
     "grammarVersions": "default",
     "steerMode": "default",
-    "skills": "default"
+    "skills": "default",
+    "nativeSessions": "default"
   },
   "recoveryNotification": {
     "threadId": "optional",
@@ -299,6 +300,7 @@
   "requestMethods": [
     "initialize",
     "model/list",
+    "native/session/list",
     "provider/health",
     "provider/installation/run",
     "provider/installation/status",

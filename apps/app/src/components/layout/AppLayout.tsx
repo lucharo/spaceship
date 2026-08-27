@@ -78,6 +78,7 @@ import {
   isToolsRoutePath,
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  NATIVE_SESSIONS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
@@ -286,6 +287,7 @@ const routeTitles: Record<string, { title: string }> = {
   "/settings": { title: "Settings" },
   "/automations": { title: "Automations" },
   "/skills": { title: "Skills" },
+  [NATIVE_SESSIONS_ROUTE_PATH]: { title: "Native sessions" },
 };
 
 function resolveRouteTitle(pathname: string): { title: string } | undefined {

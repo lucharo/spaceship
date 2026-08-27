@@ -350,6 +350,7 @@ type ExpectedThemeKey = "catalog" | "get" | "set";
 type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 
 type ExpectedThreadsKey =
+  | "adoptNative"
   | "archive"
   | "archiveAll"
   | "cancelPlan"

@@ -1,6 +1,9 @@
 import { Command } from "commander";
 import type { AvailableModel } from "@bb/domain";
-import type { SystemProviderInfo } from "@bb/server-contract";
+import type {
+  SystemNativeSessionsResponse,
+  SystemProviderInfo,
+} from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { renderBorderlessTable } from "../table.js";
@@ -20,6 +23,18 @@ interface ProviderModelsCommandOptions {
   json?: boolean;
   machine?: string;
   selectedModel?: string;
+}
+
+interface ProviderSessionsCommandOptions {
+  archived?: boolean;
+  cursor?: string;
+  cwd?: string;
+  environment?: string;
+  host?: string;
+  json?: boolean;
+  limit?: string;
+  machine?: string;
+  search?: string;
 }
 
 interface IncludeSelectedOnlyModelArgs {
@@ -98,6 +113,41 @@ export function registerProviderCommands(
         },
       ),
     );
+
+  addProviderRoutingOptions(provider.command("sessions <providerId>"))
+    .description("List provider-native sessions without reading transcripts")
+    .option("--archived", "List archived native sessions")
+    .option("--cursor <cursor>", "Continue from a native pagination cursor")
+    .option("--cwd <path>", "Filter sessions by working directory")
+    .option("--limit <count>", "Maximum sessions to return", "50")
+    .option("--search <text>", "Filter sessions by provider metadata")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (providerId: string, opts: ProviderSessionsCommandOptions) => {
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
+          const limit = Number.parseInt(opts.limit ?? "50", 10);
+          if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+            throw new Error("--limit must be an integer from 1 to 100");
+          }
+          const result = await sdk.providers.nativeSessions(providerId, {
+            ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
+            archived: opts.archived ?? false,
+            limit,
+            ...(opts.cursor ? { cursor: opts.cursor } : {}),
+            ...(opts.cwd ? { cwd: opts.cwd } : {}),
+            ...(opts.search ? { searchTerm: opts.search } : {}),
+          });
+          if (outputJson(opts, result)) return;
+          if (result.sessions.length === 0) {
+            console.log("No native sessions found");
+            return;
+          }
+          printNativeSessionTable(result.sessions);
+        },
+      ),
+    );
 }
 
 function includeSelectedOnlyModel(
@@ -129,6 +179,32 @@ function printProviderTable(providers: SystemProviderInfo[]): void {
 
   console.log("");
   console.log(table);
+  console.log("");
+}
+
+function printNativeSessionTable(
+  sessions: SystemNativeSessionsResponse["sessions"],
+): void {
+  const rows = sessions.map((session) => [
+    session.title ?? "Untitled",
+    session.cwd ?? "—",
+    session.source ?? "—",
+    session.providerThreadId,
+  ]);
+  const widths = ["Title", "Directory", "Source", "Native ID"].map(
+    (heading, index) =>
+      Math.max(heading.length, ...rows.map((row) => row[index]?.length ?? 0)),
+  );
+  console.log("");
+  console.log(
+    renderBorderlessTable(
+      {
+        head: ["Title", "Directory", "Source", "Native ID"],
+        colWidths: widths,
+      },
+      rows,
+    ),
+  );
   console.log("");
 }
 

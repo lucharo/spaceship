@@ -30,7 +30,11 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import {
+  getRootComposeRoutePath,
+  getThreadRoutePath,
+  NATIVE_SESSIONS_ROUTE_PATH,
+} from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
@@ -271,6 +275,21 @@ export function AppSidebar({
         splitEnabled
         toolsRoutePath={toolsRoutePath}
       />
+      <div className="shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              tooltip={{ children: "Native sessions" }}
+            >
+              <Link to={NATIVE_SESSIONS_ROUTE_PATH} onClick={closeOnMobile}>
+                <Icon name="Clock" />
+                <span>Native sessions</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </div>
       <SidebarContent>
         <PluginThreadList
           replacement={threadListReplacement}

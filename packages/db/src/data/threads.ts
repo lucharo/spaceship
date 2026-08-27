@@ -36,12 +36,13 @@ import type { DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import {
   environments,
+  events,
   pendingInteractions,
   projects,
   threadSearchSegments,
   threads,
 } from "../schema.js";
-import { createThreadId } from "../ids.js";
+import { createEventId, createThreadId } from "../ids.js";
 import {
   createOrderKeyBetween,
 } from "./order-keys.js";
@@ -278,58 +279,156 @@ export interface CreateThreadInput {
   visibility?: ThreadVisibility;
 }
 
+export interface AdoptNativeThreadInput extends CreateThreadInput {
+  environmentId: string;
+  hostId: string;
+  providerThreadId: string;
+}
+
+export interface NativeThreadIdentity {
+  hostId: string;
+  providerId: string;
+  providerThreadId: string;
+}
+
+function insertThread(
+  db: ThreadWriteConnection,
+  input: CreateThreadInput,
+  now: number,
+) {
+  const visibility = input.visibility ?? "visible";
+  const id = createThreadId();
+  const originKind = input.originKind ?? null;
+  const createdThread = db
+    .insert(threads)
+    .values({
+      id,
+      projectId: input.projectId,
+      environmentId: input.environmentId ?? null,
+      providerId: input.providerId,
+      title: input.title ?? null,
+      titleFallback: input.titleFallback ?? null,
+      sectionId: input.sectionId ?? null,
+      status: input.status ?? "starting",
+      parentThreadId:
+        originKind === null ? input.parentThreadId ?? null : null,
+      sourceThreadId:
+        input.sourceThreadId ??
+        (originKind === null ? null : input.parentThreadId ?? null),
+      originKind,
+      originPluginId: input.originPluginId ?? null,
+      visibility,
+      lastReadAt: now,
+      latestAttentionAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get();
+  upsertThreadTitleSearchSegments(db, {
+    threadId: createdThread.id,
+    title: createdThread.title,
+    titleFallback: createdThread.titleFallback,
+    updatedAt: now,
+  });
+  return createdThread;
+}
+
 export function createThread(
   db: DbConnection,
   notifier: DbNotifier,
   input: CreateThreadInput,
 ) {
-  const visibility = input.visibility ?? "visible";
   const now = Date.now();
-  const id = createThreadId();
-  const originKind = input.originKind ?? null;
-  const thread = db.transaction(
-    (tx) => {
-      const createdThread = tx
-        .insert(threads)
-        .values({
-          id,
-          projectId: input.projectId,
-          environmentId: input.environmentId ?? null,
-          providerId: input.providerId,
-          title: input.title ?? null,
-          titleFallback: input.titleFallback ?? null,
-          sectionId: input.sectionId ?? null,
-          status: input.status ?? "starting",
-          parentThreadId:
-            originKind === null ? input.parentThreadId ?? null : null,
-          sourceThreadId:
-            input.sourceThreadId ??
-            (originKind === null ? null : input.parentThreadId ?? null),
-          originKind,
-          originPluginId: input.originPluginId ?? null,
-          visibility,
-          lastReadAt: now,
-          latestAttentionAt: now,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning()
-        .get();
-      upsertThreadTitleSearchSegments(tx, {
-        threadId: createdThread.id,
-        title: createdThread.title,
-        titleFallback: createdThread.titleFallback,
-        updatedAt: now,
-      });
-      return createdThread;
-    },
-    { behavior: "immediate" },
-  );
-  notifier.notifyThread(id, ["thread-created"], {
+  const thread = db.transaction((tx) => insertThread(tx, input, now), {
+    behavior: "immediate",
+  });
+  notifier.notifyThread(thread.id, ["thread-created"], {
     projectId: input.projectId,
   });
   notifier.notifyProject(input.projectId, ["threads-changed"]);
   return thread;
+}
+
+export function adoptNativeThread(
+  db: DbConnection,
+  notifier: DbNotifier,
+  input: AdoptNativeThreadInput,
+): { created: boolean; thread: ThreadRow } {
+  const result = db.transaction(
+    (tx) => {
+      const existing = findThreadByNativeIdentity(tx, input);
+      if (existing) {
+        return { created: false, thread: existing };
+      }
+
+      const now = Date.now();
+      const thread = insertThread(
+        tx,
+        {
+          ...input,
+          status: "idle",
+        },
+        now,
+      );
+      tx.insert(events)
+        .values({
+          id: createEventId(),
+          threadId: thread.id,
+          environmentId: input.environmentId,
+          scopeKind: "thread",
+          turnId: null,
+          providerThreadId: input.providerThreadId,
+          sequence: 1,
+          type: "thread/identity",
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({ providerThreadId: input.providerThreadId }),
+          createdAt: now,
+        })
+        .run();
+      return { created: true, thread };
+    },
+    { behavior: "immediate" },
+  );
+
+  if (result.created) {
+    notifier.notifyThread(
+      result.thread.id,
+      ["thread-created", "events-appended"],
+      {
+        eventTypes: ["thread/identity"],
+        projectId: result.thread.projectId,
+      },
+    );
+    notifier.notifyProject(result.thread.projectId, ["threads-changed"]);
+  }
+  return result;
+}
+
+export function findThreadByNativeIdentity(
+  db: ThreadWriteConnection,
+  identity: NativeThreadIdentity,
+): ThreadRow | null {
+  return (
+    db
+      .select({ thread: getTableColumns(threads) })
+      .from(threads)
+      .innerJoin(environments, eq(environments.id, threads.environmentId))
+      .innerJoin(events, eq(events.threadId, threads.id))
+      .where(
+        and(
+          eq(environments.hostId, identity.hostId),
+          eq(threads.providerId, identity.providerId),
+          eq(events.providerThreadId, identity.providerThreadId),
+          isNull(threads.deletedAt),
+        ),
+      )
+      .orderBy(desc(events.sequence), desc(threads.updatedAt))
+      .limit(1)
+      .get()?.thread ?? null
+  );
 }
 
 export function getThread(db: ThreadWriteConnection, id: string) {
