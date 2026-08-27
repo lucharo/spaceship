@@ -9,6 +9,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  max,
   ne,
   or,
   sql,
@@ -411,12 +412,29 @@ export function findThreadByNativeIdentity(
   db: ThreadWriteConnection,
   identity: NativeThreadIdentity,
 ): ThreadRow | null {
+  const latestProviderIdentities = db
+    .select({
+      threadId: events.threadId,
+      latestSequence: max(events.sequence).as("latest_sequence"),
+    })
+    .from(events)
+    .where(isNotNull(events.providerThreadId))
+    .groupBy(events.threadId)
+    .as("latest_provider_identities");
+
   return (
     db
       .select({ thread: getTableColumns(threads) })
       .from(threads)
       .innerJoin(environments, eq(environments.id, threads.environmentId))
       .innerJoin(events, eq(events.threadId, threads.id))
+      .innerJoin(
+        latestProviderIdentities,
+        and(
+          eq(latestProviderIdentities.threadId, threads.id),
+          eq(latestProviderIdentities.latestSequence, events.sequence),
+        ),
+      )
       .where(
         and(
           eq(environments.hostId, identity.hostId),
@@ -425,7 +443,7 @@ export function findThreadByNativeIdentity(
           isNull(threads.deletedAt),
         ),
       )
-      .orderBy(desc(events.sequence), desc(threads.updatedAt))
+      .orderBy(desc(threads.updatedAt))
       .limit(1)
       .get()?.thread ?? null
   );

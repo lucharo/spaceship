@@ -64,7 +64,10 @@ import {
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
 import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
-import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
+import {
+  emitPluginThreadCreated,
+  emitPluginThreadDeleted,
+} from "../../services/plugins/plugin-thread-events.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
   const includes = new Set<ThreadIncludeOption>();
@@ -362,7 +365,10 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         workspaceProvisionType: "unmanaged",
         path: inspection.path,
         managed: false,
-        isGitRepo: inspection.gitRemoteUrl !== null,
+        isGitRepo: inspection.isGitRepo,
+        isWorktree: inspection.isWorktree,
+        branchName: inspection.branchName,
+        defaultBranch: inspection.defaultBranch,
         status: "ready",
       });
     }
@@ -387,6 +393,9 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       providerThreadId: payload.providerThreadId,
       title: payload.title ?? null,
     });
+    if (result.created) {
+      emitPluginThreadCreated(result.thread);
+    }
     return context.json(
       {
         created: result.created,

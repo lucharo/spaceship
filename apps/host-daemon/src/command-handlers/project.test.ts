@@ -4,7 +4,11 @@ import path from "node:path";
 import { runGit } from "@bb/host-workspace";
 import { afterEach, describe, expect, it } from "vitest";
 import { isExpectedCommandDispatchError } from "../command-dispatch-support.js";
-import { cloneProject, resolveProjectCloneDefaultPath } from "./project.js";
+import {
+  cloneProject,
+  inspectProjectPath,
+  resolveProjectCloneDefaultPath,
+} from "./project.js";
 
 const tempDirs: string[] = [];
 
@@ -103,5 +107,21 @@ describe("project.clone", () => {
       path.join(dataDir, "checkouts", "project-name"),
     );
     await expect(fs.stat(dataDir)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("project.inspect", () => {
+  it("recognises a local Git repository without an origin remote", async () => {
+    const root = await tempDir();
+    await runGit(["init", "-b", "main"], { cwd: root });
+
+    await expect(inspectProjectPath(root)).resolves.toEqual({
+      path: root,
+      gitRemoteUrl: null,
+      isGitRepo: true,
+      isWorktree: false,
+      branchName: "main",
+      defaultBranch: "main",
+    });
   });
 });

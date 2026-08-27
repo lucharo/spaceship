@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
+  detectGitRepo,
+  getCurrentBranch,
+  getGitCommonDir,
+  readDefaultBranchRefs,
   runGit,
   WorkspaceError,
   type GitProcessOptions,
@@ -51,19 +55,53 @@ export async function inspectProjectPath(
   projectPath: string,
   options: GitProcessOptions = {},
 ): Promise<{
-  path: string;
+  branchName: string | null;
+  defaultBranch: string | null;
   gitRemoteUrl: string | null;
+  isGitRepo: boolean;
+  isWorktree: boolean;
+  path: string;
 }> {
   const resolvedPath = path.resolve(projectPath);
-  const result = await runGit(["remote", "get-url", "origin"], {
-    cwd: resolvedPath,
-    ...options,
-    allowFailure: true,
-  });
-  const gitRemoteUrl = result.exitCode === 0 ? result.stdout.trim() : "";
+  const isGitRepo = await detectGitRepo(resolvedPath, options);
+  if (!isGitRepo) {
+    return {
+      branchName: null,
+      defaultBranch: null,
+      gitRemoteUrl: null,
+      isGitRepo: false,
+      isWorktree: false,
+      path: resolvedPath,
+    };
+  }
+
+  const [remote, branchName, defaultBranchRefs, gitDirectory, gitCommonDir] =
+    await Promise.all([
+      runGit(["remote", "get-url", "origin"], {
+        cwd: resolvedPath,
+        ...options,
+        allowFailure: true,
+      }),
+      getCurrentBranch(resolvedPath, options),
+      readDefaultBranchRefs(resolvedPath, options),
+      runGit(["rev-parse", "--absolute-git-dir"], {
+        cwd: resolvedPath,
+        ...options,
+      }),
+      getGitCommonDir(resolvedPath, options),
+    ]);
+  const [resolvedGitDirectory, resolvedGitCommonDir] = await Promise.all([
+    fs.realpath(path.resolve(gitDirectory.stdout.trim())),
+    fs.realpath(path.resolve(gitCommonDir)),
+  ]);
+  const gitRemoteUrl = remote.exitCode === 0 ? remote.stdout.trim() : "";
   return {
-    path: resolvedPath,
+    branchName: branchName ?? null,
+    defaultBranch: defaultBranchRefs.defaultBranch ?? branchName ?? null,
     gitRemoteUrl: gitRemoteUrl || null,
+    isGitRepo: true,
+    isWorktree: resolvedGitDirectory !== resolvedGitCommonDir,
+    path: resolvedPath,
   };
 }
 
@@ -92,8 +130,12 @@ export async function cloneProject(args: {
     }
     throw error;
   }
-  return inspectProjectPath(
+  const inspection = await inspectProjectPath(
     targetPath,
     args.shellPath === undefined ? {} : { shellPath: args.shellPath },
   );
+  return {
+    path: inspection.path,
+    gitRemoteUrl: inspection.gitRemoteUrl,
+  };
 }

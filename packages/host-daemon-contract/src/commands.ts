@@ -1432,10 +1432,17 @@ const threadStopResultSchema = z
   .strict();
 const emptyCommandResultSchema = z.object({});
 const projectPathResultSchema = z.object({ path: z.string().min(1) }).strict();
-const projectInspectResultSchema = projectPathResultSchema
+const projectCloneResultSchema = projectPathResultSchema
   .extend({ gitRemoteUrl: z.string().min(1).nullable() })
   .strict();
-const projectCloneResultSchema = projectInspectResultSchema;
+const projectInspectResultSchema = projectCloneResultSchema
+  .extend({
+    isGitRepo: z.boolean(),
+    isWorktree: z.boolean(),
+    branchName: z.string().min(1).nullable(),
+    defaultBranch: z.string().min(1).nullable(),
+  })
+  .strict();
 const environmentProvisionResultSchema =
   discoveredWorkspacePropertiesSchema.extend({
     transcript: z.array(provisioningTranscriptEntrySchema),

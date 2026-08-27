@@ -125,6 +125,65 @@ describe("bb provider command output", () => {
     );
   });
 
+  it("bb provider adopt links a known native session on a selected machine", async () => {
+    const adopt = vi.fn(async () => ({
+      created: true,
+      thread: { id: "thr_adopted", projectId: "prj_adopted" },
+    }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-remote",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          lastRejectedProtocolVersion: null,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+      "v1.threads.adopt-native.$post": adopt,
+    });
+
+    await runCommand(
+      [
+        "provider",
+        "adopt",
+        "codex",
+        "native-1",
+        "--cwd",
+        "/workspace",
+        "--machine",
+        "builder",
+        "--title",
+        "Recovered session",
+        "--json",
+      ],
+      register,
+    );
+
+    expect(adopt).toHaveBeenCalledWith({
+      json: {
+        cwd: "/workspace",
+        hostId: "host-remote",
+        providerId: "codex",
+        providerThreadId: "native-1",
+        title: "Recovered session",
+      },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      JSON.stringify(
+        {
+          created: true,
+          thread: { id: "thr_adopted", projectId: "prj_adopted" },
+        },
+        null,
+        2,
+      ),
+    ]);
+  });
+
   it("bb provider models includes a matching selected-only model", async () => {
     const get = vi.fn(async () => ({
       providers: [],

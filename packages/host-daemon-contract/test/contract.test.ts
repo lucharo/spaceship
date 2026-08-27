@@ -221,6 +221,10 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "project.inspect": {
     path: "/home/me/project",
     gitRemoteUrl: "git@example.com:me/project.git",
+    isGitRepo: true,
+    isWorktree: false,
+    branchName: "main",
+    defaultBranch: "main",
   },
   "project.clone_default_path": {
     path: "/home/me/.bb/checkouts/project",

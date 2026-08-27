@@ -1,6 +1,6 @@
-import { getLastStoredProviderThreadId } from "@bb/db";
+import { getEnvironment, getLastStoredProviderThreadId } from "@bb/db";
 import { adoptNativeThreadResponseSchema } from "@bb/server-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
@@ -26,6 +26,10 @@ async function postAdoptNativeThread(
   await reportQueuedCommandSuccess(harness, inspection, {
     path: String(body.cwd),
     gitRemoteUrl: null,
+    isGitRepo: true,
+    isWorktree: false,
+    branchName: "main",
+    defaultBranch: "main",
   });
   return responsePromise;
 }
@@ -43,6 +47,10 @@ describe("public native thread adoption", () => {
         providerThreadId: "native-thread-1",
         title: "Recovered session",
       };
+      const emitThreadCreated = vi.spyOn(
+        harness.pluginService.events,
+        "emitThreadCreated",
+      );
 
       const firstResponse = await postAdoptNativeThread(harness, request);
       expect(firstResponse.status).toBe(200);
@@ -71,9 +79,21 @@ describe("public native thread adoption", () => {
         title: "Recovered session",
       });
       expect(second).toEqual({ created: false, thread: first.thread });
+      expect(emitThreadCreated).toHaveBeenCalledTimes(1);
+      expect(emitThreadCreated).toHaveBeenCalledWith(
+        expect.objectContaining({ id: first.thread.id }),
+      );
       expect(getLastStoredProviderThreadId(harness.db, first.thread.id)).toBe(
         "native-thread-1",
       );
+      expect(
+        getEnvironment(harness.db, first.thread.environmentId as string),
+      ).toMatchObject({
+        isGitRepo: true,
+        isWorktree: false,
+        branchName: "main",
+        defaultBranch: "main",
+      });
 
       const sendResponse = await harness.app.request(
         `/api/v1/threads/${first.thread.id}/send`,

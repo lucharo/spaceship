@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { isRawThreadId } from "@bb/domain";
+import { isRawThreadId, threadScope } from "@bb/domain";
 import { createConnection } from "../../src/connection.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
@@ -33,7 +33,10 @@ import {
   requireThreadLifecycleEventApplied,
 } from "../../src/data/threads.js";
 import { createPendingInteraction } from "../../src/data/pending-interactions.js";
-import { getLastStoredProviderThreadId } from "../../src/data/events.js";
+import {
+  appendStoredThreadEvent,
+  getLastStoredProviderThreadId,
+} from "../../src/data/events.js";
 import {
   createThreadSection,
   deleteThreadSection,
@@ -175,6 +178,50 @@ describe("threads", () => {
     expect(getLastStoredProviderThreadId(db, first.thread.id)).toBe(
       "native-thread-1",
     );
+  });
+
+  it("matches only the latest provider identity for an adopted thread", () => {
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "unmanaged",
+      path: "/tmp/test",
+      status: "ready",
+    });
+    const original = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      hostId: host.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-old",
+    });
+    appendStoredThreadEvent(db, noopNotifier, {
+      threadId: original.thread.id,
+      scope: threadScope(),
+      providerThreadId: "native-thread-current",
+      type: "thread/identity",
+      data: { providerThreadId: "native-thread-current" },
+    });
+
+    const reopenedOld = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      hostId: host.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-old",
+    });
+    const reopenedCurrent = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      hostId: host.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-current",
+    });
+
+    expect(reopenedOld.created).toBe(true);
+    expect(reopenedOld.thread.id).not.toBe(original.thread.id);
+    expect(reopenedCurrent).toEqual({ created: false, thread: original.thread });
   });
 
   it("resolves only exact non-deleted mention thread rows", () => {
