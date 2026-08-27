@@ -2779,6 +2779,7 @@ async function handleRequest(
           // (it lists the roots in the session instructions) and must say so,
           // or the runtime sends it no injected skills.
           skills: { configure: true },
+          nativeSessions: { list: false, read: false },
         },
       };
       sendResult(request.id, result);

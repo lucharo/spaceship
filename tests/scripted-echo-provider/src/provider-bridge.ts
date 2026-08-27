@@ -60,6 +60,7 @@ import {
   initializeParamsSchema,
   modelListParamsSchema,
   nativeSessionListParamsSchema,
+  nativeSessionReadParamsSchema,
   skillsConfigureParamsSchema,
   threadArchiveParamsSchema,
   threadDiscardParamsSchema,
@@ -88,6 +89,7 @@ const scriptedMethodSchema = z.enum([
   "initialize",
   "model/list",
   "native/session/list",
+  "native/session/read",
   "thread/start",
   "thread/resume",
   "thread/fork",
@@ -1081,7 +1083,7 @@ const handlers: Record<string, RequestHandler> = {
         grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
         steerMode: "inject",
         skills: { configure: true },
-        nativeSessions: { list: true },
+        nativeSessions: { list: true, read: true },
       },
     });
   },
@@ -1120,6 +1122,28 @@ const handlers: Record<string, RequestHandler> = {
       ],
       nextCursor: null,
       backwardsCursor: null,
+    });
+  },
+
+  [BRIDGE_REQUEST_METHODS.nativeSessionRead]: (id, params) => {
+    const parsed = nativeSessionReadParamsSchema.safeParse(params);
+    if (!parsed.success) {
+      invalidParams(
+        id,
+        BRIDGE_REQUEST_METHODS.nativeSessionRead,
+        parsed.error.issues,
+      );
+      return;
+    }
+    io.sendResult(id, {
+      providerThreadId: parsed.data.providerThreadId,
+      title: "Native session",
+      cwd: "/workspace",
+      createdAt: 1_777_000_000,
+      updatedAt: 1_777_000_100,
+      archived: false,
+      source: "test",
+      preview: "private preview",
     });
   },
 

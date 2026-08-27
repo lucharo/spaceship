@@ -301,6 +301,7 @@
     "initialize",
     "model/list",
     "native/session/list",
+    "native/session/read",
     "provider/health",
     "provider/installation/run",
     "provider/installation/status",

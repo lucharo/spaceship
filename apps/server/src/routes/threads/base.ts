@@ -49,6 +49,7 @@ import {
 } from "../../services/lib/entity-lookup.js";
 import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
 import { requireBridgeLaunchForProviderId } from "../../services/system/provider-bridge-launch.js";
+import { readProviderNativeSession } from "../../services/system/native-sessions.js";
 import { dispatchThreadRenameCommand } from "../../services/threads/thread-commands.js";
 import {
   finalizeStoppedThread,
@@ -335,10 +336,25 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         200,
       );
     }
+    const nativeSession = await readProviderNativeSession(deps, payload);
+    if (nativeSession.archived) {
+      throw new ApiError(
+        409,
+        "native_session_archived",
+        "Unarchive the native session before opening it in Spaceship",
+      );
+    }
+    if (nativeSession.cwd === null) {
+      throw new ApiError(
+        409,
+        "native_session_cwd_unavailable",
+        "The native session has no usable working directory",
+      );
+    }
     const inspection = await callHostRetryableOnlineRpc(deps, {
       hostId: payload.hostId,
       timeoutMs: COMMAND_TIMEOUT_MS,
-      command: { type: "project.inspect", path: payload.cwd },
+      command: { type: "project.inspect", path: nativeSession.cwd },
     });
     const project = payload.projectId
       ? requirePublicProject(deps.db, payload.projectId)
@@ -391,7 +407,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       hostId: environment.hostId,
       providerId: payload.providerId,
       providerThreadId: payload.providerThreadId,
-      title: payload.title ?? null,
+      title: nativeSession.title,
     });
     if (result.created) {
       emitPluginThreadCreated(result.thread);

@@ -2302,6 +2302,42 @@ describe("thread command dispatch", () => {
     expect(result.sessions).toHaveLength(1);
   });
 
+  it("covers provider.native_sessions.read", async () => {
+    const harness = createHarness();
+    let capturedArgs: unknown;
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        type: "provider.native_sessions.read",
+        providerId: "codex",
+        providerThreadId: "native-1",
+      },
+      {
+        ...harness.dispatchOptions(),
+        readNativeSession: async (args) => {
+          capturedArgs = args;
+          return {
+            providerThreadId: "native-1",
+            title: "Release checklist",
+            cwd: "/tmp/worktree",
+            createdAt: 1_777_000_000,
+            updatedAt: 1_777_000_100,
+            archived: false,
+            source: "cli",
+          };
+        },
+      },
+    );
+
+    expect(capturedArgs).toEqual({
+      providerId: "codex",
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      providerThreadId: "native-1",
+    });
+    expect(result).toMatchObject({ providerThreadId: "native-1" });
+  });
+
   it("uses the server-provided thread runtime config", async () => {
     const threadStorage = await makeTempDir("bb-thread-runtime-");
     const harness = createHarness({ workspacePath: threadStorage });

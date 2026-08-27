@@ -17,8 +17,8 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
       [--cwd <path>] [--limit <1-100>] [--search <text>]
       [--machine <id-or-name> | --environment <id>]
                                           List native session metadata
-  bb provider adopt <providerId> <providerThreadId> [--cwd <path>]
-      [--title <title>] [--machine <id-or-name> | --environment <id>]
+  bb provider adopt <providerId> <providerThreadId>
+      [--machine <id-or-name> | --environment <id>]
                                           Adopt a native session
 
 Use these before spawning threads if you are unsure which provider or model to use.
@@ -27,9 +27,9 @@ mutually exclusive because an environment already selects its machine. When no
 selector is supplied, these commands intentionally inspect the primary machine.
 `bb provider sessions` returns metadata only, never transcript content. Use the
 opaque provider thread ID to open or adopt a selected session through a client
-that supports native sessions. `bb provider adopt` links the selected native
-session without copying its history; `--cwd` is required unless an environment
-supplies the workspace path.
+that supports native sessions. `bb provider adopt` resolves the selected
+session's current metadata from the provider and links it without copying its
+history. Archived sessions must be unarchived natively before adoption.
 When provider and model are omitted from bb thread spawn, the project's
 remembered defaults apply. If the project has no remembered choice, bb uses
 the explicitly requested provider or Codex, then resolves the model marked

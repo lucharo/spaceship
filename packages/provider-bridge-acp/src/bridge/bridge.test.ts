@@ -615,7 +615,11 @@ describe("acp bridge", () => {
     });
     expect((await waitForResponse(initializeId)).result).toMatchObject({
       protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
-      capabilities: { fork: "tip", approvalEnforcedBy: "runtime" },
+      capabilities: {
+        fork: "tip",
+        approvalEnforcedBy: "runtime",
+        nativeSessions: { list: false, read: false },
+      },
     });
 
     const modelListId = sendModelList({

@@ -34,10 +34,8 @@ export function NativeSessionsView() {
       }
       return sdk.threads.adoptNative({
         hostId,
-        cwd: session.cwd,
         providerId: "codex",
         providerThreadId: session.providerThreadId,
-        title: session.title,
       });
     },
     onSuccess: ({ thread }) => {
@@ -79,7 +77,9 @@ export function NativeSessionsView() {
           <button
             key={session.providerThreadId}
             type="button"
-            disabled={session.cwd === null || adopt.isPending}
+            disabled={
+              session.archived || session.cwd === null || adopt.isPending
+            }
             className="flex w-full items-start justify-between gap-4 p-3 text-left hover:bg-muted/50 disabled:opacity-50"
             onClick={() => adopt.mutate(session)}
           >
@@ -91,7 +91,9 @@ export function NativeSessionsView() {
                 {session.cwd ?? "Working directory unavailable"}
               </span>
             </span>
-            <span className="shrink-0 text-xs text-muted-foreground">Open</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {session.archived ? "Archived" : "Open"}
+            </span>
           </button>
         ))}
       </div>
@@ -105,7 +107,7 @@ export function NativeSessionsView() {
           {sessions.isFetchingNextPage ? "Loading…" : "Load more"}
         </button>
       ) : null}
-      {sessionRows.length === 0 && !sessions.isPending ? (
+      {sessionRows.length === 0 && !sessions.isPending && !sessions.isError ? (
         <p className="text-sm text-muted-foreground">No sessions found.</p>
       ) : null}
       {adopt.isError ? (

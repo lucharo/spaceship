@@ -12,6 +12,7 @@ import {
   providerInstallationRunResultSchema,
   providerInstallationStatusSchema,
   nativeSessionListResultSchema,
+  nativeSessionReadResultSchema,
   providerUsageResultSchema,
   ThreadEventGrammar,
   threadIdentityResultSchema,
@@ -2519,6 +2520,28 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         resultSchema: nativeSessionListResultSchema,
       });
       return proc.adapter.parseNativeSessionListResult(result);
+    },
+
+    async readNativeSession({ providerId, bridgeLaunch, providerThreadId }) {
+      await runtime.ensureProvider({ providerId, bridgeLaunch });
+      const proc = providerProcesses.requireProviderProcess({
+        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
+        providerId,
+      });
+      const command = requireProviderRequestPlan({
+        commandType: "native/session/read",
+        plan: proc.adapter.buildCommandPlan({
+          type: "native/session/read",
+          providerThreadId,
+        }),
+        providerId,
+      });
+      const result = await sendCommand({
+        proc,
+        message: command,
+        resultSchema: nativeSessionReadResultSchema,
+      });
+      return proc.adapter.parseNativeSessionReadResult(result);
     },
 
     async providerHealth({ providerId, bridgeLaunch, cwd }) {

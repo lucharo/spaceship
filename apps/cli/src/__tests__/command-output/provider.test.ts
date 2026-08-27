@@ -107,7 +107,7 @@ describe("bb provider command output", () => {
           source: "cli",
         },
       ],
-      nextCursor: null,
+      nextCursor: "next-page",
       backwardsCursor: null,
     }));
     stubServerApi({
@@ -122,6 +122,9 @@ describe("bb provider command output", () => {
     });
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
       "native-1",
+    );
+    expect(collectLogPayloads(vi.mocked(console.log))).toContain(
+      "Next cursor: next-page",
     );
   });
 
@@ -152,12 +155,8 @@ describe("bb provider command output", () => {
         "adopt",
         "codex",
         "native-1",
-        "--cwd",
-        "/workspace",
         "--machine",
         "builder",
-        "--title",
-        "Recovered session",
         "--json",
       ],
       register,
@@ -165,11 +164,9 @@ describe("bb provider command output", () => {
 
     expect(adopt).toHaveBeenCalledWith({
       json: {
-        cwd: "/workspace",
         hostId: "host-remote",
         providerId: "codex",
         providerThreadId: "native-1",
-        title: "Recovered session",
       },
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
@@ -182,6 +179,32 @@ describe("bb provider command output", () => {
         2,
       ),
     ]);
+  });
+
+  it("bb provider adopt defaults to the server primary host", async () => {
+    const adopt = vi.fn(async () => ({
+      created: false,
+      thread: { id: "thr_existing", projectId: "prj_existing" },
+    }));
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        primaryHostId: "host-primary",
+      })),
+      "v1.threads.adopt-native.$post": adopt,
+    });
+
+    await runCommand(
+      ["provider", "adopt", "codex", "native-1", "--json"],
+      register,
+    );
+
+    expect(adopt).toHaveBeenCalledWith({
+      json: {
+        hostId: "host-primary",
+        providerId: "codex",
+        providerThreadId: "native-1",
+      },
+    });
   });
 
   it("bb provider models includes a matching selected-only model", async () => {

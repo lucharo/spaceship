@@ -41,6 +41,8 @@ import {
   providerHealthResultSchema,
   nativeSessionListParamsSchema,
   nativeSessionListResultSchema,
+  nativeSessionReadParamsSchema,
+  nativeSessionReadResultSchema,
   providerInstallationStatusSchema,
   providerUsageResultSchema,
   providerUsageSchema,
@@ -953,6 +955,15 @@ const providerNativeSessionsListCommandSchema = z
     providerId: z.string().min(1),
     bridgeLaunch: hostDaemonBridgeLaunchSchema,
     ...nativeSessionListParamsSchema.shape,
+  })
+  .strict();
+
+const providerNativeSessionsReadCommandSchema = z
+  .object({
+    type: z.literal("provider.native_sessions.read"),
+    providerId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    ...nativeSessionReadParamsSchema.shape,
   })
   .strict();
 
@@ -1976,6 +1987,15 @@ export const hostDaemonCommandRegistry = {
     type: "provider.native_sessions.list",
     schema: providerNativeSessionsListCommandSchema,
     resultSchema: nativeSessionListResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.native_sessions.read": defineHostDaemonCommandDescriptor({
+    type: "provider.native_sessions.read",
+    schema: providerNativeSessionsReadCommandSchema,
+    resultSchema: nativeSessionReadResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

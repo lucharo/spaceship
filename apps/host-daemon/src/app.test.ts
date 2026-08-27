@@ -270,6 +270,17 @@ function createFakeRuntime(): AgentRuntime {
         backwardsCursor: null,
       };
     },
+    async readNativeSession() {
+      return {
+        providerThreadId: "native-1",
+        title: null,
+        cwd: "/workspace",
+        createdAt: 1,
+        updatedAt: 2,
+        archived: false,
+        source: null,
+      };
+    },
     async providerHealth() {
       return { supported: false as const };
     },

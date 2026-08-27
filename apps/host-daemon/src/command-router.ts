@@ -73,6 +73,7 @@ export interface CommandRouterOptions {
   eventSink: CommandDispatchOptions["eventSink"];
   listModels: CommandDispatchOptions["listModels"];
   listNativeSessions: CommandDispatchOptions["listNativeSessions"];
+  readNativeSession: CommandDispatchOptions["readNativeSession"];
   providerHealth: CommandDispatchOptions["providerHealth"];
   providerUsage: CommandDispatchOptions["providerUsage"];
   providerInstallationStatus: CommandDispatchOptions["providerInstallationStatus"];
@@ -299,6 +300,7 @@ export class CommandRouter {
       eventSink: this.options.eventSink,
       listModels: this.options.listModels,
       listNativeSessions: this.options.listNativeSessions,
+      readNativeSession: this.options.readNativeSession,
       providerHealth: this.options.providerHealth,
       providerUsage: this.options.providerUsage,
       providerInstallationStatus: this.options.providerInstallationStatus,

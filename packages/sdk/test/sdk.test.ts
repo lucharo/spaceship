@@ -649,24 +649,20 @@ describe("@bb/sdk", () => {
 
     await sdk.threads.adoptNative({
       hostId: "host_1",
-      cwd: "/workspace",
       projectId: "proj_1",
       environmentId: "env_1",
       providerId: "codex",
       providerThreadId: "native-1",
-      title: "Recovered thread",
     });
 
     expect(queue.requests).toEqual([
       {
         bodyText: JSON.stringify({
           hostId: "host_1",
-          cwd: "/workspace",
           projectId: "proj_1",
           environmentId: "env_1",
           providerId: "codex",
           providerThreadId: "native-1",
-          title: "Recovered thread",
         }),
         method: "POST",
         url: "http://bb.test/api/v1/threads/adopt-native",

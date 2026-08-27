@@ -8,6 +8,8 @@ import {
 import {
   bridgeCapabilitiesSchema,
   initializeResultSchema,
+  nativeSessionReadParamsSchema,
+  nativeSessionReadResultSchema,
   nativeSessionListParamsSchema,
   nativeSessionListResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
@@ -27,7 +29,7 @@ describe("handshake", () => {
       threadArchive: false,
       threadRename: false,
       threadGoalClear: false,
-      nativeSessions: { list: false },
+      nativeSessions: { list: false, read: false },
       fork: "none",
       approvalEnforcedBy: "runtime",
     });
@@ -46,13 +48,44 @@ describe("handshake", () => {
 
   it("advertises native session discovery explicitly", () => {
     const parsed = bridgeCapabilitiesSchema.parse({
-      nativeSessions: { list: true },
+      nativeSessions: { list: true, read: true },
     });
-    expect(parsed.nativeSessions).toEqual({ list: true });
+    expect(parsed.nativeSessions).toEqual({ list: true, read: true });
   });
 });
 
 describe("native session catalogue", () => {
+  it("reads one native session through a metadata-only contract", () => {
+    expect(
+      nativeSessionReadParamsSchema.parse({
+        providerThreadId: "019c-session",
+      }),
+    ).toEqual({ providerThreadId: "019c-session" });
+
+    expect(
+      nativeSessionReadResultSchema.parse({
+        providerThreadId: "019c-session",
+        title: "Release checklist",
+        cwd: "/workspace",
+        createdAt: 1_777_000_000,
+        updatedAt: 1_777_000_100,
+        archived: false,
+        source: "cli",
+        preview: "must not cross the privacy seam",
+        path: "/private/rollout.jsonl",
+        turns: [{ secret: true }],
+      }),
+    ).toEqual({
+      providerThreadId: "019c-session",
+      title: "Release checklist",
+      cwd: "/workspace",
+      createdAt: 1_777_000_000,
+      updatedAt: 1_777_000_100,
+      archived: false,
+      source: "cli",
+    });
+  });
+
   it("accepts bounded metadata queries and strips provider-private fields", () => {
     expect(
       nativeSessionListParamsSchema.parse({

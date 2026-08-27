@@ -48,6 +48,7 @@ import {
   initializeParamsSchema,
   modelListParamsSchema,
   nativeSessionListParamsSchema,
+  nativeSessionReadParamsSchema,
   providerInstallationRunParamsSchema,
   providerInstallationStatusParamsSchema,
   providerMaintenanceParamsSchema,
@@ -135,6 +136,10 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("native/session/list"),
     params: nativeSessionListParamsSchema,
+  }),
+  z.object({
+    method: z.literal("native/session/read"),
+    params: nativeSessionReadParamsSchema,
   }),
   z.object({
     method: z.literal("provider/health"),
@@ -967,6 +972,7 @@ function handleChildExit(
 function spawnChildConnection(callbacks: {
   /** The bb thread the child serves (record-mode scope); null when none. */
   recordThreadId: string | null;
+  recordProviderIo?: boolean;
   onNotification: (method: string, params: unknown) => void;
   onRequest: (
     method: string,
@@ -987,23 +993,29 @@ function spawnChildConnection(callbacks: {
 
 const ignoredChildResultSchema = z.unknown();
 
+const codexThreadSummarySchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().nullable(),
+    cwd: z.string().nullable(),
+    createdAt: z.number().int().nonnegative(),
+    updatedAt: z.number().int().nonnegative(),
+    source: z.unknown(),
+  })
+  .passthrough();
+
+type CodexThreadSummary = z.infer<typeof codexThreadSummarySchema>;
+
 const codexThreadListResultSchema = z
   .object({
-    data: z.array(
-      z
-        .object({
-          id: z.string().min(1),
-          name: z.string().nullable(),
-          cwd: z.string().nullable(),
-          createdAt: z.number().int().nonnegative(),
-          updatedAt: z.number().int().nonnegative(),
-          source: z.unknown(),
-        })
-        .passthrough(),
-    ),
+    data: z.array(codexThreadSummarySchema),
     nextCursor: z.string().nullable(),
     backwardsCursor: z.string().nullable(),
   })
+  .passthrough();
+
+const codexThreadReadResultSchema = z
+  .object({ thread: codexThreadSummarySchema })
   .passthrough();
 
 async function initializeChild(
@@ -1346,9 +1358,11 @@ async function rebuildThreadSession(
  */
 async function withMaintenanceChild<T>(
   fn: (connection: CodexAppServerConnection) => Promise<T>,
+  options: { recordProviderIo?: boolean } = {},
 ): Promise<T> {
   const connection = spawnChildConnection({
     recordThreadId: null,
+    ...options,
     onNotification: () => {},
     onRequest: (_method, _params, responder) => {
       responder.error(
@@ -1486,7 +1500,7 @@ function handleInitialize(id: string | number): void {
       grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
       steerMode: "inject",
       skills: { configure: true },
-      nativeSessions: { list: true },
+      nativeSessions: { list: true, read: true },
     },
   };
   sendResult(id, result);
@@ -1514,35 +1528,128 @@ async function handleNativeSessionList(
   params: z.infer<typeof nativeSessionListParamsSchema>,
 ): Promise<void> {
   try {
-    const result = await withMaintenanceChild((connection) =>
-      connection.request({
-        method: "thread/list",
-        params: {
-          archived: params.archived,
-          ...(params.cursor !== undefined ? { cursor: params.cursor } : {}),
-          ...(params.limit !== undefined ? { limit: params.limit } : {}),
-          ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
-          ...(params.searchTerm !== undefined
-            ? { searchTerm: params.searchTerm }
-            : {}),
-        },
-        resultSchema: codexThreadListResultSchema,
-        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
-      }),
+    const result = await withMaintenanceChild(
+      (connection) =>
+        connection.request({
+          method: "thread/list",
+          params: {
+            archived: params.archived,
+            ...(params.cursor !== undefined ? { cursor: params.cursor } : {}),
+            ...(params.limit !== undefined ? { limit: params.limit } : {}),
+            ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
+            ...(params.searchTerm !== undefined
+              ? { searchTerm: params.searchTerm }
+              : {}),
+          },
+          resultSchema: codexThreadListResultSchema,
+          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+        }),
+      { recordProviderIo: false },
     );
     sendResult(id, {
-      sessions: result.data.map((thread) => ({
-        providerThreadId: thread.id,
-        title: thread.name,
-        cwd: thread.cwd,
-        createdAt: thread.createdAt,
-        updatedAt: thread.updatedAt,
-        archived: params.archived,
-        source: codexSessionSourceLabel(thread.source),
-      })),
+      sessions: result.data.map((thread) =>
+        toNativeSessionSummary(thread, params.archived),
+      ),
       nextCursor: result.nextCursor,
       backwardsCursor: result.backwardsCursor,
     });
+  } catch (error) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      describeCodexLaunchError(error),
+    );
+  }
+}
+
+function toNativeSessionSummary(thread: CodexThreadSummary, archived: boolean) {
+  return {
+    providerThreadId: thread.id,
+    title: thread.name,
+    cwd: thread.cwd,
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+    archived,
+    source: codexSessionSourceLabel(thread.source),
+  };
+}
+
+async function findNativeSessionInCatalogue(
+  connection: CodexAppServerConnection,
+  thread: CodexThreadSummary,
+  archived: boolean,
+): Promise<CodexThreadSummary | null> {
+  let cursor: string | undefined;
+  const seenCursors = new Set<string>();
+  for (;;) {
+    const page = await connection.request({
+      method: "thread/list",
+      params: {
+        archived,
+        limit: 100,
+        ...(cursor !== undefined ? { cursor } : {}),
+        ...(thread.cwd !== null ? { cwd: thread.cwd } : {}),
+        ...(thread.name !== null ? { searchTerm: thread.name } : {}),
+      },
+      resultSchema: codexThreadListResultSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    });
+    const match = page.data.find((candidate) => candidate.id === thread.id);
+    if (match !== undefined) {
+      return match;
+    }
+    if (page.nextCursor === null || seenCursors.has(page.nextCursor)) {
+      return null;
+    }
+    seenCursors.add(page.nextCursor);
+    cursor = page.nextCursor;
+  }
+}
+
+async function handleNativeSessionRead(
+  id: string | number,
+  params: z.infer<typeof nativeSessionReadParamsSchema>,
+): Promise<void> {
+  try {
+    const session = await withMaintenanceChild(
+      async (connection) => {
+        const result = await connection.request({
+          method: "thread/read",
+          params: {
+            threadId: params.providerThreadId,
+            includeTurns: false,
+          },
+          resultSchema: codexThreadReadResultSchema,
+          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+        });
+        const active = await findNativeSessionInCatalogue(
+          connection,
+          result.thread,
+          false,
+        );
+        if (active !== null) {
+          return toNativeSessionSummary(active, false);
+        }
+        const archived = await findNativeSessionInCatalogue(
+          connection,
+          result.thread,
+          true,
+        );
+        return archived === null
+          ? null
+          : toNativeSessionSummary(archived, true);
+      },
+      { recordProviderIo: false },
+    );
+    if (session === null) {
+      sendError(
+        id,
+        BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+        "native Codex session is missing or archived",
+      );
+      return;
+    }
+    sendResult(id, session);
   } catch (error) {
     sendError(
       id,
@@ -2127,6 +2234,9 @@ async function handleRequest(
       break;
     case "native/session/list":
       await handleNativeSessionList(request.id, request.params);
+      break;
+    case "native/session/read":
+      await handleNativeSessionRead(request.id, request.params);
       break;
     case "provider/health":
       sendResult(request.id, await getCodexProviderHealth());

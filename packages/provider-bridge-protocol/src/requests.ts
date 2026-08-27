@@ -19,6 +19,7 @@ export const BRIDGE_REQUEST_METHODS = {
   initialize: "initialize",
   modelList: "model/list",
   nativeSessionList: "native/session/list",
+  nativeSessionRead: "native/session/read",
   providerHealth: "provider/health",
   providerUsage: "provider/usage",
   providerInstallationStatus: "provider/installation/status",
@@ -65,6 +66,14 @@ export const nativeSessionListParamsSchema = z.object({
 
 export type NativeSessionListParams = z.infer<
   typeof nativeSessionListParamsSchema
+>;
+
+export const nativeSessionReadParamsSchema = z.object({
+  providerThreadId: z.string().min(1),
+});
+
+export type NativeSessionReadParams = z.infer<
+  typeof nativeSessionReadParamsSchema
 >;
 
 export const threadStartParamsSchema = z
@@ -221,6 +230,12 @@ export const nativeSessionSummarySchema = z.object({
 });
 
 export type NativeSessionSummary = z.infer<typeof nativeSessionSummarySchema>;
+
+export const nativeSessionReadResultSchema = nativeSessionSummarySchema;
+
+export type NativeSessionReadResult = z.infer<
+  typeof nativeSessionReadResultSchema
+>;
 
 export const nativeSessionListResultSchema = z.object({
   sessions: z.array(nativeSessionSummarySchema).max(100),

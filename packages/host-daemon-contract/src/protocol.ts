@@ -331,6 +331,10 @@
 // replaces the owning turn retains it. The wire shape is unchanged, but the
 // server-to-daemon payload semantics differ.
 //
+// Version 173 adds the retryable provider.native_sessions.read RPC so adoption
+// resolves metadata from the provider rather than trusting a client copy.
+// Older daemons cannot answer it, so connected hosts update.
+//
 // Version 172 adds the retryable provider.native_sessions.list RPC. It carries
 // metadata only; transcript previews, rollout paths, and turns never cross the
 // daemon boundary. Older daemons cannot answer it, so connected hosts update.
@@ -341,7 +345,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 172 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 173 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

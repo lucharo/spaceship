@@ -6,7 +6,6 @@ import type {
 } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { resolveLocalHostId } from "../daemon.js";
 import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 import { resolveMachineEnvironmentRouting } from "./machine.js";
@@ -39,12 +38,10 @@ interface ProviderSessionsCommandOptions {
 }
 
 interface ProviderAdoptCommandOptions {
-  cwd?: string;
   environment?: string;
   host?: string;
   json?: boolean;
   machine?: string;
-  title?: string;
 }
 
 interface IncludeSelectedOnlyModelArgs {
@@ -152,9 +149,12 @@ export function registerProviderCommands(
           if (outputJson(opts, result)) return;
           if (result.sessions.length === 0) {
             console.log("No native sessions found");
-            return;
+          } else {
+            printNativeSessionTable(result.sessions);
           }
-          printNativeSessionTable(result.sessions);
+          if (result.nextCursor !== null) {
+            console.log(`Next cursor: ${result.nextCursor}`);
+          }
         },
       ),
     );
@@ -163,8 +163,6 @@ export function registerProviderCommands(
     provider.command("adopt <providerId> <providerThreadId>"),
   )
     .description("Adopt a provider-native session without copying its history")
-    .option("--cwd <path>", "Working directory for the native session")
-    .option("--title <title>", "Title for a newly adopted thread")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(
@@ -180,7 +178,6 @@ export function registerProviderCommands(
             serverUrl,
           );
           let hostId: string;
-          let cwd = opts.cwd?.trim();
           let projectId: string | undefined;
           let environmentId: string | undefined;
 
@@ -188,31 +185,25 @@ export function registerProviderCommands(
             const environment = await sdk.environments.get({
               environmentId: routing.environmentId,
             });
-            if (environment.path === null) {
-              throw new Error("The selected environment has no workspace path");
-            }
-            if (cwd !== undefined && cwd !== environment.path) {
-              throw new Error("--cwd must match the selected environment path");
-            }
             hostId = environment.hostId;
-            cwd = environment.path;
             projectId = environment.projectId;
             environmentId = environment.id;
+          } else if (routing.hostId !== undefined) {
+            hostId = routing.hostId;
           } else {
-            hostId = routing.hostId ?? (await resolveLocalHostId());
-          }
-          if (!cwd) {
-            throw new Error("Provide --cwd or --environment");
+            const { primaryHostId } = await sdk.system.config();
+            if (primaryHostId === null) {
+              throw new Error("No primary machine is configured");
+            }
+            hostId = primaryHostId;
           }
 
           const result = await sdk.threads.adoptNative({
             hostId,
-            cwd,
             providerId,
             providerThreadId,
             ...(projectId === undefined ? {} : { projectId }),
             ...(environmentId === undefined ? {} : { environmentId }),
-            ...(opts.title === undefined ? {} : { title: opts.title }),
           });
           if (outputJson(opts, result)) return;
           console.log(

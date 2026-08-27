@@ -29,12 +29,14 @@ import {
   initializeResultSchema,
   negotiateGrammarVersion,
   nativeSessionListResultSchema,
+  nativeSessionReadResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
   providerRecoveryNotificationSchema,
   threadDeltaNotificationParamsSchema,
   type BridgeCapabilities,
   type NativeSessionListResult,
+  type NativeSessionReadResult,
 } from "@bb/provider-bridge-protocol";
 import {
   ASSEMBLER_GRAMMAR_VERSIONS,
@@ -95,6 +97,7 @@ export interface BridgeProtocolAdapter {
     selectedOnlyModels: AvailableModel[];
   };
   parseNativeSessionListResult(result: unknown): NativeSessionListResult;
+  parseNativeSessionReadResult(result: unknown): NativeSessionReadResult;
   /** Assemble a bridge notification into canonical timeline events. */
   translateEvent(event: ProviderRuntimeEvent): ThreadEvent[];
   /**
@@ -320,6 +323,18 @@ export function createBridgeProtocolAdapter(
                 ? { searchTerm: command.searchTerm }
                 : {}),
             },
+          };
+        case "native/session/read":
+          if (!handshake.nativeSessions.read) {
+            return {
+              kind: "noop",
+              reason: "nativeSessions.read not advertised",
+            };
+          }
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.nativeSessionRead,
+            params: { providerThreadId: command.providerThreadId },
           };
         case "provider/health":
           return {
@@ -653,6 +668,8 @@ export function createBridgeProtocolAdapter(
     parseModelListResult: parseAvailableModelList,
     parseNativeSessionListResult: (result) =>
       nativeSessionListResultSchema.parse(result),
+    parseNativeSessionReadResult: (result) =>
+      nativeSessionReadResultSchema.parse(result),
 
     translateEvent(event: ProviderRuntimeEvent): ThreadEvent[] {
       const method = event.method;

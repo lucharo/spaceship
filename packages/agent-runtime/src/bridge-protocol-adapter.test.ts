@@ -181,8 +181,16 @@ describe("handshake gating", () => {
         searchTerm: "release",
       }),
     ).toMatchObject({ kind: "noop" });
+    expect(
+      adapter.buildCommandPlan({
+        type: "native/session/read",
+        providerThreadId: "native-1",
+      }),
+    ).toMatchObject({ kind: "noop" });
 
-    completeHandshake(adapter, { nativeSessions: { list: true } });
+    completeHandshake(adapter, {
+      nativeSessions: { list: true, read: true },
+    });
     expect(
       adapter.buildCommandPlan({
         type: "native/session/list",
@@ -202,6 +210,16 @@ describe("handshake gating", () => {
         cwd: "/workspace",
         searchTerm: "release",
       },
+    });
+    expect(
+      adapter.buildCommandPlan({
+        type: "native/session/read",
+        providerThreadId: "native-1",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "native/session/read",
+      params: { providerThreadId: "native-1" },
     });
     expect(
       adapter.buildCommandPlan({

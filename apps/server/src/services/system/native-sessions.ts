@@ -39,3 +39,20 @@ export async function listProviderNativeSessions(
     },
   });
 }
+
+export async function readProviderNativeSession(
+  deps: AppDeps,
+  args: { hostId: string; providerId: string; providerThreadId: string },
+) {
+  const bridgeLaunch = requireBridgeLaunchForProviderId(deps, args.providerId);
+  return callHostRetryableOnlineRpc(deps, {
+    hostId: args.hostId,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: {
+      type: "provider.native_sessions.read",
+      providerId: args.providerId,
+      providerThreadId: args.providerThreadId,
+      bridgeLaunch,
+    },
+  });
+}

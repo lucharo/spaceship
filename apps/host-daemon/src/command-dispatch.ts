@@ -648,6 +648,17 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         : {}),
     });
   },
+  "provider.native_sessions.read": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return options.readNativeSession({
+      providerId: command.providerId,
+      bridgeLaunch,
+      providerThreadId: command.providerThreadId,
+    });
+  },
   "provider.health": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,

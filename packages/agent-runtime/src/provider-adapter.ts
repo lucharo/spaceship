@@ -74,6 +74,10 @@ export type AdapterCommand =
       cwd?: string;
       searchTerm?: string;
     }
+  | {
+      type: "native/session/read";
+      providerThreadId: string;
+    }
   | { type: "provider/health"; cwd?: string }
   | { type: "provider/usage"; cwd?: string }
   | {

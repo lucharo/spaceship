@@ -115,15 +115,30 @@ describe("NativeSessionsView", () => {
     await waitFor(() =>
       expect(sdk.threads.adoptNative).toHaveBeenCalledWith({
         hostId: "host_primary",
-        cwd: "/tmp/spaceship",
         providerId: "codex",
         providerThreadId: "native-thread-1",
-        title: "Recover the app",
       }),
     );
     expect(
       await screen.findByText("/projects/prj_spaceship/threads/thr_adopted"),
     ).toBeTruthy();
+  });
+
+  it("does not adopt archived native sessions implicitly", async () => {
+    vi.mocked(sdk.providers.nativeSessions).mockResolvedValue({
+      ...nativeSessions,
+      sessions: [{ ...nativeSessions.sessions[0], archived: true }],
+    });
+
+    renderView();
+
+    const row = await screen.findByRole("button", {
+      name: /Recover the app/u,
+    });
+    expect(row.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("Archived")).toBeTruthy();
+    fireEvent.click(row);
+    expect(sdk.threads.adoptNative).not.toHaveBeenCalled();
   });
 
   it("switches between active and archived native metadata", async () => {
@@ -170,5 +185,18 @@ describe("NativeSessionsView", () => {
       cursor: "page-2",
       limit: 100,
     });
+  });
+
+  it("does not show the empty state when catalogue loading fails", async () => {
+    vi.mocked(sdk.providers.nativeSessions).mockRejectedValue(
+      new Error("catalogue unavailable"),
+    );
+
+    renderView();
+
+    expect(
+      await screen.findByText("Could not load native sessions."),
+    ).toBeTruthy();
+    expect(screen.queryByText("No sessions found.")).toBeNull();
   });
 });

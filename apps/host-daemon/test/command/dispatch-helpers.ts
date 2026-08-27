@@ -54,6 +54,7 @@ export const unexpectedProviderMaintenance: Pick<
   CommandDispatchOptions,
   | "listModels"
   | "listNativeSessions"
+  | "readNativeSession"
   | "providerHealth"
   | "providerUsage"
   | "providerInstallationStatus"
@@ -65,6 +66,9 @@ export const unexpectedProviderMaintenance: Pick<
   },
   listNativeSessions: async () => {
     throw new Error("Unexpected provider.native_sessions.list call");
+  },
+  readNativeSession: async () => {
+    throw new Error("Unexpected provider.native_sessions.read call");
   },
   providerHealth: async () => {
     throw new Error("Unexpected provider.health call");
@@ -357,6 +361,17 @@ export function createFakeRuntime() {
         sessions: [],
         nextCursor: null,
         backwardsCursor: null,
+      };
+    },
+    async readNativeSession() {
+      return {
+        providerThreadId: "native-1",
+        title: null,
+        cwd: "/workspace",
+        createdAt: 1,
+        updatedAt: 2,
+        archived: false,
+        source: null,
       };
     },
     async startThread(args) {

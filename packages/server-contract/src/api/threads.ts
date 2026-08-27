@@ -163,12 +163,10 @@ export type CreateThreadRequest = z.infer<typeof createThreadRequestSchema>;
 export const adoptNativeThreadRequestSchema = z
   .object({
     hostId: z.string().min(1),
-    cwd: z.string().min(1),
     projectId: z.string().min(1).optional(),
     environmentId: z.string().min(1).optional(),
     providerId: z.string().min(1),
     providerThreadId: z.string().min(1),
-    title: z.string().min(1).nullable().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {

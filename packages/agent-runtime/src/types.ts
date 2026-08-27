@@ -20,6 +20,7 @@ import type {
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
   NativeSessionListResult,
+  NativeSessionReadResult,
   ProviderUsageResult,
   SkillsConfigureRoot,
 } from "@bb/provider-bridge-protocol";
@@ -378,6 +379,12 @@ export interface ListNativeSessionsArgs {
   searchTerm?: string;
 }
 
+export interface ReadNativeSessionArgs {
+  providerId: string;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+  providerThreadId: string;
+}
+
 interface ProviderMaintenanceArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
@@ -429,6 +436,10 @@ export interface AgentRuntime {
   listNativeSessions(
     args: ListNativeSessionsArgs,
   ): Promise<NativeSessionListResult>;
+
+  readNativeSession(
+    args: ReadNativeSessionArgs,
+  ): Promise<NativeSessionReadResult>;
 
   providerHealth(args: ProviderMaintenanceArgs): Promise<ProviderHealthResult>;
 
