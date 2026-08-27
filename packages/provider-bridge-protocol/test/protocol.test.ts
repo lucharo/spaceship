@@ -8,6 +8,8 @@ import {
 import {
   bridgeCapabilitiesSchema,
   initializeResultSchema,
+  nativeSessionListParamsSchema,
+  nativeSessionListResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   providerInstallationStatusParamsSchema,
   threadStopParamsSchema,
@@ -25,6 +27,7 @@ describe("handshake", () => {
       threadArchive: false,
       threadRename: false,
       threadGoalClear: false,
+      nativeSessions: { list: false },
       fork: "none",
       approvalEnforcedBy: "runtime",
     });
@@ -39,6 +42,77 @@ describe("handshake", () => {
     expect((parsed as Record<string, unknown>).futureCapability).toStrictEqual({
       anything: true,
     });
+  });
+
+  it("advertises native session discovery explicitly", () => {
+    const parsed = bridgeCapabilitiesSchema.parse({
+      nativeSessions: { list: true },
+    });
+    expect(parsed.nativeSessions).toEqual({ list: true });
+  });
+});
+
+describe("native session catalogue", () => {
+  it("accepts bounded metadata queries and strips provider-private fields", () => {
+    expect(
+      nativeSessionListParamsSchema.parse({
+        archived: true,
+        cursor: "next-page",
+        limit: 50,
+        cwd: "/workspace",
+        searchTerm: "release",
+      }),
+    ).toEqual({
+      archived: true,
+      cursor: "next-page",
+      limit: 50,
+      cwd: "/workspace",
+      searchTerm: "release",
+    });
+
+    expect(
+      nativeSessionListResultSchema.parse({
+        sessions: [
+          {
+            providerThreadId: "019c-session",
+            title: "Release checklist",
+            cwd: "/workspace",
+            createdAt: 1_777_000_000,
+            updatedAt: 1_777_000_100,
+            archived: false,
+            source: "cli",
+            preview: "must not cross the privacy seam",
+            path: "/private/rollout.jsonl",
+            turns: [{ secret: true }],
+          },
+        ],
+        nextCursor: null,
+        backwardsCursor: "previous-page",
+      }),
+    ).toEqual({
+      sessions: [
+        {
+          providerThreadId: "019c-session",
+          title: "Release checklist",
+          cwd: "/workspace",
+          createdAt: 1_777_000_000,
+          updatedAt: 1_777_000_100,
+          archived: false,
+          source: "cli",
+        },
+      ],
+      nextCursor: null,
+      backwardsCursor: "previous-page",
+    });
+  });
+
+  it("rejects unbounded catalogue pages", () => {
+    expect(
+      nativeSessionListParamsSchema.safeParse({
+        archived: false,
+        limit: 101,
+      }).success,
+    ).toBe(false);
   });
 });
 

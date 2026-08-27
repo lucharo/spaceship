@@ -174,11 +174,15 @@ function createFetchRecorder(
       });
     }
 
-    if (/^\/internal\/plugins\/[^/]+\/host\/[a-f0-9]{64}$/u.test(url.pathname)) {
+    if (
+      /^\/internal\/plugins\/[^/]+\/host\/[a-f0-9]{64}$/u.test(url.pathname)
+    ) {
       // The bridge artifact every bridge launch in these tests names.
       return new Response(new Uint8Array(DISPATCH_TEST_ARTIFACT_BYTES), {
         status: 200,
-        headers: { "content-length": String(DISPATCH_TEST_ARTIFACT_BYTES.byteLength) },
+        headers: {
+          "content-length": String(DISPATCH_TEST_ARTIFACT_BYTES.byteLength),
+        },
       });
     }
 
@@ -257,6 +261,13 @@ function createFakeRuntime(): AgentRuntime {
       return {
         models: [],
         selectedOnlyModels: [],
+      };
+    },
+    async listNativeSessions() {
+      return {
+        sessions: [],
+        nextCursor: null,
+        backwardsCursor: null,
       };
     },
     async providerHealth() {

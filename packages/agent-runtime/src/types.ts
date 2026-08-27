@@ -19,6 +19,7 @@ import type {
   ProviderHealthResult,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
+  NativeSessionListResult,
   ProviderUsageResult,
   SkillsConfigureRoot,
 } from "@bb/provider-bridge-protocol";
@@ -367,6 +368,16 @@ export interface ListModelsArgs {
   cwd?: string;
 }
 
+export interface ListNativeSessionsArgs {
+  providerId: string;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+  archived: boolean;
+  cursor?: string;
+  limit?: number;
+  cwd?: string;
+  searchTerm?: string;
+}
+
 interface ProviderMaintenanceArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
@@ -415,13 +426,13 @@ export interface AgentRuntime {
     selectedOnlyModels: AvailableModel[];
   }>;
 
-  providerHealth(
-    args: ProviderMaintenanceArgs,
-  ): Promise<ProviderHealthResult>;
+  listNativeSessions(
+    args: ListNativeSessionsArgs,
+  ): Promise<NativeSessionListResult>;
 
-  providerUsage(
-    args: ProviderMaintenanceArgs,
-  ): Promise<ProviderUsageResult>;
+  providerHealth(args: ProviderMaintenanceArgs): Promise<ProviderHealthResult>;
+
+  providerUsage(args: ProviderMaintenanceArgs): Promise<ProviderUsageResult>;
 
   providerInstallationStatus(
     args: ProviderInstallationStatusArgs,

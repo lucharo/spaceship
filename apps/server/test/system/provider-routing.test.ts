@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
 import {
   systemExecutionOptionsResponseSchema,
+  systemNativeSessionsResponseSchema,
   systemProviderInfoSchema,
 } from "@bb/server-contract";
 import { availableModelFixture } from "../helpers/available-models.js";
@@ -223,6 +224,66 @@ describe("system provider host routing", () => {
       });
     },
   );
+
+  it("lists native sessions on the selected host using metadata only", async () => {
+    await withTestHarness({}, async (harness) => {
+      const primary = seedHostSession(harness.deps, {
+        id: "host-native-sessions-primary",
+      });
+      seedPrimaryHost(harness.deps, primary.host.id);
+      let capturedCommand:
+        | Extract<
+            HostDaemonOnlineRpcRequestMessage["command"],
+            { type: "provider.native_sessions.list" }
+          >
+        | undefined;
+      registerHostRpcResponder(harness, {
+        hostId: primary.host.id,
+        sessionId: primary.session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.native_sessions.list") {
+            return providerHostResponse(request, "codex", "model");
+          }
+          capturedCommand = request.command;
+          return {
+            ok: true,
+            result: {
+              sessions: [
+                {
+                  providerThreadId: "native-1",
+                  title: "Release checklist",
+                  cwd: "/workspace",
+                  createdAt: 1_777_000_000,
+                  updatedAt: 1_777_000_100,
+                  archived: false,
+                  source: "cli",
+                },
+              ],
+              nextCursor: null,
+              backwardsCursor: null,
+            },
+          };
+        },
+      });
+
+      const response = await harness.app.request(
+        "/api/v1/system/providers/codex/native-sessions?archived=false&limit=25&searchTerm=release",
+      );
+      expect(response.status).toBe(200);
+      expect(
+        systemNativeSessionsResponseSchema.parse(await readJson(response)),
+      ).toMatchObject({
+        sessions: [{ providerThreadId: "native-1" }],
+      });
+      expect(capturedCommand).toMatchObject({
+        type: "provider.native_sessions.list",
+        providerId: "codex",
+        archived: false,
+        limit: 25,
+        searchTerm: "release",
+      });
+    });
+  });
 });
 
 describe("GET /api/v1/system/providers", () => {

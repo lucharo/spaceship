@@ -53,6 +53,7 @@ export const unexpectedProjectAttachmentFetch: FetchProjectAttachment =
 export const unexpectedProviderMaintenance: Pick<
   CommandDispatchOptions,
   | "listModels"
+  | "listNativeSessions"
   | "providerHealth"
   | "providerUsage"
   | "providerInstallationStatus"
@@ -61,6 +62,9 @@ export const unexpectedProviderMaintenance: Pick<
 > = {
   listModels: async () => {
     throw new Error("Unexpected provider.list_models call");
+  },
+  listNativeSessions: async () => {
+    throw new Error("Unexpected provider.native_sessions.list call");
   },
   providerHealth: async () => {
     throw new Error("Unexpected provider.health call");
@@ -348,6 +352,13 @@ export function createFakeRuntime() {
   };
   const runtime: AgentRuntime = {
     async ensureProvider() {},
+    async listNativeSessions() {
+      return {
+        sessions: [],
+        nextCursor: null,
+        backwardsCursor: null,
+      };
+    },
     async startThread(args) {
       state.startedBridgeLaunch = args.bridgeLaunch;
       state.startedEnvironmentId = args.environmentId;

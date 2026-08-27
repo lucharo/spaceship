@@ -173,6 +173,38 @@ describe("handshake gating", () => {
     });
     expect(
       adapter.buildCommandPlan({
+        type: "native/session/list",
+        archived: true,
+        cursor: "cursor-1",
+        limit: 25,
+        cwd: "/workspace",
+        searchTerm: "release",
+      }),
+    ).toMatchObject({ kind: "noop" });
+
+    completeHandshake(adapter, { nativeSessions: { list: true } });
+    expect(
+      adapter.buildCommandPlan({
+        type: "native/session/list",
+        archived: true,
+        cursor: "cursor-1",
+        limit: 25,
+        cwd: "/workspace",
+        searchTerm: "release",
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "native/session/list",
+      params: {
+        archived: true,
+        cursor: "cursor-1",
+        limit: 25,
+        cwd: "/workspace",
+        searchTerm: "release",
+      },
+    });
+    expect(
+      adapter.buildCommandPlan({
         type: "provider/installation/status",
         cwd: "/workspace",
         requirement: "thread_rewind",
@@ -316,7 +348,9 @@ describe("skills/configure", () => {
     const adapter = makeAdapter();
     const command = {
       type: "skills/configure" as const,
-      skillRoots: [{ id: "global-skills:abc", path: "/staged/skills", skills: [] }],
+      skillRoots: [
+        { id: "global-skills:abc", path: "/staged/skills", skills: [] },
+      ],
     };
     // A bridge that says nothing never receives the request: a third-party
     // bridge answering METHOD_NOT_FOUND must still start threads.

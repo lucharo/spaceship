@@ -101,6 +101,46 @@ describe("createAgentRuntime command contracts", () => {
     return { record, runtime };
   }
 
+  it("lists provider-native sessions through the metadata-only bridge seam", async () => {
+    const { record, runtime } = createContractRuntime();
+
+    try {
+      await expect(
+        runtime.listNativeSessions({
+          providerId: "fake",
+          archived: true,
+          cursor: "cursor-1",
+          limit: 25,
+          cwd: "/workspace",
+          searchTerm: "native",
+        }),
+      ).resolves.toEqual({
+        sessions: [
+          {
+            providerThreadId: "provider-native-1",
+            title: "Native session",
+            cwd: "/workspace",
+            createdAt: 1_777_000_000,
+            updatedAt: 1_777_000_100,
+            archived: true,
+            source: "test",
+          },
+        ],
+        nextCursor: null,
+        backwardsCursor: null,
+      });
+      expect(record.last("native/session/list")?.params).toEqual({
+        archived: true,
+        cursor: "cursor-1",
+        limit: 25,
+        cwd: "/workspace",
+        searchTerm: "native",
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
   it("passes runtime workspace-write roots to the provider as provider options", async () => {
     const additionalWorkspaceWriteRoots = [
       "/repo/.git/worktrees/bb13",

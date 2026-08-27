@@ -631,6 +631,23 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       bridgeLaunch,
     });
   },
+  "provider.native_sessions.list": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return options.listNativeSessions({
+      providerId: command.providerId,
+      bridgeLaunch,
+      archived: command.archived,
+      ...(command.cursor !== undefined ? { cursor: command.cursor } : {}),
+      ...(command.limit !== undefined ? { limit: command.limit } : {}),
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+      ...(command.searchTerm !== undefined
+        ? { searchTerm: command.searchTerm }
+        : {}),
+    });
+  },
   "provider.health": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,

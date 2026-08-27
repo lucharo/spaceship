@@ -351,6 +351,21 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     selectedOnlyModels: [],
   },
+  "provider.native_sessions.list": {
+    sessions: [
+      {
+        providerThreadId: "native-1",
+        title: "Native session",
+        cwd: "/workspace",
+        createdAt: 1_777_000_000,
+        updatedAt: 1_777_000_100,
+        archived: false,
+        source: "cli",
+      },
+    ],
+    nextCursor: null,
+    backwardsCursor: null,
+  },
   "provider.health": {
     supported: true,
     health: {
@@ -656,7 +671,13 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.title":
     "a tool_use approval's presentation has a title only when the call has a headline (a path, a query); absence means the label stands alone.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
-    "provider.list_models may omit cwd when only user-level provider configuration applies.",
+    "provider maintenance and native-session discovery may omit cwd when only user-level provider configuration applies.",
+  "hostDaemonOnlineRpcCommandSchema.cursor":
+    "provider-native session discovery omits cursor on the first page.",
+  "hostDaemonOnlineRpcCommandSchema.limit":
+    "provider-native session discovery may use the provider's bounded default page size.",
+  "hostDaemonOnlineRpcCommandSchema.searchTerm":
+    "provider-native session discovery omits searchTerm when listing without a title filter.",
   "hostDaemonOnlineRpcCommandSchema.query":
     "host.list_files may omit a search string to list files without filtering.",
   "hostDaemonOnlineRpcCommandSchema.path":
@@ -1046,8 +1067,25 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(171);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(172);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
+  });
+
+  it("accepts a bounded provider-native session catalogue request", () => {
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
+        type: "provider.native_sessions.list",
+        providerId: "codex",
+        bridgeLaunch: BRIDGE_LAUNCH,
+        archived: false,
+        limit: 50,
+      }),
+    ).toMatchObject({
+      type: "provider.native_sessions.list",
+      providerId: "codex",
+      archived: false,
+      limit: 50,
+    });
   });
 
   it("uses relative host-plugin timeouts and bounds artifact declarations", () => {

@@ -2252,6 +2252,56 @@ describe("thread command dispatch", () => {
     });
   });
 
+  it("covers provider.native_sessions.list", async () => {
+    const harness = createHarness();
+    let capturedArgs: unknown;
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        type: "provider.native_sessions.list",
+        providerId: "codex",
+        archived: true,
+        cursor: "cursor-1",
+        limit: 25,
+        cwd: "/tmp/worktree",
+        searchTerm: "release",
+      },
+      {
+        ...harness.dispatchOptions(),
+        listNativeSessions: async (args) => {
+          capturedArgs = args;
+          return {
+            sessions: [
+              {
+                providerThreadId: "native-1",
+                title: "Release checklist",
+                cwd: "/tmp/worktree",
+                createdAt: 1_777_000_000,
+                updatedAt: 1_777_000_100,
+                archived: true,
+                source: "cli",
+              },
+            ],
+            nextCursor: null,
+            backwardsCursor: null,
+          };
+        },
+      },
+    );
+
+    expect(capturedArgs).toEqual({
+      providerId: "codex",
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      archived: true,
+      cursor: "cursor-1",
+      limit: 25,
+      cwd: "/tmp/worktree",
+      searchTerm: "release",
+    });
+    expect(result.sessions).toHaveLength(1);
+  });
+
   it("uses the server-provided thread runtime config", async () => {
     const threadStorage = await makeTempDir("bb-thread-runtime-");
     const harness = createHarness({ workspacePath: threadStorage });

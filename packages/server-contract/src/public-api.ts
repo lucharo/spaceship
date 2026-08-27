@@ -149,6 +149,8 @@ import type {
   SystemInstallCliSkillsResponse,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
+  SystemNativeSessionsQuery,
+  SystemNativeSessionsResponse,
   SystemProviderInfo,
   SystemProvidersQuery,
   SystemProviderStatesResponse,
@@ -275,6 +277,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemNativeSessionsQuerySchema,
   systemProvidersQuerySchema,
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
@@ -1409,6 +1412,14 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathId>(),
       response: binaryResponse<Uint8Array>(),
+    }),
+    providerNativeSessions: defineRoute({
+      path: "/system/providers/:id/native-sessions",
+      method: "get",
+      request: optionalQueryRequest<PathId, SystemNativeSessionsQuery>(
+        systemNativeSessionsQuerySchema,
+      ),
+      response: jsonResponse<SystemNativeSessionsResponse>(),
     }),
     providerStates: defineRoute({
       path: "/system/providers/state",

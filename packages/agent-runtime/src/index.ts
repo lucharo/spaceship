@@ -10,6 +10,7 @@ export type {
   AgentRuntimeSkillRoot,
   EnsureProviderArgs,
   ListModelsArgs,
+  ListNativeSessionsArgs,
   ReapedIdleProviderSession,
   RenameThreadArgs,
   ResumeThreadArgs,

@@ -4,17 +4,14 @@ import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
 } from "@bb/domain";
-import type {
-  DynamicTool,
-  InstructionMode,
-  ThreadEvent,
-} from "@bb/domain";
+import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
 import type { AdapterCommand } from "./provider-adapter.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
   providerHealthResultSchema,
   providerInstallationRunResultSchema,
   providerInstallationStatusSchema,
+  nativeSessionListResultSchema,
   providerUsageResultSchema,
   ThreadEventGrammar,
   threadIdentityResultSchema,
@@ -64,9 +61,7 @@ import type {
   ReapedIdleProviderSession,
 } from "./types.js";
 import { buildThreadShellEnvironment } from "./thread-shell-environment.js";
-import {
-  bridgeLaunchProcessKey,
-} from "./bridge-launch-process-key.js";
+import { bridgeLaunchProcessKey } from "./bridge-launch-process-key.js";
 
 interface RecordThreadExecutionOptionsArgs {
   options: AgentRuntimeExecutionOptions;
@@ -528,9 +523,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         message: args.message,
         pending: args.proc.pending,
         resultSchema: args.resultSchema,
-        ...(args.timeoutMs !== undefined
-          ? { timeoutMs: args.timeoutMs }
-          : {}),
+        ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
       },
     });
   }
@@ -772,7 +765,11 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
     // Still rate limited after the last rung: forward the hint so the daemon
     // learns the provider is rate limited, not only that this request failed.
-    handleRecoveryHint({ hint: lastHint, proc: args.proc, source: "rejection" });
+    handleRecoveryHint({
+      hint: lastHint,
+      proc: args.proc,
+      source: "rejection",
+    });
     throw toRecoveryError({
       cause: lastError,
       code: "rate_limited",
@@ -2490,6 +2487,40 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       return proc.adapter.parseModelListResult(result);
     },
 
+    async listNativeSessions({
+      providerId,
+      bridgeLaunch,
+      archived,
+      cursor,
+      limit,
+      cwd,
+      searchTerm,
+    }) {
+      await runtime.ensureProvider({ providerId, bridgeLaunch });
+      const proc = providerProcesses.requireProviderProcess({
+        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
+        providerId,
+      });
+      const command = requireProviderRequestPlan({
+        commandType: "native/session/list",
+        plan: proc.adapter.buildCommandPlan({
+          type: "native/session/list",
+          archived,
+          ...(cursor !== undefined ? { cursor } : {}),
+          ...(limit !== undefined ? { limit } : {}),
+          ...(cwd !== undefined ? { cwd } : {}),
+          ...(searchTerm !== undefined ? { searchTerm } : {}),
+        }),
+        providerId,
+      });
+      const result = await sendCommand({
+        proc,
+        message: command,
+        resultSchema: nativeSessionListResultSchema,
+      });
+      return proc.adapter.parseNativeSessionListResult(result);
+    },
+
     async providerHealth({ providerId, bridgeLaunch, cwd }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
@@ -2557,12 +2588,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
-    async providerInstallationRun({
-      providerId,
-      bridgeLaunch,
-      cwd,
-      action,
-    }) {
+    async providerInstallationRun({ providerId, bridgeLaunch, cwd, action }) {
       await runtime.ensureProvider({ providerId, bridgeLaunch });
       const proc = providerProcesses.requireProviderProcess({
         processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),

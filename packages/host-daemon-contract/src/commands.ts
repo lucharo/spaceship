@@ -39,6 +39,8 @@ import { HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
 import {
   providerHealthSchema,
   providerHealthResultSchema,
+  nativeSessionListParamsSchema,
+  nativeSessionListResultSchema,
   providerInstallationStatusSchema,
   providerUsageResultSchema,
   providerUsageSchema,
@@ -944,6 +946,15 @@ const providerListModelsCommandSchema = z.object({
   bridgeLaunch: hostDaemonBridgeLaunchSchema,
   cwd: z.string().min(1).optional(),
 });
+
+const providerNativeSessionsListCommandSchema = z
+  .object({
+    type: z.literal("provider.native_sessions.list"),
+    providerId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    ...nativeSessionListParamsSchema.shape,
+  })
+  .strict();
 
 const providerHealthCommandSchema = z
   .object({
@@ -1949,6 +1960,15 @@ export const hostDaemonCommandRegistry = {
     type: "provider.list_models",
     schema: providerListModelsCommandSchema,
     resultSchema: providerListModelsResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.native_sessions.list": defineHostDaemonCommandDescriptor({
+    type: "provider.native_sessions.list",
+    schema: providerNativeSessionsListCommandSchema,
+    resultSchema: nativeSessionListResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

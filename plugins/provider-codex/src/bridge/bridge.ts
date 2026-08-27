@@ -47,6 +47,7 @@ import {
   THREAD_DELTA_NOTIFICATION_METHOD,
   initializeParamsSchema,
   modelListParamsSchema,
+  nativeSessionListParamsSchema,
   providerInstallationRunParamsSchema,
   providerInstallationStatusParamsSchema,
   providerMaintenanceParamsSchema,
@@ -131,6 +132,10 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
     params: initializeParamsSchema,
   }),
   z.object({ method: z.literal("model/list"), params: modelListParamsSchema }),
+  z.object({
+    method: z.literal("native/session/list"),
+    params: nativeSessionListParamsSchema,
+  }),
   z.object({
     method: z.literal("provider/health"),
     params: providerMaintenanceParamsSchema,
@@ -982,6 +987,25 @@ function spawnChildConnection(callbacks: {
 
 const ignoredChildResultSchema = z.unknown();
 
+const codexThreadListResultSchema = z
+  .object({
+    data: z.array(
+      z
+        .object({
+          id: z.string().min(1),
+          name: z.string().nullable(),
+          cwd: z.string().nullable(),
+          createdAt: z.number().int().nonnegative(),
+          updatedAt: z.number().int().nonnegative(),
+          source: z.unknown(),
+        })
+        .passthrough(),
+    ),
+    nextCursor: z.string().nullable(),
+    backwardsCursor: z.string().nullable(),
+  })
+  .passthrough();
+
 async function initializeChild(
   connection: CodexAppServerConnection,
   postInitializeRequests?: readonly ProviderPostInitializeRequest[],
@@ -1462,9 +1486,70 @@ function handleInitialize(id: string | number): void {
       grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
       steerMode: "inject",
       skills: { configure: true },
+      nativeSessions: { list: true },
     },
   };
   sendResult(id, result);
+}
+
+function codexSessionSourceLabel(source: unknown): string | null {
+  if (typeof source === "string") {
+    return source;
+  }
+  if (typeof source !== "object" || source === null) {
+    return null;
+  }
+  const custom = (source as { custom?: unknown }).custom;
+  if (typeof custom === "string" && custom.length > 0) {
+    return `custom:${custom}`;
+  }
+  if ("subAgent" in source) {
+    return "subAgent";
+  }
+  return null;
+}
+
+async function handleNativeSessionList(
+  id: string | number,
+  params: z.infer<typeof nativeSessionListParamsSchema>,
+): Promise<void> {
+  try {
+    const result = await withMaintenanceChild((connection) =>
+      connection.request({
+        method: "thread/list",
+        params: {
+          archived: params.archived,
+          ...(params.cursor !== undefined ? { cursor: params.cursor } : {}),
+          ...(params.limit !== undefined ? { limit: params.limit } : {}),
+          ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
+          ...(params.searchTerm !== undefined
+            ? { searchTerm: params.searchTerm }
+            : {}),
+        },
+        resultSchema: codexThreadListResultSchema,
+        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+      }),
+    );
+    sendResult(id, {
+      sessions: result.data.map((thread) => ({
+        providerThreadId: thread.id,
+        title: thread.name,
+        cwd: thread.cwd,
+        createdAt: thread.createdAt,
+        updatedAt: thread.updatedAt,
+        archived: params.archived,
+        source: codexSessionSourceLabel(thread.source),
+      })),
+      nextCursor: result.nextCursor,
+      backwardsCursor: result.backwardsCursor,
+    });
+  } catch (error) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      describeCodexLaunchError(error),
+    );
+  }
 }
 
 async function handleModelList(id: string | number): Promise<void> {
@@ -2039,6 +2124,9 @@ async function handleRequest(
       break;
     case "model/list":
       await handleModelList(request.id);
+      break;
+    case "native/session/list":
+      await handleNativeSessionList(request.id, request.params);
       break;
     case "provider/health":
       sendResult(request.id, await getCodexProviderHealth());

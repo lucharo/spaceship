@@ -15,6 +15,7 @@ import type {
   ProviderInstallationCommand,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
+  NativeSessionListResult,
 } from "@bb/provider-bridge-protocol";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
 import { ensurePluginProcessDataDir } from "@bb/process-utils";
@@ -63,6 +64,15 @@ export interface CommandDispatchOptions {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
+  listNativeSessions: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    archived: boolean;
+    cursor?: string;
+    limit?: number;
+    cwd?: string;
+    searchTerm?: string;
+  }) => Promise<NativeSessionListResult>;
   providerHealth: (args: {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;

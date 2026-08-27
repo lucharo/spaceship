@@ -59,6 +59,7 @@ import {
   createBridgeIo,
   initializeParamsSchema,
   modelListParamsSchema,
+  nativeSessionListParamsSchema,
   skillsConfigureParamsSchema,
   threadArchiveParamsSchema,
   threadDiscardParamsSchema,
@@ -86,6 +87,7 @@ import { z } from "zod";
 const scriptedMethodSchema = z.enum([
   "initialize",
   "model/list",
+  "native/session/list",
   "thread/start",
   "thread/resume",
   "thread/fork",
@@ -820,7 +822,12 @@ function beginTurn(args: {
     });
     return;
   }
-  scheduleCompletion(session, plan.responseText, plan.delayMs, plan.recoverKind);
+  scheduleCompletion(
+    session,
+    plan.responseText,
+    plan.delayMs,
+    plan.recoverKind,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1074,6 +1081,7 @@ const handlers: Record<string, RequestHandler> = {
         grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
         steerMode: "inject",
         skills: { configure: true },
+        nativeSessions: { list: true },
       },
     });
   },
@@ -1085,6 +1093,34 @@ const handlers: Record<string, RequestHandler> = {
       return;
     }
     io.sendResult(id, MODEL_LIST);
+  },
+
+  [BRIDGE_REQUEST_METHODS.nativeSessionList]: (id, params) => {
+    const parsed = nativeSessionListParamsSchema.safeParse(params);
+    if (!parsed.success) {
+      invalidParams(
+        id,
+        BRIDGE_REQUEST_METHODS.nativeSessionList,
+        parsed.error.issues,
+      );
+      return;
+    }
+    io.sendResult(id, {
+      sessions: [
+        {
+          providerThreadId: "provider-native-1",
+          title: "Native session",
+          cwd: parsed.data.cwd ?? null,
+          createdAt: 1_777_000_000,
+          updatedAt: 1_777_000_100,
+          archived: parsed.data.archived,
+          source: "test",
+          preview: "private preview",
+        },
+      ],
+      nextCursor: null,
+      backwardsCursor: null,
+    });
   },
 
   [BRIDGE_REQUEST_METHODS.providerHealth]: (id) => {

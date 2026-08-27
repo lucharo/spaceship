@@ -13,6 +13,10 @@ import {
   providerInfoSchema,
 } from "@bb/domain";
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
+import {
+  nativeSessionListResultSchema,
+  type NativeSessionListResult,
+} from "@bb/provider-bridge-protocol";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
@@ -92,6 +96,24 @@ export const systemProvidersQuerySchema = z
   .partial()
   .superRefine(rejectMultipleProviderHostSelectors);
 export type SystemProvidersQuery = z.infer<typeof systemProvidersQuerySchema>;
+
+export const systemNativeSessionsQuerySchema = z
+  .object({
+    ...systemProviderHostQueryFields,
+    archived: z.enum(["true", "false"]).optional(),
+    cursor: z.string().min(1).optional(),
+    limit: z.string().regex(/^\d+$/u).optional(),
+    cwd: z.string().min(1).optional(),
+    searchTerm: z.string().min(1).max(256).optional(),
+  })
+  .partial()
+  .superRefine(rejectMultipleProviderHostSelectors);
+export type SystemNativeSessionsQuery = z.infer<
+  typeof systemNativeSessionsQuerySchema
+>;
+
+export const systemNativeSessionsResponseSchema = nativeSessionListResultSchema;
+export type SystemNativeSessionsResponse = NativeSessionListResult;
 
 export const systemExecutionOptionsQuerySchema = z
   .object({

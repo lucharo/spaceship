@@ -578,6 +578,53 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("lists provider-native sessions without requesting transcript content", async () => {
+    const queue = createFetchQueue([
+      {
+        body: {
+          sessions: [
+            {
+              providerThreadId: "native-1",
+              title: "Release checklist",
+              cwd: "/workspace",
+              createdAt: 1_777_000_000,
+              updatedAt: 1_777_000_100,
+              archived: false,
+              source: "cli",
+            },
+          ],
+          nextCursor: null,
+          backwardsCursor: null,
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.providers.nativeSessions("codex", {
+        archived: false,
+        hostId: "host_remote",
+        limit: 25,
+        searchTerm: "release",
+      }),
+    ).resolves.toMatchObject({
+      sessions: [{ providerThreadId: "native-1" }],
+    });
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/system/providers/codex/native-sessions?archived=false&limit=25&searchTerm=release&hostId=host_remote",
+      },
+    ]);
+  });
+
   it("targets provider usage at an explicit machine", async () => {
     const usage = {
       codex: { status: "unauthenticated" as const },

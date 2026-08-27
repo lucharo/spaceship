@@ -28,11 +28,13 @@ import {
   bridgeCapabilitiesSchema,
   initializeResultSchema,
   negotiateGrammarVersion,
+  nativeSessionListResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
   providerRecoveryNotificationSchema,
   threadDeltaNotificationParamsSchema,
   type BridgeCapabilities,
+  type NativeSessionListResult,
 } from "@bb/provider-bridge-protocol";
 import {
   ASSEMBLER_GRAMMAR_VERSIONS,
@@ -92,6 +94,7 @@ export interface BridgeProtocolAdapter {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   };
+  parseNativeSessionListResult(result: unknown): NativeSessionListResult;
   /** Assemble a bridge notification into canonical timeline events. */
   translateEvent(event: ProviderRuntimeEvent): ThreadEvent[];
   /**
@@ -296,6 +299,28 @@ export function createBridgeProtocolAdapter(
                 : {}),
             },
           };
+        case "native/session/list":
+          if (!handshake.nativeSessions.list) {
+            return {
+              kind: "noop",
+              reason: "nativeSessions.list not advertised",
+            };
+          }
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.nativeSessionList,
+            params: {
+              archived: command.archived,
+              ...(command.cursor !== undefined
+                ? { cursor: command.cursor }
+                : {}),
+              ...(command.limit !== undefined ? { limit: command.limit } : {}),
+              ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+              ...(command.searchTerm !== undefined
+                ? { searchTerm: command.searchTerm }
+                : {}),
+            },
+          };
         case "provider/health":
           return {
             kind: "request",
@@ -323,8 +348,7 @@ export function createBridgeProtocolAdapter(
         case "provider/installation/status":
           return {
             kind: "request",
-            method:
-              BRIDGE_REQUEST_METHODS.providerInstallationStatus,
+            method: BRIDGE_REQUEST_METHODS.providerInstallationStatus,
             params: {
               providerId: options.id,
               ...(command.requirement !== undefined
@@ -627,6 +651,8 @@ export function createBridgeProtocolAdapter(
     },
 
     parseModelListResult: parseAvailableModelList,
+    parseNativeSessionListResult: (result) =>
+      nativeSessionListResultSchema.parse(result),
 
     translateEvent(event: ProviderRuntimeEvent): ThreadEvent[] {
       const method = event.method;

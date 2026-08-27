@@ -18,6 +18,7 @@ import { bridgeExecutionOptionsSchema } from "./execution-options.js";
 export const BRIDGE_REQUEST_METHODS = {
   initialize: "initialize",
   modelList: "model/list",
+  nativeSessionList: "native/session/list",
   providerHealth: "provider/health",
   providerUsage: "provider/usage",
   providerInstallationStatus: "provider/installation/status",
@@ -48,6 +49,23 @@ const sessionConstructionFields = {
 export const modelListParamsSchema = z
   .object({ cwd: z.string().min(1).optional() })
   .passthrough();
+
+/**
+ * Metadata-only discovery of sessions already owned by the provider.
+ * Conversation previews, storage paths, and turns are intentionally absent:
+ * callers must not receive transcript content before a user opens a session.
+ */
+export const nativeSessionListParamsSchema = z.object({
+  archived: z.boolean(),
+  cursor: z.string().min(1).optional(),
+  limit: z.number().int().positive().max(100).optional(),
+  cwd: z.string().min(1).optional(),
+  searchTerm: z.string().min(1).max(256).optional(),
+});
+
+export type NativeSessionListParams = z.infer<
+  typeof nativeSessionListParamsSchema
+>;
 
 export const threadStartParamsSchema = z
   .object({
@@ -191,3 +209,25 @@ export const modelListResultSchema = z
   .passthrough();
 
 export type ModelListResult = z.infer<typeof modelListResultSchema>;
+
+export const nativeSessionSummarySchema = z.object({
+  providerThreadId: z.string().min(1),
+  title: z.string().nullable(),
+  cwd: z.string().nullable(),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+  archived: z.boolean(),
+  source: z.string().nullable(),
+});
+
+export type NativeSessionSummary = z.infer<typeof nativeSessionSummarySchema>;
+
+export const nativeSessionListResultSchema = z.object({
+  sessions: z.array(nativeSessionSummarySchema),
+  nextCursor: z.string().min(1).nullable(),
+  backwardsCursor: z.string().min(1).nullable(),
+});
+
+export type NativeSessionListResult = z.infer<
+  typeof nativeSessionListResultSchema
+>;

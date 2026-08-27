@@ -66,6 +66,14 @@ export type AdapterCommand =
       skillRoots: readonly AgentRuntimeSkillRoot[];
     }
   | { type: "model/list"; cwd?: string }
+  | {
+      type: "native/session/list";
+      archived: boolean;
+      cursor?: string;
+      limit?: number;
+      cwd?: string;
+      searchTerm?: string;
+    }
   | { type: "provider/health"; cwd?: string }
   | { type: "provider/usage"; cwd?: string }
   | {

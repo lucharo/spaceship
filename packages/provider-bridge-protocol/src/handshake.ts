@@ -139,6 +139,10 @@ export const bridgeCapabilitiesSchema = z
     skills: z
       .object({ configure: z.boolean().default(false) })
       .default({ configure: false }),
+    /** Provider-native session discovery available without starting a thread. */
+    nativeSessions: z
+      .object({ list: z.boolean().default(false) })
+      .default({ list: false }),
   })
   .passthrough();
 

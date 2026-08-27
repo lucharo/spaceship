@@ -337,6 +337,40 @@ async function handleRequest(message) {
         ],
       });
       return;
+    case "thread/list":
+      respond(id, {
+        data: [
+          {
+            id: "codex-native-1",
+            sessionId: "codex-session-1",
+            forkedFromId: null,
+            parentThreadId: null,
+            preview: "private preview that must not cross the bridge",
+            ephemeral: false,
+            section: null,
+            sectionEnteredAt: null,
+            projectId: null,
+            modelProvider: "openai",
+            createdAt: 1_777_000_000,
+            updatedAt: 1_777_000_100,
+            recencyAt: 1_777_000_100,
+            status: { type: "idle" },
+            path: "/private/rollout.jsonl",
+            cwd: "/workspace",
+            cliVersion: "0.150.1",
+            source: "cli",
+            threadSource: null,
+            agentNickname: null,
+            agentRole: null,
+            gitInfo: null,
+            name: "Release checklist",
+            turns: [{ id: "private-turn" }],
+          },
+        ],
+        nextCursor: "cursor-2",
+        backwardsCursor: "cursor-0",
+      });
+      return;
     case "skills/extraRoots/set":
       respond(id, {});
       return;
