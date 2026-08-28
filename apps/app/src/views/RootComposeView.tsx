@@ -588,6 +588,7 @@ export function RootComposeView() {
       onProjectChange={handleProjectChange}
       draftStorage={{ kind: "new-thread" }}
       selectionScope="new-thread"
+      allowedProviderIds={forkSeed === null ? ["codex"] : [forkSeed.providerId]}
       seed={composerSeed}
       resetKey={forkSeed?.sourceThreadId ?? null}
       preferReadyProviderWhenUnset={forkSeed === null}

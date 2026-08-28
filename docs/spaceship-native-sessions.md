@@ -18,9 +18,9 @@ Codex app-server <-> Spaceship provider bridge <-> Spaceship UI
 ```
 
 1. The Codex provider bridge asks app-server for native session metadata.
-2. Spaceship shows title, working directory, timestamps, archive state, source,
-   and the native thread ID. Active sessions are searchable and pageable in the
-   main sidebar. It does not read transcript bodies for discovery.
+2. Spaceship uses that metadata as its main Threads list. Active sessions are
+   searchable, pageable, groupable by recency or project, pinnable, and
+   collapsible. It does not read transcript bodies for discovery.
 3. Opening a row re-reads metadata from Codex, confirms the session is active,
    then creates or reuses a lightweight local projection keyed by the host,
    provider, and native thread ID.
@@ -30,8 +30,8 @@ Codex app-server <-> Spaceship provider bridge <-> Spaceship UI
 ## Authority rules
 
 - Codex owns native history, lifecycle state, and continuation semantics.
-- Spaceship owns presentation state such as local navigation, drafts, pins, and
-  unread markers.
+- Spaceship owns presentation state such as local navigation, drafts, pins,
+  collapsed groups, and unread markers.
 - Spaceship never writes Codex JSONL or SQLite files directly.
 - Raw app-server discovery responses are excluded from provider-wire
   diagnostics because they can contain transcript previews and rollout paths.
@@ -41,11 +41,15 @@ Codex app-server <-> Spaceship provider bridge <-> Spaceship UI
 
 ## Current limits
 
-- Existing Codex transcript rendering is not yet available in Spaceship.
+- Existing Codex transcript rendering is not yet available in Spaceship; see
+  [#1](https://github.com/lucharo/spaceship/issues/1).
 - Archived Codex sessions are listed read-only until native lifecycle actions
   are wired provider-first.
 - Rename, archive, unarchive, and fork should be performed in a native Codex
   client until those Spaceship actions delegate to app-server.
-- The first native provider is Codex; additional provider adapters are future
-  work.
-- Named Codex profiles and remote-host catalogue UX are future work.
+- The default new-thread path is Codex-only until another provider has an
+  equivalent native adapter; see
+  [#5](https://github.com/lucharo/spaceship/issues/5).
+- Named Codex profiles and remote-host catalogue UX are tracked in
+  [#2](https://github.com/lucharo/spaceship/issues/2) and
+  [#3](https://github.com/lucharo/spaceship/issues/3).

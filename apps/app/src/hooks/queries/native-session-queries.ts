@@ -51,6 +51,8 @@ export function useProviderNativeSessions({
         signal,
       }),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 
   return {

@@ -305,6 +305,35 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
+  it("can restrict new-thread creation to the native Codex provider", async () => {
+    const response = executionOptionsResponse();
+    const codex = rememberedProviders()[0];
+    if (codex === undefined) throw new Error("missing codex fixture");
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue({
+      ...response,
+      providers: [codex, ...response.providers],
+    });
+
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "new-thread",
+          allowedProviderIds: ["codex"],
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isLoadingModels).toBe(false));
+    expect(result.current.selectedProviderId).toBe("codex");
+    expect(
+      result.current.providerOptions.map((option) => option.value),
+    ).toEqual(["codex"]);
+    expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: "codex" }),
+    );
+  });
+
   it("keeps the selected remembered provider branded while models load", () => {
     window.localStorage.setItem("bb.promptbox.provider", "codex");
     // The app vendors no roster: the provider list this routing last

@@ -29,6 +29,8 @@ export type ScopedExecutionInputSources =
   | ExistingThreadExecutionInputSources;
 
 export interface UsePromptModelReasoningOptions {
+  /** Restrict selectable providers without changing existing-thread routing. */
+  allowedProviderIds?: readonly string[];
   enabled?: boolean;
   environmentId?: string;
   /**

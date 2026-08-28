@@ -211,6 +211,7 @@ export function useThreadCreationOptions(
   options?: UsePromptModelReasoningOptions,
 ): UseThreadCreationOptionsResult<ScopedExecutionInputSources> {
   const {
+    allowedProviderIds,
     enabled = true,
     environmentId,
     environmentHostId,
@@ -267,6 +268,13 @@ export function useThreadCreationOptions(
   );
   const usesLocalThreadSelections = scope !== "new-thread";
   const usesStoredCreateSelections = scope === "new-thread";
+  const allowedProviderIdSet = useMemo(
+    () =>
+      allowedProviderIds === undefined
+        ? null
+        : new Set<string>(allowedProviderIds),
+    [allowedProviderIds],
+  );
   const nextThreadSelections = useMemo(
     () =>
       getInitialThreadPromptSelections({
@@ -309,9 +317,14 @@ export function useThreadCreationOptions(
     usesLocalThreadSelections,
   ]);
 
-  const selectedProviderIdBeforeReadyFallback = usesStoredCreateSelections
+  const selectedProviderIdFromPreferences = usesStoredCreateSelections
     ? storedProviderId || renderedThreadSelections.selectedProviderId
     : renderedThreadSelections.selectedProviderId;
+  const selectedProviderIdBeforeReadyFallback =
+    allowedProviderIdSet === null ||
+    allowedProviderIdSet.has(selectedProviderIdFromPreferences)
+      ? selectedProviderIdFromPreferences
+      : (allowedProviderIds?.[0] ?? "");
   const rawServiceTier = usesStoredCreateSelections
     ? storedServiceTier || renderedThreadSelections.serviceTier
     : renderedThreadSelections.serviceTier;
@@ -357,7 +370,10 @@ export function useThreadCreationOptions(
   });
   const queriedReadyProviderId = shouldResolveReadyProvider
     ? providerStatesQuery.data?.providers.find(
-        (provider) => provider.status === "ready",
+        (provider) =>
+          provider.status === "ready" &&
+          (allowedProviderIdSet === null ||
+            allowedProviderIdSet.has(provider.providerId)),
       )?.providerId
     : undefined;
   const readyProviderId =
@@ -401,9 +417,12 @@ export function useThreadCreationOptions(
   const providers = useMemo(
     () =>
       (executionOptionsQuery.data?.providers ?? EMPTY_PROVIDERS).filter(
-        (provider) => provider.available !== false,
+        (provider) =>
+          provider.available !== false &&
+          (allowedProviderIdSet === null ||
+            allowedProviderIdSet.has(provider.id)),
       ),
-    [executionOptionsQuery.data?.providers],
+    [allowedProviderIdSet, executionOptionsQuery.data?.providers],
   );
   const isLoadingModels =
     executionOptionsQueryEnabled &&

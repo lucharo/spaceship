@@ -214,7 +214,6 @@ describe("docs anatomy manifest", () => {
     const sectionSelectors: Record<string, string> = {
       "top-reserve": '[data-testid="app-sidebar-top-reserve-row"]',
       "primary-actions": '[data-testid="app-sidebar-primary-actions"]',
-      "native-sessions": '[data-testid="native-codex-sidebar"]',
       "thread-list": '[data-testid="app-sidebar-thread-list"]',
       footer: '[data-sidebar="footer"]',
     };

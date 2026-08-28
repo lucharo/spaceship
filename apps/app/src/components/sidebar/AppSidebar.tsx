@@ -14,12 +14,11 @@ import {
   SidebarMenuItem,
   useCloseMobileSidebar,
 } from "@/components/ui/sidebar.js";
-import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import { ProjectListActionButtons } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
-import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
@@ -82,10 +81,6 @@ export function AppSidebar({
   settingsRoutePath,
   mobileHosted,
 }: AppSidebarProps) {
-  const quickCreateProject = useQuickCreateProjectController();
-  // The resolved replacement owns the sidebar's scrolling thread list. It never
-  // replaces the chrome around it: the New-thread button, search action,
-  // the plugin nav rows, and the footer stay host-rendered in every sidebar.
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
@@ -211,18 +206,6 @@ export function AppSidebar({
     hideThreadShortcuts();
   }, [hideThreadShortcuts, isAppCommandModifierHeld, showThreadShortcuts]);
 
-  const originalThreadList = (
-    <ProjectList
-      onNewProject={
-        quickCreateProject.isAvailable
-          ? quickCreateProject.openCreateDialog
-          : undefined
-      }
-      onProjectSelect={closeOnMobile}
-      isCreatingProject={quickCreateProject.isCreating}
-    />
-  );
-
   const body = (
     <>
       {showTopReserve ? (
@@ -280,11 +263,13 @@ export function AppSidebar({
         </SidebarMenu>
       </div>
       <SidebarContent>
-        <NativeCodexSidebar onNavigate={closeOnMobile} />
-        <div data-testid="app-sidebar-thread-list" className="min-w-0">
+        <div
+          data-testid="app-sidebar-thread-list"
+          className="flex min-h-0 flex-1"
+        >
           <PluginThreadList
             replacement={threadListReplacement}
-            original={originalThreadList}
+            original={<NativeCodexSidebar onNavigate={closeOnMobile} />}
             searchQuery=""
             onNavigate={closeOnMobile}
           />

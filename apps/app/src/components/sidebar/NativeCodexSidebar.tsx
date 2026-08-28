@@ -1,29 +1,284 @@
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import type { SystemNativeSessionsResponse } from "@bb/server-contract";
+import { useMemo, useState } from "react";
+import { useMutation, type UseMutationResult } from "@tanstack/react-query";
+import type {
+  AdoptNativeThreadResponse,
+  SystemNativeSessionsResponse,
+} from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useDebounceValue } from "usehooks-ts";
 import { Link, useNavigate } from "react-router-dom";
-import { sdk } from "@/lib/sdk";
-import {
-  getThreadRoutePath,
-  NATIVE_SESSIONS_ROUTE_PATH,
-} from "@/lib/route-paths";
-import { useProviderNativeSessions } from "@/hooks/queries/native-session-queries";
-import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { useDebounceValue } from "usehooks-ts";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
+import { useProviderNativeSessions } from "@/hooks/queries/native-session-queries";
+import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import {
+  getThreadRoutePath,
+  NATIVE_SESSIONS_ROUTE_PATH,
+} from "@/lib/route-paths";
+import { formatRelativeTime } from "@/lib/relative-time";
+import { sdk } from "@/lib/sdk";
 
 const SEARCH_DEBOUNCE_MS = 250;
+const PINNED_THREAD_IDS_STORAGE_KEY = "spaceship.sidebar.pinnedCodexThreadIds";
+const THREAD_ORGANIZATION_STORAGE_KEY =
+  "spaceship.sidebar.codexThreadOrganization";
+const COLLAPSED_GROUPS_STORAGE_KEY =
+  "spaceship.sidebar.collapsedCodexThreadGroups";
 
 type NativeSession = SystemNativeSessionsResponse["sessions"][number];
+type ThreadOrganization = "chronological" | "project";
+type AdoptMutation = UseMutationResult<
+  AdoptNativeThreadResponse,
+  Error,
+  NativeSession
+>;
+
+interface NativeSessionGroup {
+  key: string;
+  label: string;
+  sessions: NativeSession[];
+}
+
+function readStoredStringArray(key: string): string[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) ?? "[]");
+    return Array.isArray(parsed)
+      ? parsed.filter((value): value is string => typeof value === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredStringArray(key: string, values: ReadonlySet<string>) {
+  window.localStorage.setItem(key, JSON.stringify([...values]));
+}
+
+function readThreadOrganization(): ThreadOrganization {
+  return window.localStorage.getItem(THREAD_ORGANIZATION_STORAGE_KEY) ===
+    "project"
+    ? "project"
+    : "chronological";
+}
+
+function nativeTimestampToMilliseconds(timestamp: number): number {
+  return timestamp < 100_000_000_000 ? timestamp * 1_000 : timestamp;
+}
+
+function getSessionTimestamp(session: NativeSession): number {
+  return nativeTimestampToMilliseconds(session.updatedAt ?? session.createdAt);
+}
+
+function getProjectLabel(cwd: string | null): string {
+  if (cwd === null) return "Working directory unavailable";
+  const normalized = cwd.replace(/\/+$/u, "");
+  if (/^\/(?:Users|home)\/[^/]+$/u.test(normalized)) return "Home";
+  return normalized.split("/").at(-1) || normalized || "/";
+}
+
+function getChronologicalGroup(timestamp: number, now: number) {
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const dayMs = 24 * 60 * 60 * 1_000;
+  const start = startOfToday.getTime();
+
+  if (timestamp >= start) return { key: "today", label: "Today" };
+  if (timestamp >= start - dayMs) {
+    return { key: "yesterday", label: "Yesterday" };
+  }
+  if (timestamp >= start - 7 * dayMs) {
+    return { key: "previous-7-days", label: "Previous 7 days" };
+  }
+  if (timestamp >= start - 30 * dayMs) {
+    return { key: "previous-30-days", label: "Previous 30 days" };
+  }
+  return { key: "older", label: "Older" };
+}
+
+function groupSessions({
+  organization,
+  sessions,
+  now,
+}: {
+  organization: ThreadOrganization;
+  sessions: NativeSession[];
+  now: number;
+}): NativeSessionGroup[] {
+  const grouped = new Map<string, NativeSessionGroup>();
+
+  for (const session of sessions) {
+    const descriptor =
+      organization === "project"
+        ? {
+            key: `project:${session.cwd ?? "unavailable"}`,
+            label: getProjectLabel(session.cwd),
+          }
+        : getChronologicalGroup(getSessionTimestamp(session), now);
+    const group = grouped.get(descriptor.key) ?? {
+      ...descriptor,
+      sessions: [],
+    };
+    group.sessions.push(session);
+    grouped.set(descriptor.key, group);
+  }
+
+  return [...grouped.values()];
+}
+
+function NativeSessionRow({
+  adopt,
+  isPinned,
+  now,
+  onTogglePinned,
+  session,
+}: {
+  adopt: AdoptMutation;
+  isPinned: boolean;
+  now: number;
+  onTogglePinned: (session: NativeSession) => void;
+  session: NativeSession;
+}) {
+  const disabled = session.cwd === null || adopt.isPending;
+  const isOpening =
+    adopt.isPending &&
+    adopt.variables?.providerThreadId === session.providerThreadId;
+  const didFail =
+    adopt.isError &&
+    adopt.variables?.providerThreadId === session.providerThreadId;
+  const title = session.title ?? "Untitled session";
+  const relativeTime = formatRelativeTime({
+    timestamp: getSessionTimestamp(session),
+    now,
+  });
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        type="button"
+        disabled={disabled}
+        aria-label={`${title}${session.cwd ? `, ${session.cwd}` : ", working directory unavailable"}`}
+        className={cn(
+          "h-auto min-h-10 items-start py-1.5 pr-8",
+          didFail && "text-destructive",
+        )}
+        onClick={() => adopt.mutate(session)}
+      >
+        <Icon
+          name={isOpening ? "Spinner" : "MessageSquare"}
+          className={cn(
+            "mt-0.5 size-3.5 text-muted-foreground",
+            isOpening && "animate-spin",
+          )}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate">{title}</span>
+            <span className="shrink-0 text-[10px] text-muted-foreground">
+              {relativeTime}
+            </span>
+          </span>
+          <span
+            className="block truncate text-[11px] text-muted-foreground"
+            title={session.cwd ?? "Working directory unavailable"}
+          >
+            {didFail
+              ? getMutationErrorMessage({
+                  error: adopt.error,
+                  fallbackMessage: "Could not open. Click to retry.",
+                })
+              : (session.cwd ?? "Working directory unavailable")}
+          </span>
+        </span>
+      </SidebarMenuButton>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label={`${isPinned ? "Unpin" : "Pin"} ${title}`}
+        className={cn(
+          "absolute right-0.5 top-1 size-7 text-muted-foreground",
+          !isPinned &&
+            "opacity-0 group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100",
+        )}
+        onClick={(event) => {
+          event.stopPropagation();
+          onTogglePinned(session);
+        }}
+      >
+        <Icon name={isPinned ? "PinOff" : "Pin"} className="size-3.5" />
+      </Button>
+    </SidebarMenuItem>
+  );
+}
+
+function NativeSessionSection({
+  adopt,
+  collapsed,
+  group,
+  now,
+  pinnedIds,
+  onToggleCollapsed,
+  onTogglePinned,
+}: {
+  adopt: AdoptMutation;
+  collapsed: boolean;
+  group: NativeSessionGroup;
+  now: number;
+  pinnedIds: ReadonlySet<string>;
+  onToggleCollapsed: (key: string) => void;
+  onTogglePinned: (session: NativeSession) => void;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        aria-label={`${collapsed ? "Expand" : "Collapse"} ${group.label}`}
+        className="flex h-7 w-full items-center gap-1 px-2 text-left text-xs text-muted-foreground hover:text-sidebar-foreground"
+        onClick={() => onToggleCollapsed(group.key)}
+      >
+        <Icon
+          name="ChevronDown"
+          className={cn(
+            "size-3 transition-transform",
+            collapsed && "-rotate-90",
+          )}
+        />
+        <span className="truncate">{group.label}</span>
+        <span className="ml-auto tabular-nums">{group.sessions.length}</span>
+      </button>
+      {collapsed ? null : (
+        <SidebarMenu className="gap-0.5">
+          {group.sessions.map((session) => (
+            <NativeSessionRow
+              key={session.providerThreadId}
+              adopt={adopt}
+              isPinned={pinnedIds.has(session.providerThreadId)}
+              now={now}
+              onTogglePinned={onTogglePinned}
+              session={session}
+            />
+          ))}
+        </SidebarMenu>
+      )}
+    </div>
+  );
+}
 
 export function NativeCodexSidebar({
   onNavigate,
@@ -32,6 +287,16 @@ export function NativeCodexSidebar({
 }) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
+  const [organization, setOrganization] = useState<ThreadOrganization>(
+    readThreadOrganization,
+  );
+  const [pinnedIds, setPinnedIds] = useState<ReadonlySet<string>>(
+    () => new Set(readStoredStringArray(PINNED_THREAD_IDS_STORAGE_KEY)),
+  );
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(
+    () => new Set(readStoredStringArray(COLLAPSED_GROUPS_STORAGE_KEY)),
+  );
+  const [now] = useState(Date.now);
   const [debouncedSearchTerm] = useDebounceValue(
     searchTerm,
     SEARCH_DEBOUNCE_MS,
@@ -42,8 +307,8 @@ export function NativeCodexSidebar({
     limit: 100,
     searchTerm: debouncedSearchTerm,
   });
-  const adopt = useMutation({
-    mutationFn: async (session: NativeSession) => {
+  const adopt = useMutation<AdoptNativeThreadResponse, Error, NativeSession>({
+    mutationFn: async (session) => {
       if (sessions.hostId === null || session.cwd === null) {
         throw new Error("This session has no usable working directory");
       }
@@ -63,23 +328,121 @@ export function NativeCodexSidebar({
       );
     },
   });
-  const pendingSessionId = adopt.isPending
-    ? adopt.variables?.providerThreadId
-    : null;
-  const failedSessionId = adopt.isError
-    ? adopt.variables?.providerThreadId
-    : null;
   const searchIsSettling = searchTerm.trim() !== debouncedSearchTerm.trim();
+  const sortedSessions = useMemo(
+    () =>
+      [...sessions.sessions].sort(
+        (left, right) => getSessionTimestamp(right) - getSessionTimestamp(left),
+      ),
+    [sessions.sessions],
+  );
+  const pinnedSessions = sortedSessions.filter((session) =>
+    pinnedIds.has(session.providerThreadId),
+  );
+  const unpinnedSessions = sortedSessions.filter(
+    (session) => !pinnedIds.has(session.providerThreadId),
+  );
+  const groups = useMemo(() => {
+    const sessionGroups = groupSessions({
+      organization,
+      sessions: unpinnedSessions,
+      now,
+    });
+    return pinnedSessions.length === 0
+      ? sessionGroups
+      : [
+          {
+            key: "pinned",
+            label: "Pinned",
+            sessions: pinnedSessions,
+          },
+          ...sessionGroups,
+        ];
+  }, [now, organization, pinnedSessions, unpinnedSessions]);
+
+  const togglePinned = (session: NativeSession) => {
+    setPinnedIds((current) => {
+      const next = new Set(current);
+      if (next.has(session.providerThreadId)) {
+        next.delete(session.providerThreadId);
+      } else {
+        next.add(session.providerThreadId);
+      }
+      writeStoredStringArray(PINNED_THREAD_IDS_STORAGE_KEY, next);
+      return next;
+    });
+  };
+  const toggleCollapsed = (key: string) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      writeStoredStringArray(COLLAPSED_GROUPS_STORAGE_KEY, next);
+      return next;
+    });
+  };
+  const chooseOrganization = (next: ThreadOrganization) => {
+    setOrganization(next);
+    window.localStorage.setItem(THREAD_ORGANIZATION_STORAGE_KEY, next);
+  };
 
   return (
-    <section
+    <nav
       data-testid="native-codex-sidebar"
-      className="shrink-0 px-2 group-data-[collapsible=icon]:hidden"
+      aria-label="Codex threads"
+      className="min-h-0 flex-1 overflow-y-auto px-2 group-data-[collapsible=icon]:hidden"
     >
-      <div className="flex h-8 items-center gap-2 pl-2 pr-1">
-        <span className={cn(CHROME_SECTION_LABEL_CLASS, "min-w-0 flex-1")}>
-          Codex sessions
+      <div className="flex h-8 items-center gap-1 pl-2 pr-1">
+        <span
+          className={cn(
+            CHROME_SECTION_LABEL_CLASS,
+            "min-w-0 flex-1 text-muted-foreground",
+          )}
+        >
+          Threads
         </span>
+        <span className="text-[10px] text-muted-foreground">Codex</span>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Thread display options"
+              className="size-7 text-muted-foreground"
+            >
+              <Icon name="SlidersHorizontal" className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" mobileTitle="Thread display options">
+            <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
+              Organize
+            </DropdownMenuLabel>
+            <DropdownMenuGroup aria-label="Organize">
+              <DropdownMenuCheckboxItem
+                checked={organization === "chronological"}
+                onCheckedChange={() => chooseOrganization("chronological")}
+              >
+                Chronologically
+              </DropdownMenuCheckboxItem>
+              <DropdownMenuCheckboxItem
+                checked={organization === "project"}
+                onCheckedChange={() => chooseOrganization("project")}
+              >
+                By project
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className={CHROME_SECTION_LABEL_CLASS}>
+              Provider
+            </DropdownMenuLabel>
+            <DropdownMenuGroup>
+              <DropdownMenuCheckboxItem checked disabled>
+                Codex
+              </DropdownMenuCheckboxItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button
           asChild
           type="button"
@@ -106,8 +469,8 @@ export function NativeCodexSidebar({
         <Input
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.currentTarget.value)}
-          aria-label="Search Codex sessions"
-          placeholder="Search Codex sessions"
+          aria-label="Search Codex threads"
+          placeholder="Search threads"
           className="h-8 border-sidebar-border bg-sidebar pl-8 pr-8 text-xs"
         />
         {searchIsSettling ? (
@@ -121,84 +484,56 @@ export function NativeCodexSidebar({
 
       {sessions.hostIsPending ? (
         <p className="px-2 py-1 text-xs text-muted-foreground">
-          Loading Codex sessions…
+          Loading Codex threads…
         </p>
       ) : sessions.hostId === null ? (
         <p className="px-2 py-1 text-xs text-muted-foreground">
-          Connect this machine to list Codex sessions.
+          Connect this machine to list Codex threads.
         </p>
       ) : sessions.isPending ? (
         <p className="px-2 py-1 text-xs text-muted-foreground">
-          Loading Codex sessions…
+          Loading Codex threads…
         </p>
       ) : sessions.isError ? (
         <p className="px-2 py-1 text-xs text-destructive">
-          Could not load Codex sessions.
+          Could not load Codex threads.
         </p>
       ) : sessions.sessions.length === 0 ? (
         <p className="px-2 py-1 text-xs text-muted-foreground">
           {debouncedSearchTerm.trim()
-            ? "No matching Codex sessions."
-            : "No Codex sessions found."}
+            ? "No matching Codex threads."
+            : "No Codex threads found."}
         </p>
       ) : (
-        <SidebarMenu className="gap-0.5">
-          {sessions.sessions.map((session) => {
-            const disabled = session.cwd === null || adopt.isPending;
-            const isOpening = pendingSessionId === session.providerThreadId;
-            const didFail = failedSessionId === session.providerThreadId;
-            const title = session.title ?? "Untitled session";
-            return (
-              <SidebarMenuItem key={session.providerThreadId}>
+        <div className="space-y-1">
+          {groups.map((group) => (
+            <NativeSessionSection
+              key={group.key}
+              adopt={adopt}
+              collapsed={collapsedGroups.has(group.key)}
+              group={group}
+              now={now}
+              pinnedIds={pinnedIds}
+              onToggleCollapsed={toggleCollapsed}
+              onTogglePinned={togglePinned}
+            />
+          ))}
+          {sessions.hasNextPage ? (
+            <SidebarMenu>
+              <SidebarMenuItem>
                 <SidebarMenuButton
                   type="button"
-                  disabled={disabled}
-                  aria-label={`${title}${session.cwd ? `, ${session.cwd}` : ", working directory unavailable"}`}
-                  className={cn(
-                    "h-auto min-h-8 items-start py-1.5",
-                    didFail && "text-destructive",
-                  )}
-                  onClick={() => adopt.mutate(session)}
+                  disabled={sessions.isFetchingNextPage}
+                  className="justify-center text-xs text-muted-foreground"
+                  onClick={() => void sessions.fetchNextPage()}
                 >
-                  <Icon
-                    name={isOpening ? "Spinner" : "MessageSquare"}
-                    className={cn(
-                      "mt-0.5 size-3.5 text-muted-foreground",
-                      isOpening && "animate-spin",
-                    )}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{title}</span>
-                    <span
-                      className="block truncate text-[11px] text-muted-foreground"
-                      title={session.cwd ?? "Working directory unavailable"}
-                    >
-                      {didFail
-                        ? getMutationErrorMessage({
-                            error: adopt.error,
-                            fallbackMessage: "Could not open. Click to retry.",
-                          })
-                        : (session.cwd ?? "Working directory unavailable")}
-                    </span>
-                  </span>
+                  {sessions.isFetchingNextPage ? "Loading…" : "Load more"}
                 </SidebarMenuButton>
               </SidebarMenuItem>
-            );
-          })}
-          {sessions.hasNextPage ? (
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                type="button"
-                disabled={sessions.isFetchingNextPage}
-                className="justify-center text-xs text-muted-foreground"
-                onClick={() => void sessions.fetchNextPage()}
-              >
-                {sessions.isFetchingNextPage ? "Loading…" : "Load more"}
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            </SidebarMenu>
           ) : null}
-        </SidebarMenu>
+        </div>
       )}
-    </section>
+    </nav>
   );
 }
