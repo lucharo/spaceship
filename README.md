@@ -44,6 +44,12 @@ follow-up work.
 See [Native session architecture](docs/spaceship-native-sessions.md) for the
 authority and privacy model.
 
+## Core features
+
+Short product specs live in [`features/`](features/README.md). They define what
+Spaceship should expose by default and which provider-owned state must remain
+authoritative.
+
 ## Use Spaceship
 
 Packaged Spaceship releases are not published yet. Run the inherited BB app
