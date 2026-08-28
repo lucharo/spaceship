@@ -8,7 +8,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 
-const codexTurnStatusSchema = z.enum([
+export const codexTurnStatusSchema = z.enum([
   "completed",
   "failed",
   "interrupted",
@@ -69,6 +69,18 @@ const codexUserInputSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("localImage"),
+      path: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("audio"),
+      url: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("localAudio"),
       path: z.string(),
     })
     .passthrough(),

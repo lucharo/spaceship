@@ -10,7 +10,11 @@ import {
   applyEnvironmentLifecycleEvent,
   requireEnvironmentLifecycleEventApplied,
 } from "@bb/db/internal-environment-lifecycle";
-import { adoptNativeThreadResponseSchema } from "@bb/server-contract";
+import { turnScope } from "@bb/domain";
+import {
+  adoptNativeThreadResponseSchema,
+  threadTimelineResponseSchema,
+} from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
 import {
   listQueuedCommands,
@@ -79,6 +83,119 @@ async function postAdoptNativeThread(
 }
 
 describe("public native thread adoption", () => {
+  it("projects native provider history on demand without copying it into bb storage", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-history",
+      });
+      const providerThreadId = "native-thread-history";
+      const adoptionResponse = await postAdoptNativeThread(harness, {
+        hostId: host.id,
+        providerId: "codex",
+        providerThreadId,
+      });
+      expect(adoptionResponse.status).toBe(200);
+      const adopted = adoptNativeThreadResponseSchema.parse(
+        await readJson(adoptionResponse),
+      );
+
+      const timelineResponsePromise = harness.app.request(
+        `/api/v1/threads/${adopted.thread.id}/timeline`,
+      );
+      const history = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          (command as { type: string }).type ===
+            "provider.native_sessions.history" &&
+          "providerThreadId" in command &&
+          command.providerThreadId === providerThreadId,
+      );
+      await reportQueuedCommandSuccess(
+        harness,
+        history as never,
+        {
+          session: {
+            providerThreadId,
+            title: "Recovered session",
+            cwd: "/tmp/native-adoption",
+            createdAt: 1_777_000_000,
+            updatedAt: 1_777_000_100,
+            archived: false,
+            source: "cli",
+          },
+          events: [
+            {
+              createdAt: 1_777_000_010_000,
+              event: {
+                type: "turn/started",
+                threadId: adopted.thread.id,
+                providerThreadId,
+                scope: turnScope("native-turn-1"),
+              },
+            },
+            {
+              createdAt: 1_777_000_011_000,
+              event: {
+                type: "item/completed",
+                threadId: adopted.thread.id,
+                providerThreadId,
+                scope: turnScope("native-turn-1"),
+                item: {
+                  type: "userMessage",
+                  id: "native-user-1",
+                  content: [{ type: "text", text: "Synthetic question" }],
+                },
+              },
+            },
+            {
+              createdAt: 1_777_000_012_000,
+              event: {
+                type: "item/completed",
+                threadId: adopted.thread.id,
+                providerThreadId,
+                scope: turnScope("native-turn-1"),
+                item: {
+                  type: "agentMessage",
+                  id: "native-agent-1",
+                  text: "Synthetic answer",
+                },
+              },
+            },
+            {
+              createdAt: 1_777_000_013_000,
+              event: {
+                type: "turn/completed",
+                threadId: adopted.thread.id,
+                providerThreadId,
+                scope: turnScope("native-turn-1"),
+                status: "completed",
+              },
+            },
+          ],
+        } as never,
+      );
+
+      const timelineResponse = await timelineResponsePromise;
+      expect(timelineResponse.status).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(timelineResponse),
+      );
+      expect(timeline.rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: "turn", turnId: "native-turn-1" }),
+        ]),
+      );
+
+      const storedEventsResponse = await harness.app.request(
+        `/api/v1/threads/${adopted.thread.id}/events?limit=100&order=asc`,
+      );
+      expect(storedEventsResponse.status).toBe(200);
+      expect(await readJson(storedEventsResponse)).toEqual([
+        expect.objectContaining({ type: "thread/identity" }),
+      ]);
+    });
+  });
+
   it("links one local thread to a native provider session idempotently", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

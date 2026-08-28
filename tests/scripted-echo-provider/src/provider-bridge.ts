@@ -1083,7 +1083,7 @@ const handlers: Record<string, RequestHandler> = {
         grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
         steerMode: "inject",
         skills: { configure: true },
-        nativeSessions: { list: true, read: true },
+        nativeSessions: { list: true, read: true, history: false },
       },
     });
   },

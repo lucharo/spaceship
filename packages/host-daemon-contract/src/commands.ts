@@ -21,6 +21,7 @@ import {
   jsonObjectSchema,
   jsonValueSchema,
   providerNativeRootSetSchema,
+  threadEventSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_LIMIT_MAX,
@@ -41,6 +42,7 @@ import {
   providerHealthResultSchema,
   nativeSessionListParamsSchema,
   nativeSessionListResultSchema,
+  nativeSessionSummarySchema,
   nativeSessionReadParamsSchema,
   nativeSessionReadResultSchema,
   providerInstallationStatusSchema,
@@ -966,6 +968,26 @@ const providerNativeSessionsReadCommandSchema = z
     ...nativeSessionReadParamsSchema.shape,
   })
   .strict();
+
+const providerNativeSessionsHistoryCommandSchema = z
+  .object({
+    type: z.literal("provider.native_sessions.history"),
+    providerId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    threadId: z.string().min(1),
+    ...nativeSessionReadParamsSchema.shape,
+  })
+  .strict();
+
+export const providerNativeSessionHistoryResultSchema = z.object({
+  session: nativeSessionSummarySchema,
+  events: z.array(
+    z.object({
+      createdAt: z.number().int().nonnegative(),
+      event: threadEventSchema,
+    }),
+  ),
+});
 
 const providerHealthCommandSchema = z
   .object({
@@ -1996,6 +2018,15 @@ export const hostDaemonCommandRegistry = {
     type: "provider.native_sessions.read",
     schema: providerNativeSessionsReadCommandSchema,
     resultSchema: nativeSessionReadResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.native_sessions.history": defineHostDaemonCommandDescriptor({
+    type: "provider.native_sessions.history",
+    schema: providerNativeSessionsHistoryCommandSchema,
+    resultSchema: providerNativeSessionHistoryResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

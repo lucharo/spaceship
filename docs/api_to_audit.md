@@ -1592,6 +1592,30 @@ one toast.
    focus order, and the mobile close behavior when a plugin owns the markup —
    `onNavigate` is currently the plugin's responsibility to call.
 
+## `experimental_NativeSessionThreadList` (`@get-bb/plugin-sdk/app`)
+
+**Introduced experimental (2026-08-28).** The Codex provider is the first
+consumer; additional native providers have not yet tested the generic shape.
+
+**What it does.** Gives a provider plugin BB's host-rendered native-session
+thread list. The plugin supplies a provider id and label; the host owns
+metadata discovery, its last-known local cache, grouping, search, pinning,
+adoption, navigation, archive actions, and the privacy rule that transcript
+history is fetched only after a row is opened. Provider history remains in the
+native store and is projected on demand rather than copied into BB events.
+
+**Audit before stabilizing.**
+
+1. **Provider-neutral vocabulary.** Exercise a second provider and confirm the
+   current metadata shape, archive semantics, and labels are genuinely shared.
+2. **Cache lifecycle.** Confirm the last-known browser cache should remain
+   client-local and whether providers need an explicit invalidation signal.
+3. **Action surface.** Confirm open, pin, and archive are the correct common
+   actions before adding provider-specific actions to this component.
+4. **Ownership.** Confirm a host-rendered deep module selected by the provider
+   plugin is preferable to exposing low-level native-session queries and
+   mutations independently to every plugin.
+
 ## AI services (`bb.experimental_aiServices.register`, `@get-bb/plugin-sdk/ai-services`)
 
 **Kept experimental (2026-08-22).** one consumer (the codex plugin); the 5 MB plugin-served transcription cap (the old direct path allowed 25 MB) and the host-pull alternative are still open; the reserved-id model is now one static SDK list (`SERVER_DIRECT_AI_SERVICE_IDS`), pinned to pi-ai's provider registry by plugin-ai-services.test.ts.

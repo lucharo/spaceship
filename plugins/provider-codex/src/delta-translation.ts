@@ -23,6 +23,7 @@ import {
   type DeltaItemShape,
   type DeltaPresentation,
   type ProviderRawEvent,
+  type PromptInput,
   type ThreadDelta,
   type ThreadEventItemStatus,
   type ThreadEventTurnStatus,
@@ -107,6 +108,32 @@ export function createCodexEventTranslationState(): CodexEventTranslationState {
     injectedToolsByName: new Map(),
     retryErrorsByTurnKey: new Map(),
   };
+}
+
+function codexUserInputToPromptInput(
+  input: Extract<
+    CodexHandledThreadItem,
+    { type: "userMessage" }
+  >["content"][number],
+): PromptInput {
+  switch (input.type) {
+    case "text":
+      return { type: "text", text: input.text, mentions: [] };
+    case "image":
+      return { type: "image", url: input.url };
+    case "localImage":
+      return { type: "localImage", path: input.path };
+    case "audio":
+      return { type: "text", text: `[Audio: ${input.url}]`, mentions: [] };
+    case "localAudio":
+      return { type: "localFile", path: input.path };
+    case "skill":
+      return { type: "text", text: `/${input.name}`, mentions: [] };
+    case "mention":
+      return { type: "text", text: `@${input.name}`, mentions: [] };
+    default:
+      return assertNever(input);
+  }
 }
 
 export function setCodexInjectedTools(
@@ -933,6 +960,40 @@ function translateCodexItemShape(
     default:
       return assertNever(parsedItem);
   }
+}
+
+/** Translate one item from an explicitly opened native Codex history. */
+export function translateCodexHistoryItemToDeltas(
+  item: unknown,
+  state: CodexEventTranslationState,
+  providerTurnId: string,
+): ThreadDelta[] {
+  const parsed = codexHandledThreadItemSchema.safeParse(item);
+  if (!parsed.success) return [];
+  if (parsed.data.type === "userMessage") {
+    if (parsed.data.content.length === 0) return [];
+    return [
+      {
+        kind: "input.provider",
+        content: parsed.data.content.map(codexUserInputToPromptInput),
+        providerTurnId,
+      },
+    ];
+  }
+
+  const translation = translateCodexItemShape(parsed.data, state);
+  if (translation.kind !== "translated") return [];
+  return [
+    {
+      kind: "item.close",
+      key: { providerItemId: parsed.data.id },
+      status: translation.status,
+      ...(translation.approvalDenied ? { approvalStatus: "denied" } : {}),
+      item: translation.shape,
+      presentation: translation.presentation,
+      providerTurnId,
+    },
+  ];
 }
 
 export function translateCodexEventToDeltas(

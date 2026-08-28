@@ -19,6 +19,7 @@ import type {
   ProviderHealthResult,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
+  NativeSessionHistoryResult,
   NativeSessionListResult,
   NativeSessionReadResult,
   ProviderUsageResult,
@@ -385,6 +386,20 @@ export interface ReadNativeSessionArgs {
   providerThreadId: string;
 }
 
+export interface ReadNativeSessionHistoryArgs extends ReadNativeSessionArgs {
+  threadId: string;
+}
+
+export interface AgentRuntimeNativeSessionHistoryEvent {
+  createdAt: number;
+  event: ThreadEvent;
+}
+
+export interface AgentRuntimeNativeSessionHistoryResult {
+  session: NativeSessionHistoryResult["session"];
+  events: AgentRuntimeNativeSessionHistoryEvent[];
+}
+
 interface ProviderMaintenanceArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
@@ -440,6 +455,10 @@ export interface AgentRuntime {
   readNativeSession(
     args: ReadNativeSessionArgs,
   ): Promise<NativeSessionReadResult>;
+
+  readNativeSessionHistory?(
+    args: ReadNativeSessionHistoryArgs,
+  ): Promise<AgentRuntimeNativeSessionHistoryResult>;
 
   providerHealth(args: ProviderMaintenanceArgs): Promise<ProviderHealthResult>;
 

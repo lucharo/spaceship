@@ -35,7 +35,9 @@
     },
     "input.provider": {
       "kind": "required",
-      "text": "required",
+      "text": "optional",
+      "content": "optional",
+      "providerTurnId": "optional",
       "parentRef": "optional"
     },
     "item.close": {
@@ -300,6 +302,7 @@
   "requestMethods": [
     "initialize",
     "model/list",
+    "native/session/history",
     "native/session/list",
     "native/session/read",
     "provider/health",

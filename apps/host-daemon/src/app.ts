@@ -786,6 +786,18 @@ export async function createHostDaemonApp(
         (runtime) => runtime.readNativeSession(args),
       );
     },
+    readNativeSessionHistory: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => {
+          if (runtime.readNativeSessionHistory === undefined) {
+            throw new Error("Native session history is unavailable");
+          }
+          return runtime.readNativeSessionHistory(args);
+        },
+      );
+    },
     providerHealth: async (args) => {
       await refreshRuntimeShellEnv();
       return runtimeManager.withProviderMaintenanceRuntime(

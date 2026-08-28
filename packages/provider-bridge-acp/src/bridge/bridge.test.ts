@@ -618,7 +618,7 @@ describe("acp bridge", () => {
       capabilities: {
         fork: "tip",
         approvalEnforcedBy: "runtime",
-        nativeSessions: { list: false, read: false },
+        nativeSessions: { list: false, read: false, history: false },
       },
     });
 

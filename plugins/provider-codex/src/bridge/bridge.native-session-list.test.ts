@@ -47,7 +47,11 @@ it("lists Codex sessions as metadata without leaking previews, paths, or turns",
     grammarVersions: [3, 3],
   });
   await expect(harness.waitForResponse(1)).resolves.toMatchObject({
-    result: { capabilities: { nativeSessions: { list: true, read: true } } },
+    result: {
+      capabilities: {
+        nativeSessions: { list: true, read: true, history: true },
+      },
+    },
   });
 
   harness.sendRequest(2, "native/session/list", {
@@ -105,6 +109,47 @@ it("reads authoritative active-session metadata without returning transcript fie
       source: "cli",
     },
   });
+  expect(readdirSync(recordingDir)).toEqual([]);
+});
+
+it("reads native history only when explicitly requested", async () => {
+  harness.sendRequest(1, "initialize", {
+    protocolVersion: 2,
+    client: { name: "test", version: "1" },
+    grammarVersions: [3, 3],
+  });
+  await harness.waitForResponse(1);
+
+  harness.sendRequest(2, "native/session/history", {
+    providerThreadId: "codex-native-1",
+  });
+
+  const response = await harness.waitForResponse(2);
+  expect(response).toMatchObject({
+    result: {
+      session: {
+        providerThreadId: "codex-native-1",
+        archived: false,
+      },
+      turns: [
+        {
+          providerTurnId: "private-turn",
+          deltas: [
+            { kind: "turn.open", providerTurnId: "private-turn" },
+            { kind: "input.provider", providerTurnId: "private-turn" },
+            { kind: "item.close", providerTurnId: "private-turn" },
+            {
+              kind: "turn.boundary",
+              providerTurnId: "private-turn",
+              status: "completed",
+            },
+          ],
+        },
+      ],
+    },
+  });
+  expect(JSON.stringify(response)).not.toContain("private preview");
+  expect(JSON.stringify(response)).not.toContain("/private/rollout.jsonl");
   expect(readdirSync(recordingDir)).toEqual([]);
 });
 

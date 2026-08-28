@@ -29,7 +29,7 @@ describe("handshake", () => {
       threadArchive: false,
       threadRename: false,
       threadGoalClear: false,
-      nativeSessions: { list: false, read: false },
+      nativeSessions: { list: false, read: false, history: false },
       fork: "none",
       approvalEnforcedBy: "runtime",
     });
@@ -48,9 +48,13 @@ describe("handshake", () => {
 
   it("advertises native session discovery explicitly", () => {
     const parsed = bridgeCapabilitiesSchema.parse({
-      nativeSessions: { list: true, read: true },
+      nativeSessions: { list: true, read: true, history: true },
     });
-    expect(parsed.nativeSessions).toEqual({ list: true, read: true });
+    expect(parsed.nativeSessions).toEqual({
+      list: true,
+      read: true,
+      history: true,
+    });
   });
 });
 

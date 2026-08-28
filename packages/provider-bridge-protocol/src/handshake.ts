@@ -144,8 +144,9 @@ export const bridgeCapabilitiesSchema = z
       .object({
         list: z.boolean().default(false),
         read: z.boolean().default(false),
+        history: z.boolean().default(false),
       })
-      .default({ list: false, read: false }),
+      .default({ list: false, read: false, history: false }),
   })
   .passthrough();
 

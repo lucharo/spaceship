@@ -15,21 +15,31 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { sdk } from "@/lib/sdk";
+import {
+  nativeSessionCacheKey,
+  writeLastNativeSessionHostId,
+  writeCachedNativeSessions,
+} from "@/lib/native-session-cache";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { NativeCodexSidebar } from "./NativeCodexSidebar";
+import { NativeSessionThreadList } from "./NativeCodexSidebar";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
     providers: { nativeSessions: vi.fn() },
-    threads: { adoptNative: vi.fn() },
+    threads: { adoptNative: vi.fn(), archiveAll: vi.fn() },
   },
 }));
 
+const systemConfigResult: {
+  data: { primaryHostId: string } | undefined;
+  isPending: boolean;
+} = {
+  data: { primaryHostId: "host_primary" },
+  isPending: false,
+};
+
 vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({
-    data: { primaryHostId: "host_primary" },
-    isPending: false,
-  }),
+  useSystemConfig: () => systemConfigResult,
 }));
 
 vi.mock("usehooks-ts", () => ({
@@ -95,7 +105,15 @@ function renderSidebar() {
       <QueryWrapper>
         <SidebarProvider>
           <Routes>
-            <Route path="/" element={<NativeCodexSidebar />} />
+            <Route
+              path="/"
+              element={
+                <NativeSessionThreadList
+                  providerId="codex"
+                  providerLabel="Codex"
+                />
+              }
+            />
             <Route
               path="/projects/:projectId/threads/:threadId"
               element={<LocationPath />}
@@ -109,6 +127,8 @@ function renderSidebar() {
 
 beforeEach(() => {
   window.localStorage.clear();
+  systemConfigResult.data = { primaryHostId: "host_primary" };
+  systemConfigResult.isPending = false;
 });
 
 afterEach(() => {
@@ -117,7 +137,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("NativeCodexSidebar", () => {
+describe("NativeSessionThreadList", () => {
   it("lists native metadata in the main sidebar and opens the selected session", async () => {
     vi.mocked(sdk.providers.nativeSessions).mockResolvedValue(nativeSessions);
     vi.mocked(sdk.threads.adoptNative).mockResolvedValue(adoptedThread);
@@ -247,10 +267,79 @@ describe("NativeCodexSidebar", () => {
     expect(screen.getByText("Pinned")).toBeTruthy();
     expect(
       JSON.parse(
-        window.localStorage.getItem("spaceship.sidebar.pinnedCodexThreadIds") ??
-          "[]",
+        window.localStorage.getItem(
+          "spaceship.sidebar.codex.pinnedThreadIds",
+        ) ?? "[]",
       ),
     ).toEqual(["native-thread-1"]);
     expect(sdk.threads.adoptNative).not.toHaveBeenCalled();
+  });
+
+  it("archives a native thread through the provider-backed thread lifecycle", async () => {
+    vi.mocked(sdk.providers.nativeSessions).mockResolvedValue(nativeSessions);
+    vi.mocked(sdk.threads.adoptNative).mockResolvedValue(adoptedThread);
+    vi.mocked(sdk.threads.archiveAll).mockResolvedValue({
+      ok: true,
+      archivedThreadIds: [adoptedThread.thread.id],
+    });
+
+    renderSidebar();
+    await screen.findByText("Recover a native session");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Archive Recover a native session" }),
+    );
+
+    await waitFor(() =>
+      expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
+        threadId: adoptedThread.thread.id,
+      }),
+    );
+  });
+
+  it("paints cached native metadata before the live refresh completes", async () => {
+    writeCachedNativeSessions(
+      nativeSessionCacheKey({
+        providerId: "codex",
+        hostId: "host_primary",
+        archived: false,
+      }),
+      nativeSessions,
+    );
+    vi.mocked(sdk.providers.nativeSessions).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+
+    renderSidebar();
+
+    expect(await screen.findByText("Recover a native session")).toBeTruthy();
+    expect(sdk.providers.nativeSessions).toHaveBeenCalledTimes(1);
+  });
+
+  it("replays the last host cache while system configuration loads", async () => {
+    writeLastNativeSessionHostId("codex", "host_primary");
+    writeCachedNativeSessions(
+      nativeSessionCacheKey({
+        providerId: "codex",
+        hostId: "host_primary",
+        archived: false,
+      }),
+      nativeSessions,
+    );
+    systemConfigResult.data = undefined;
+    systemConfigResult.isPending = true;
+    vi.mocked(sdk.providers.nativeSessions).mockImplementation(
+      () => new Promise(() => undefined),
+    );
+
+    renderSidebar();
+
+    expect(screen.getByText("Recover a native session")).toBeTruthy();
+    expect(screen.queryByText("Loading Codex threads…")).toBeNull();
+    expect(
+      screen.getByRole<HTMLButtonElement>("button", {
+        name: /^Recover a native session,/u,
+      }).disabled,
+    ).toBe(true);
+    expect(sdk.providers.nativeSessions).not.toHaveBeenCalled();
   });
 });

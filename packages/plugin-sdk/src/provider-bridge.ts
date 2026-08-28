@@ -92,6 +92,8 @@ export {
   modelListParamsSchema,
   nativeSessionListParamsSchema,
   nativeSessionListResultSchema,
+  nativeSessionHistoryParamsSchema,
+  nativeSessionHistoryResultSchema,
   nativeSessionReadParamsSchema,
   nativeSessionReadResultSchema,
   nativeSessionSummarySchema,

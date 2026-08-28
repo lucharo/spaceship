@@ -29,6 +29,7 @@ import {
   clientTurnRequestIdSchema,
   extensionKindSchema,
   jsonValueSchema,
+  promptInputSchema,
   providerErrorCategorySchema,
   providerErrorInfoSchema,
   providerRateLimitStateSchema,
@@ -424,11 +425,22 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
    * appended it to its own context without running the agent, so there is no
    * bb turn to attach it to.
    */
-  z.object({
-    kind: z.literal("input.provider"),
-    text: z.string().min(1),
-    parentRef: deltaKeyPartSchema.optional(),
-  }),
+  z
+    .object({
+      kind: z.literal("input.provider"),
+      text: z.string().min(1).optional(),
+      content: z.array(promptInputSchema).min(1).optional(),
+      providerTurnId: providerTurnIdSchema.optional(),
+      parentRef: deltaKeyPartSchema.optional(),
+    })
+    .superRefine((value, ctx) => {
+      if (value.text === undefined && value.content === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "provider input requires text or content",
+        });
+      }
+    }),
 
   /**
    * An explicit provider signal opened work (pi `agent_start`, codex

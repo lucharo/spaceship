@@ -1,4 +1,7 @@
-import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
+import type {
+  AgentRuntimeBridgeLaunch,
+  AgentRuntimeNativeSessionHistoryResult,
+} from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
@@ -79,6 +82,12 @@ export interface CommandDispatchOptions {
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     providerThreadId: string;
   }) => Promise<NativeSessionReadResult>;
+  readNativeSessionHistory?: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    providerThreadId: string;
+    threadId: string;
+  }) => Promise<AgentRuntimeNativeSessionHistoryResult>;
   providerHealth: (args: {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;

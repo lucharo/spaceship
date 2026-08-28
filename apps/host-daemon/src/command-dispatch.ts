@@ -659,6 +659,21 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       providerThreadId: command.providerThreadId,
     });
   },
+  "provider.native_sessions.history": async (command, options) => {
+    if (options.readNativeSessionHistory === undefined) {
+      throw new Error("Native session history is unavailable");
+    }
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return options.readNativeSessionHistory({
+      providerId: command.providerId,
+      bridgeLaunch,
+      providerThreadId: command.providerThreadId,
+      threadId: command.threadId,
+    });
+  },
   "provider.health": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,

@@ -74,6 +74,9 @@ export interface CommandRouterOptions {
   listModels: CommandDispatchOptions["listModels"];
   listNativeSessions: CommandDispatchOptions["listNativeSessions"];
   readNativeSession: CommandDispatchOptions["readNativeSession"];
+  readNativeSessionHistory?: NonNullable<
+    CommandDispatchOptions["readNativeSessionHistory"]
+  >;
   providerHealth: CommandDispatchOptions["providerHealth"];
   providerUsage: CommandDispatchOptions["providerUsage"];
   providerInstallationStatus: CommandDispatchOptions["providerInstallationStatus"];
@@ -301,6 +304,7 @@ export class CommandRouter {
       listModels: this.options.listModels,
       listNativeSessions: this.options.listNativeSessions,
       readNativeSession: this.options.readNativeSession,
+      readNativeSessionHistory: this.options.readNativeSessionHistory,
       providerHealth: this.options.providerHealth,
       providerUsage: this.options.providerUsage,
       providerInstallationStatus: this.options.providerInstallationStatus,

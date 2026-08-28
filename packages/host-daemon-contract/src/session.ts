@@ -445,6 +445,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("provider.list_models"),
     onlineRpcResponseSuccessSchemaFor("provider.native_sessions.list"),
     onlineRpcResponseSuccessSchemaFor("provider.native_sessions.read"),
+    onlineRpcResponseSuccessSchemaFor("provider.native_sessions.history"),
     onlineRpcResponseSuccessSchemaFor("provider.health"),
     onlineRpcResponseSuccessSchemaFor("provider.installation.status"),
     onlineRpcResponseSuccessSchemaFor("provider.installation.run"),

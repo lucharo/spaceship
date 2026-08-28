@@ -47,6 +47,7 @@ import {
   THREAD_DELTA_NOTIFICATION_METHOD,
   initializeParamsSchema,
   modelListParamsSchema,
+  nativeSessionHistoryParamsSchema,
   nativeSessionListParamsSchema,
   nativeSessionReadParamsSchema,
   providerInstallationRunParamsSchema,
@@ -110,6 +111,10 @@ import {
   type CodexEventTranslator,
 } from "../translator.js";
 import {
+  createCodexEventTranslationState,
+  translateCodexHistoryItemToDeltas,
+} from "../delta-translation.js";
+import {
   createCodexAppServerConnection,
   CodexAppServerExitedError,
   type CodexAppServerConnection,
@@ -140,6 +145,10 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("native/session/read"),
     params: nativeSessionReadParamsSchema,
+  }),
+  z.object({
+    method: z.literal("native/session/history"),
+    params: nativeSessionHistoryParamsSchema,
   }),
   z.object({
     method: z.literal("provider/health"),
@@ -1018,6 +1027,29 @@ const codexThreadReadResultSchema = z
   .object({ thread: codexThreadSummarySchema })
   .passthrough();
 
+const codexThreadHistoryResultSchema = z
+  .object({
+    thread: codexThreadSummarySchema.extend({
+      turns: z.array(
+        z
+          .object({
+            id: z.string().min(1),
+            status: z.enum([
+              "completed",
+              "failed",
+              "interrupted",
+              "inProgress",
+            ]),
+            items: z.array(z.unknown()),
+            startedAt: z.number().int().nonnegative().nullable(),
+            completedAt: z.number().int().nonnegative().nullable(),
+          })
+          .passthrough(),
+      ),
+    }),
+  })
+  .passthrough();
+
 async function initializeChild(
   connection: CodexAppServerConnection,
   postInitializeRequests?: readonly ProviderPostInitializeRequest[],
@@ -1500,7 +1532,7 @@ function handleInitialize(id: string | number): void {
       grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
       steerMode: "inject",
       skills: { configure: true },
-      nativeSessions: { list: true, read: true },
+      nativeSessions: { list: true, read: true, history: true },
     },
   };
   sendResult(id, result);
@@ -1534,6 +1566,9 @@ async function handleNativeSessionList(
           method: "thread/list",
           params: {
             archived: params.archived,
+            sortKey: "recency_at",
+            sortDirection: "desc",
+            useStateDbOnly: true,
             ...(params.cursor !== undefined ? { cursor: params.cursor } : {}),
             ...(params.limit !== undefined ? { limit: params.limit } : {}),
             ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
@@ -1589,9 +1624,11 @@ async function findNativeSessionInCatalogue(
       params: {
         archived,
         limit: 100,
+        sortKey: "recency_at",
+        sortDirection: "desc",
+        useStateDbOnly: true,
         ...(cursor !== undefined ? { cursor } : {}),
         ...(thread.cwd !== null ? { cwd: thread.cwd } : {}),
-        ...(thread.name !== null ? { searchTerm: thread.name } : {}),
       },
       resultSchema: codexThreadListResultSchema,
       timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
@@ -1659,6 +1696,85 @@ async function handleNativeSessionRead(
       error instanceof CodexAppServerExitedError && error.spawnFailed
         ? describeCodexLaunchError(error)
         : "Could not read native Codex session metadata",
+    );
+  }
+}
+
+async function handleNativeSessionHistory(
+  id: string | number,
+  params: z.infer<typeof nativeSessionHistoryParamsSchema>,
+): Promise<void> {
+  try {
+    const result = await withMaintenanceChild(
+      async (connection) => {
+        const read = await connection.request({
+          method: "thread/read",
+          params: {
+            threadId: params.providerThreadId,
+            includeTurns: true,
+          },
+          resultSchema: codexThreadHistoryResultSchema,
+          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+        });
+        const active = await findNativeSessionInCatalogue(
+          connection,
+          read.thread,
+          false,
+        );
+        const archived =
+          active === null
+            ? await findNativeSessionInCatalogue(connection, read.thread, true)
+            : null;
+        const catalogueThread = active ?? archived;
+        if (catalogueThread === null) return null;
+        return {
+          archived: active === null,
+          thread: read.thread,
+          catalogueThread,
+        };
+      },
+      { recordProviderIo: false },
+    );
+    if (result === null) {
+      sendError(
+        id,
+        BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+        "native Codex session is missing",
+      );
+      return;
+    }
+
+    const translationState = createCodexEventTranslationState();
+    sendResult(id, {
+      session: toNativeSessionSummary(result.catalogueThread, result.archived),
+      turns: result.thread.turns.map((turn) => ({
+        providerTurnId: turn.id,
+        startedAt: turn.startedAt,
+        completedAt: turn.completedAt,
+        deltas: [
+          { kind: "turn.open", providerTurnId: turn.id },
+          ...turn.items.flatMap((item) =>
+            translateCodexHistoryItemToDeltas(item, translationState, turn.id),
+          ),
+          ...(turn.status === "inProgress"
+            ? []
+            : [
+                {
+                  kind: "turn.boundary" as const,
+                  providerTurnId: turn.id,
+                  status: turn.status,
+                },
+              ]),
+        ],
+      })),
+    });
+  } catch (error) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      error instanceof CodexAppServerExitedError && error.spawnFailed
+        ? describeCodexLaunchError(error)
+        : "Could not read native Codex session history",
     );
   }
 }
@@ -2241,6 +2357,9 @@ async function handleRequest(
       break;
     case "native/session/read":
       await handleNativeSessionRead(request.id, request.params);
+      break;
+    case "native/session/history":
+      await handleNativeSessionHistory(request.id, request.params);
       break;
     case "provider/health":
       sendResult(request.id, await getCodexProviderHealth());

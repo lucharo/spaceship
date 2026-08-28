@@ -1491,7 +1491,11 @@ export function createDeltaAssembler(
       }
 
       case "input.provider": {
-        if (state.currentTurnId === undefined) {
+        const turnId =
+          delta.providerTurnId === undefined
+            ? state.currentTurnId
+            : resolveVouchedTurnId(state, delta.providerTurnId);
+        if (turnId === undefined) {
           return;
         }
         const parentToolCallId = mapParentRef(state, delta.parentRef);
@@ -1499,11 +1503,13 @@ export function createDeltaAssembler(
           type: "item/completed",
           threadId: UNSTAMPED_THREAD_ID,
           providerThreadId: "",
-          scope: turnScope(state.currentTurnId),
+          scope: turnScope(turnId),
           item: {
             type: "userMessage",
             id: mintItemId(),
-            content: [{ type: "text", text: delta.text }],
+            content: delta.content ?? [
+              { type: "text", text: delta.text ?? "" },
+            ],
             ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
           },
         });

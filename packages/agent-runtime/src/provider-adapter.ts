@@ -78,6 +78,10 @@ export type AdapterCommand =
       type: "native/session/read";
       providerThreadId: string;
     }
+  | {
+      type: "native/session/history";
+      providerThreadId: string;
+    }
   | { type: "provider/health"; cwd?: string }
   | { type: "provider/usage"; cwd?: string }
   | {

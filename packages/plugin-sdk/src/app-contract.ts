@@ -139,6 +139,17 @@ export interface PluginThreadListProps {
 }
 
 /**
+ * Props for BB's provider-native session list. The host owns discovery,
+ * caching, adoption, lifecycle actions, and native-session routing; a provider
+ * plugin supplies only its identity and display label.
+ */
+export interface ExperimentalNativeSessionThreadListProps {
+  providerId: string;
+  providerLabel: string;
+  onNavigate?: () => void;
+}
+
+/**
  * Props passed to an `experimental_threadHeaderAction` component, rendered in
  * the thread header's action row.
  */
@@ -2144,6 +2155,12 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md for what to audit before the prefix drops.
    */
   experimental_NewThreadComposer: ComponentType<NewThreadComposerProps>;
+  /**
+   * BB's metadata-first provider-native session list. It reads and resumes
+   * through the provider bridge without copying transcript history into BB.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_NativeSessionThreadList: ComponentType<ExperimentalNativeSessionThreadListProps>;
   /**
    * BB's controlled provider/model/reasoning picker. Provider changes emit
    * only after the new provider's verified defaults and capabilities resolve,

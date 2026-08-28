@@ -1,10 +1,12 @@
 import path from "node:path";
 import {
   getAppSettings,
+  getLastStoredProviderThreadId,
   getLatestThreadSequence,
   getLatestStoredConversationOutlineSequence,
   listQueuedThreadMessages,
 } from "@bb/db";
+import { buildThreadTimelineFromEvents } from "@bb/thread-view";
 import type { Hono } from "hono";
 import {
   PROMPT_HISTORY_ENTRY_LIMIT,
@@ -79,6 +81,7 @@ import {
   parseOptionalInteger,
 } from "../../services/lib/validation.js";
 import { resolveProviderPlanCommand } from "../../services/providers/provider-plan-command.js";
+import { readProviderNativeSessionHistory } from "../../services/system/native-sessions.js";
 import { parsePathKindInclusion } from "../path-list-inclusion.js";
 import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
@@ -320,7 +323,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
   >();
   const CONVERSATION_OUTLINE_CACHE_MAX_ENTRIES = 128;
 
-  get(routes.timeline, (context, query) => {
+  get(routes.timeline, async (context, query) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const page = parseThreadTimelinePage(query);
     const includeNestedRows = query.includeNestedRows === "true";
@@ -338,6 +341,81 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     // because the same `maxSeq` names a different set of rows under a
     // different budget and a client only echoes `afterSequence`.
     const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
+    const firstStoredEvent = listThreadEventRows(deps.db, {
+      threadId: thread.id,
+      limit: 1,
+      order: "asc",
+    })[0];
+    const providerThreadId = getLastStoredProviderThreadId(deps.db, thread.id);
+    if (
+      firstStoredEvent?.type === "thread/identity" &&
+      providerThreadId !== null &&
+      thread.environmentId !== null
+    ) {
+      const environment = requireEnvironment(deps.db, thread.environmentId);
+      const history = await readProviderNativeSessionHistory(deps, {
+        hostId: environment.hostId,
+        providerId: thread.providerId,
+        providerThreadId,
+        threadId: thread.id,
+      });
+      const events = history.events.map(({ createdAt, event }, index) => ({
+        event,
+        meta: {
+          id: `native-history-${index + 1}`,
+          seq: index + 1,
+          createdAt,
+        },
+      }));
+      const timeline = buildThreadTimelineFromEvents({
+        acceptedClientRequestContext: {
+          acceptedClientRequestEvents: [],
+          rejectedClientRequestEvents: [],
+        },
+        contextWindowEvents: events,
+        events,
+        options: {
+          contextOnlyToolCallIds: new Set(),
+          includeNestedRows,
+          includeProviderUnhandledOperations,
+          isLatestPage: page.kind === "latest",
+          planCommand: resolveProviderPlanCommand(
+            deps.providerRegistry,
+            thread.providerId,
+          ),
+          providerDisplayName,
+          providerId: thread.providerId,
+          threadName: thread.title ?? thread.titleFallback ?? "",
+          threadStatus: thread.status,
+          turnMessageDetail: includeNestedRows ? "full" : "summary",
+          workspaceRoot: environment.path,
+        },
+      });
+      const rows = page.kind === "latest" ? timeline.rows : [];
+      const response = {
+        ...timeline,
+        contextWindowUsage: timeline.contextWindowUsage ?? undefined,
+        rows: summaryOnly ? [] : rows,
+        timelinePage: {
+          kind: page.kind,
+          segmentLimit: page.segmentLimit,
+          returnedSegmentCount: rows.filter((row) => row.kind === "turn")
+            .length,
+          hasOlderRows: false,
+          olderCursor: null,
+        },
+        maxSeq: Math.max(maxSeq, history.session.updatedAt),
+      };
+      const truncated = truncateTimelineResponseOutputs(
+        response,
+        DEFAULT_MAX_INLINE_OUTPUT_CHARS,
+      );
+      return context.json(
+        includeNestedRows
+          ? truncated
+          : previewTimelineResponseOutputs(truncated),
+      );
+    }
     const keyArgs = {
       threadId: thread.id,
       status: thread.status,

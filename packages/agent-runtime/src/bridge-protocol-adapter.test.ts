@@ -189,7 +189,7 @@ describe("handshake gating", () => {
     ).toMatchObject({ kind: "noop" });
 
     completeHandshake(adapter, {
-      nativeSessions: { list: true, read: true },
+      nativeSessions: { list: true, read: true, history: true },
     });
     expect(
       adapter.buildCommandPlan({

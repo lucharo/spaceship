@@ -338,6 +338,16 @@ async function handleRequest(message) {
       });
       return;
     case "thread/list":
+      // Codex app-server search does not match the generated display name.
+      // Native identity checks must not use thread.name as searchTerm.
+      if (params.searchTerm === "Release checklist") {
+        respond(id, {
+          data: [],
+          nextCursor: null,
+          backwardsCursor: null,
+        });
+        return;
+      }
       if (
         params.searchTerm === "Archived session" &&
         params.archived === false
@@ -353,7 +363,8 @@ async function handleRequest(message) {
         data: [
           {
             id:
-              params.searchTerm === "Archived session"
+              params.searchTerm === "Archived session" ||
+              (params.archived === true && params.searchTerm == null)
                 ? "codex-archived-1"
                 : "codex-native-1",
             sessionId: "codex-session-1",
@@ -378,10 +389,11 @@ async function handleRequest(message) {
             agentRole: null,
             gitInfo: null,
             name:
-              params.searchTerm === "Archived session"
+              params.searchTerm === "Archived session" ||
+              (params.archived === true && params.searchTerm == null)
                 ? "Archived session"
                 : "Release checklist",
-            turns: [{ id: "private-turn" }],
+            turns: [],
           },
         ],
         nextCursor: "cursor-2",
@@ -425,7 +437,41 @@ async function handleRequest(message) {
             params.threadId === "codex-archived-1"
               ? "Archived session"
               : "Release checklist",
-          turns: [{ id: "private-turn" }],
+          turns: params.includeTurns
+            ? [
+                {
+                  id: "private-turn",
+                  status: "completed",
+                  error: null,
+                  startedAt: 1_777_000_010,
+                  completedAt: 1_777_000_020,
+                  durationMs: 10_000,
+                  itemsView: { type: "all" },
+                  items: [
+                    {
+                      type: "userMessage",
+                      id: "private-user",
+                      clientId: null,
+                      content: [
+                        {
+                          type: "text",
+                          text: "Synthetic native question",
+                          text_elements: [],
+                        },
+                      ],
+                    },
+                    {
+                      type: "agentMessage",
+                      id: "private-agent",
+                      text: "Synthetic native answer",
+                      phase: null,
+                      memoryCitation: null,
+                      delivery: null,
+                    },
+                  ],
+                },
+              ]
+            : [],
         },
       });
       return;

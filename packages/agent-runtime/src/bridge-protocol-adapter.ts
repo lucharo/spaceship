@@ -29,6 +29,7 @@ import {
   initializeResultSchema,
   negotiateGrammarVersion,
   nativeSessionListResultSchema,
+  nativeSessionHistoryResultSchema,
   nativeSessionReadResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
@@ -36,6 +37,7 @@ import {
   threadDeltaNotificationParamsSchema,
   type BridgeCapabilities,
   type NativeSessionListResult,
+  type NativeSessionHistoryResult,
   type NativeSessionReadResult,
 } from "@bb/provider-bridge-protocol";
 import {
@@ -97,6 +99,7 @@ export interface BridgeProtocolAdapter {
     selectedOnlyModels: AvailableModel[];
   };
   parseNativeSessionListResult(result: unknown): NativeSessionListResult;
+  parseNativeSessionHistoryResult(result: unknown): NativeSessionHistoryResult;
   parseNativeSessionReadResult(result: unknown): NativeSessionReadResult;
   /** Assemble a bridge notification into canonical timeline events. */
   translateEvent(event: ProviderRuntimeEvent): ThreadEvent[];
@@ -334,6 +337,18 @@ export function createBridgeProtocolAdapter(
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.nativeSessionRead,
+            params: { providerThreadId: command.providerThreadId },
+          };
+        case "native/session/history":
+          if (!handshake.nativeSessions.history) {
+            return {
+              kind: "noop",
+              reason: "nativeSessions.history not advertised",
+            };
+          }
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.nativeSessionHistory,
             params: { providerThreadId: command.providerThreadId },
           };
         case "provider/health":
@@ -668,6 +683,8 @@ export function createBridgeProtocolAdapter(
     parseModelListResult: parseAvailableModelList,
     parseNativeSessionListResult: (result) =>
       nativeSessionListResultSchema.parse(result),
+    parseNativeSessionHistoryResult: (result) =>
+      nativeSessionHistoryResultSchema.parse(result),
     parseNativeSessionReadResult: (result) =>
       nativeSessionReadResultSchema.parse(result),
 

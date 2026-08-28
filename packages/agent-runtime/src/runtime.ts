@@ -11,12 +11,14 @@ import {
   providerHealthResultSchema,
   providerInstallationRunResultSchema,
   providerInstallationStatusSchema,
+  nativeSessionHistoryResultSchema,
   nativeSessionListResultSchema,
   nativeSessionReadResultSchema,
   providerUsageResultSchema,
   ThreadEventGrammar,
   threadIdentityResultSchema,
 } from "@bb/provider-bridge-protocol";
+import { createDeltaAssembler } from "@bb/provider-bridge-protocol/assembler";
 import {
   JsonRpcResponseError,
   getJsonRpcStringParam,
@@ -2542,6 +2544,59 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         resultSchema: nativeSessionReadResultSchema,
       });
       return proc.adapter.parseNativeSessionReadResult(result);
+    },
+
+    async readNativeSessionHistory({
+      providerId,
+      bridgeLaunch,
+      providerThreadId,
+      threadId,
+    }) {
+      await runtime.ensureProvider({ providerId, bridgeLaunch });
+      const proc = providerProcesses.requireProviderProcess({
+        processKey: resolveProviderProcessKey({ bridgeLaunch, providerId }),
+        providerId,
+      });
+      const command = requireProviderRequestPlan({
+        commandType: "native/session/history",
+        plan: proc.adapter.buildCommandPlan({
+          type: "native/session/history",
+          providerThreadId,
+        }),
+        providerId,
+      });
+      const rawResult = await sendCommand({
+        proc,
+        message: command,
+        resultSchema: nativeSessionHistoryResultSchema,
+      });
+      const result = proc.adapter.parseNativeSessionHistoryResult(rawResult);
+      const assembler = createDeltaAssembler({
+        providerId,
+        entropyPrefix: `native-${providerThreadId}`,
+        textDeltaFlushMs: 0,
+      });
+      return {
+        session: result.session,
+        events: result.turns.flatMap((turn) => {
+          const rawCreatedAt =
+            turn.startedAt ?? turn.completedAt ?? result.session.updatedAt;
+          const createdAt =
+            rawCreatedAt < 100_000_000_000
+              ? rawCreatedAt * 1_000
+              : rawCreatedAt;
+          return assembler
+            .assemble({ threadId, deltas: turn.deltas })
+            .map((event, index) => ({
+              createdAt: createdAt + index,
+              event: stampThreadEventScope({
+                event,
+                providerThreadId,
+                threadId,
+              }),
+            }));
+        }),
+      };
     },
 
     async providerHealth({ providerId, bridgeLaunch, cwd }) {

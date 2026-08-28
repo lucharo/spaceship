@@ -20,6 +20,9 @@
 - Spaceship's default navigation is skills-first and provider-native. Keep
   plugin, automation, mobile, and unavailable-provider surfaces out of the
   primary path unless the user explicitly opens their compatibility routes.
+- Ship each user-facing feature as a standard BB plugin registration wherever
+  possible. Add only generic host seams to BB core; keep provider-specific UI,
+  policy, and behaviour in the owning plugin.
 - Record each design decision in its own underscore-named
   `features/<decision_name>.md` file, keep `features/README.md` as the index,
   and link a tracker issue when implementation is incomplete.

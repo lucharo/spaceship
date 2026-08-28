@@ -7,6 +7,7 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 import { bridgeExecutionOptionsSchema } from "./execution-options.js";
+import { threadDeltaSchema } from "./thread-delta.js";
 
 /**
  * Canonical runtime → bridge request methods. One vocabulary for every
@@ -20,6 +21,7 @@ export const BRIDGE_REQUEST_METHODS = {
   modelList: "model/list",
   nativeSessionList: "native/session/list",
   nativeSessionRead: "native/session/read",
+  nativeSessionHistory: "native/session/history",
   providerHealth: "provider/health",
   providerUsage: "provider/usage",
   providerInstallationStatus: "provider/installation/status",
@@ -74,6 +76,12 @@ export const nativeSessionReadParamsSchema = z.object({
 
 export type NativeSessionReadParams = z.infer<
   typeof nativeSessionReadParamsSchema
+>;
+
+export const nativeSessionHistoryParamsSchema = nativeSessionReadParamsSchema;
+
+export type NativeSessionHistoryParams = z.infer<
+  typeof nativeSessionHistoryParamsSchema
 >;
 
 export const threadStartParamsSchema = z
@@ -235,6 +243,22 @@ export const nativeSessionReadResultSchema = nativeSessionSummarySchema;
 
 export type NativeSessionReadResult = z.infer<
   typeof nativeSessionReadResultSchema
+>;
+
+export const nativeSessionHistoryTurnSchema = z.object({
+  providerTurnId: z.string().min(1),
+  startedAt: z.number().int().nonnegative().nullable(),
+  completedAt: z.number().int().nonnegative().nullable(),
+  deltas: z.array(threadDeltaSchema),
+});
+
+export const nativeSessionHistoryResultSchema = z.object({
+  session: nativeSessionSummarySchema,
+  turns: z.array(nativeSessionHistoryTurnSchema),
+});
+
+export type NativeSessionHistoryResult = z.infer<
+  typeof nativeSessionHistoryResultSchema
 >;
 
 export const nativeSessionListResultSchema = z.object({
