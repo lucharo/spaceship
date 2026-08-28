@@ -975,6 +975,9 @@ export function translateCodexEventToDeltas(
       return [
         { kind: "turn.open", providerTurnId: handledEvent.params.turn.id },
       ];
+    case "hook/started":
+    case "hook/completed":
+      return [];
     case "turn/completed": {
       takeCodexRetryError(state, {
         threadId: handledEvent.params.threadId,

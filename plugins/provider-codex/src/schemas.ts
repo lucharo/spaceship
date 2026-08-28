@@ -814,11 +814,31 @@ export const codexHandledEventSchema = z.discriminatedUnion("method", [
       .passthrough(),
   ),
   createCodexEventSchema(
+    "hook/started",
+    z
+      .object({
+        threadId: z.string(),
+        turnId: z.string().nullable(),
+        run: z.object({ id: z.string() }).passthrough(),
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
     "turn/completed",
     z
       .object({
         threadId: z.string(),
         turn: codexTurnSchema,
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "hook/completed",
+    z
+      .object({
+        threadId: z.string(),
+        turnId: z.string().nullable(),
+        run: z.object({ id: z.string() }).passthrough(),
       })
       .passthrough(),
   ),

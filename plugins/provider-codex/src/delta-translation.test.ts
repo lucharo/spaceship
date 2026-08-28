@@ -215,6 +215,24 @@ describe("codex turn lifecycle translation", () => {
     }
   });
 
+  it("suppresses Codex hook lifecycle notifications", () => {
+    const harness = createHarness();
+
+    for (const method of ["hook/started", "hook/completed"] as const) {
+      expect(
+        harness.translate({
+          jsonrpc: "2.0",
+          method,
+          params: {
+            threadId: "t1",
+            turnId: "turn-1",
+            run: { id: "hook-1" },
+          },
+        }),
+      ).toEqual([]);
+    }
+  });
+
   it("translates a failed turn/completed without claiming a fork checkpoint", () => {
     const harness = createHarness();
     const events = harness.translate(

@@ -138,8 +138,10 @@ const CODEX_NOTIFICATION_COVERAGE = {
   "fuzzyFileSearch/sessionCompleted": "unknown",
   "fuzzyFileSearch/sessionUpdated": "unknown",
   guardianWarning: "unknown",
-  "hook/completed": "unknown",
-  "hook/started": "unknown",
+  // Hook details are provider-internal lifecycle noise. Their resulting item
+  // events already carry anything the user needs to see.
+  "hook/completed": "noise",
+  "hook/started": "noise",
   "item/agentMessage/delta": "normalized",
   // Codex's automatic reviewer lifecycle is internal policy progress. The
   // resulting tool/item lifecycle already carries the actionable outcome.

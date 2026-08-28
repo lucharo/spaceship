@@ -80,4 +80,20 @@ describe("codex visibility raw events", () => {
       coverage: "noise",
     });
   });
+
+  it("classifies hook lifecycle notifications as noise", () => {
+    for (const method of ["hook/started", "hook/completed"] as const) {
+      expect(
+        codexVisibilityMetadata.describeRawEvent({
+          jsonrpc: "2.0",
+          method,
+          params: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            run: { id: "hook-1" },
+          },
+        }),
+      ).toEqual({ kind: method, coverage: "noise" });
+    }
+  });
 });
