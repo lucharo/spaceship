@@ -20,6 +20,6 @@
 - Spaceship's default navigation is skills-first and provider-native. Keep
   plugin, automation, mobile, and unavailable-provider surfaces out of the
   primary path unless the user explicitly opens their compatibility routes.
-- Record each durable product feature in `features/<slug>.md` as a title and one
-  short paragraph, index it in `features/README.md`, and link a tracker issue
-  when the implementation is incomplete.
+- Record each design decision in its own underscore-named
+  `features/<decision_name>.md` file, keep `features/README.md` as the index,
+  and link a tracker issue when implementation is incomplete.
