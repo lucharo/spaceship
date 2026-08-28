@@ -100,6 +100,7 @@ interface CodexEventTranslationState {
    */
   injectedToolsByName: Map<string, CodexInjectedTool>;
   retryErrorsByTurnKey: Map<string, CodexRetryErrorContext>;
+  citationBuffersByItemKey: Map<string, string>;
 }
 
 export function createCodexEventTranslationState(): CodexEventTranslationState {
@@ -107,7 +108,64 @@ export function createCodexEventTranslationState(): CodexEventTranslationState {
     rateLimits: null,
     injectedToolsByName: new Map(),
     retryErrorsByTurnKey: new Map(),
+    citationBuffersByItemKey: new Map(),
   };
+}
+
+const CODEX_CITATION_START = "\uE200";
+const CODEX_CITATION_SEPARATOR = "\uE202";
+const CODEX_CITATION_END = "\uE201";
+const CODEX_CITATION_PATTERN = /\uE200cite((?:\uE202[^\uE201]+)+)\uE201/gu;
+
+/**
+ * Codex Desktop renders these private-use markers as source chips. bb does not
+ * yet receive enough source metadata to reproduce those links, so retain the
+ * reference count while hiding opaque app-server ids and control glyphs.
+ */
+export function normalizeCodexCitationText(text: string): string {
+  return text.replace(CODEX_CITATION_PATTERN, (_marker, body: string) => {
+    const count = body
+      .split(CODEX_CITATION_SEPARATOR)
+      .filter((reference) => reference.length > 0).length;
+    if (count === 0) return "";
+    const label = count === 1 ? "Source" : "Sources";
+    const ordinals = Array.from({ length: count }, (_, index) => index + 1);
+    return `[${label}: ${ordinals.join(", ")}]`;
+  });
+}
+
+function citationBufferKey(turnId: string, itemId: string): string {
+  return `${turnId}\0${itemId}`;
+}
+
+function normalizeCodexCitationDelta(
+  state: CodexEventTranslationState,
+  turnId: string,
+  itemId: string,
+  delta: string,
+): string {
+  const key = citationBufferKey(turnId, itemId);
+  let pending = (state.citationBuffersByItemKey.get(key) ?? "") + delta;
+  let output = "";
+
+  while (pending.length > 0) {
+    const start = pending.indexOf(CODEX_CITATION_START);
+    if (start === -1) {
+      state.citationBuffersByItemKey.delete(key);
+      return output + pending;
+    }
+    output += pending.slice(0, start);
+    const end = pending.indexOf(CODEX_CITATION_END, start + 1);
+    if (end === -1) {
+      state.citationBuffersByItemKey.set(key, pending.slice(start));
+      return output;
+    }
+    output += normalizeCodexCitationText(pending.slice(start, end + 1));
+    pending = pending.slice(end + 1);
+  }
+
+  state.citationBuffersByItemKey.delete(key);
+  return output;
 }
 
 function codexUserInputToPromptInput(
@@ -750,7 +808,10 @@ function translateCodexItemShape(
     case "agentMessage":
       return {
         kind: "translated",
-        shape: { type: "agentMessage", text: parsedItem.text },
+        shape: {
+          type: "agentMessage",
+          text: normalizeCodexCitationText(parsedItem.text),
+        },
         presentation: AGENT_MESSAGE_PRESENTATION,
         status: "completed",
         approvalDenied: false,
@@ -1148,6 +1209,14 @@ export function translateCodexEventToDeltas(
           },
         ];
       }
+      if (handledEvent.params.item.type === "agentMessage") {
+        state.citationBuffersByItemKey.delete(
+          citationBufferKey(
+            handledEvent.params.turnId,
+            handledEvent.params.item.id,
+          ),
+        );
+      }
       return [
         {
           kind: "item.close",
@@ -1160,16 +1229,24 @@ export function translateCodexEventToDeltas(
         },
       ];
     }
-    case "item/agentMessage/delta":
+    case "item/agentMessage/delta": {
+      const text = normalizeCodexCitationDelta(
+        state,
+        handledEvent.params.turnId,
+        handledEvent.params.itemId,
+        handledEvent.params.delta,
+      );
+      if (text.length === 0) return [];
       return [
         {
           kind: "item.textDelta",
           key: { providerItemId: handledEvent.params.itemId },
           channel: "agentMessage",
-          text: handledEvent.params.delta,
+          text,
           providerTurnId: handledEvent.params.turnId,
         },
       ];
+    }
     case "item/commandExecution/outputDelta":
       return [
         {

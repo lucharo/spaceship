@@ -250,6 +250,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         name: "review",
         description: "Review the current diff",
         filePath: "/home/user/.bb/skills/review/SKILL.md",
+        canonicalFilePath: "/home/user/.bb/skills/review/SKILL.md",
         rootKind: "bb-data-dir",
         linked: false,
       },
@@ -361,10 +362,13 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         providerThreadId: "native-1",
         title: "Native session",
         cwd: "/workspace",
+        projectId: "project-native",
+        workspaceRoot: "/workspace",
         createdAt: 1_777_000_000,
         updatedAt: 1_777_000_100,
         archived: false,
         source: "cli",
+        status: "idle",
       },
     ],
     nextCursor: null,
@@ -374,20 +378,26 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     providerThreadId: "native-1",
     title: "Native session",
     cwd: "/workspace",
+    projectId: "project-native",
+    workspaceRoot: "/workspace",
     createdAt: 1_777_000_000,
     updatedAt: 1_777_000_100,
     archived: false,
     source: "cli",
+    status: "idle",
   },
   "provider.native_sessions.history": {
     session: {
       providerThreadId: "native-1",
       title: "Native session",
       cwd: "/workspace",
+      projectId: "project-native",
+      workspaceRoot: "/workspace",
       createdAt: 1_777_000_000,
       updatedAt: 1_777_000_100,
       archived: false,
       source: "cli",
+      status: "idle",
     },
     events: [],
   },
@@ -1092,7 +1102,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(175);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(176);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

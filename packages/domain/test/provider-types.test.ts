@@ -58,7 +58,7 @@ describe("provider info schema", () => {
     expect(() =>
       providerInfoSchema.parse({
         ...baseProviderInfo,
-        composerActions: [{ kind: "skills", trigger: "$" }],
+        composerActions: [{ kind: "skills", trigger: ":" }],
       }),
     ).toThrow();
     expect(() =>

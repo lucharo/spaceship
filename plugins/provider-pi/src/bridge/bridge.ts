@@ -504,6 +504,7 @@ async function handleRequest(request: PiCommand & { id: string | number }): Prom
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
           steerMode: "inject",
           skills: { configure: true },
+          nativeSessions: { list: false, read: false, history: false },
         },
       };
       sendResult(request.id, result);

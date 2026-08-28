@@ -2128,6 +2128,14 @@ className?, leadingContent?, messageActions? }` —
   host owns timeline loading, streaming, drafts, send/queue/steer/stop,
   attachments, execution controls, pending interactions, and read tracking —
   do not proxy thread data through your own RPC or rebuild the composer.
+- `experimental_NativeSessionThreadList` — bb's host-rendered catalogue for a
+  provider's native sessions. Props:
+  `{ providerId, providerLabel, onNavigate? }`. The host owns native discovery,
+  caching, adoption, lifecycle actions, and routing; the provider plugin only
+  supplies its identity and label. Use this in an
+  `experimental_threadList` replacement when native sessions should appear in
+  bb's ordinary Threads sidebar without copying them into bb's session store.
+  Alias it on import for JSX. Reference: `plugins/provider-codex/app.tsx`.
 - `experimental_ProviderModelPicker` — bb's controlled provider, model, and
   reasoning picker. Props:
   `{ value: { providerId, model, reasoningLevel, serviceTier? }, onChange,

@@ -4,7 +4,7 @@ import { createLastKnownCache } from "@/lib/last-known-cache";
 
 const nativeSessionCache = createLastKnownCache({
   prefix: "spaceship.native-sessions",
-  version: "1",
+  version: "2",
   schema: systemNativeSessionsResponseSchema,
 });
 

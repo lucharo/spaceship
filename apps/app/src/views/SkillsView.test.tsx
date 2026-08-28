@@ -291,7 +291,7 @@ function NavigateButton({ to, label }: { to: string; label: string }) {
 }
 
 describe("SkillsOverview", () => {
-  it("defaults to BB skills and places BB Official skills first", () => {
+  it("defaults to every installed skill source", () => {
     const markup = render({
       skills: [
         makeSkill({ name: "claude-skill", provider: "claude-code" }),
@@ -308,9 +308,9 @@ describe("SkillsOverview", () => {
         }),
       ],
     });
-    expect(markup).not.toContain("claude-skill");
+    expect(markup).toContain("claude-skill");
     expect(markup).toContain("Review the current diff.");
-    expect(markup).toContain('aria-label="Filters: Provider: bb"');
+    expect(markup).toContain('aria-label="Filters"');
     expect(markup).not.toContain("Provider: 1 selected");
     expect(markup).toContain("Sort");
     // Browse and Library are top-nav destinations now; the page renders no
@@ -319,8 +319,8 @@ describe("SkillsOverview", () => {
     expect(markup).toContain("BB Official");
     expect(markup).toContain("New bb skill");
     expect(markup).not.toContain('aria-label="Open zz-official-skill"');
-    expect(markup.indexOf("zz-official-skill")).toBeLessThan(
-      markup.indexOf("aa-user-skill"),
+    expect(markup.indexOf("aa-user-skill")).toBeLessThan(
+      markup.indexOf("claude-skill"),
     );
   });
 
@@ -362,7 +362,7 @@ describe("SkillsOverview", () => {
     const typeTrigger = screen.getByRole("button", { name: /^Filters/ });
     fireEvent.focus(typeTrigger);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
-      "Provider: bb",
+      "Filters: All",
     );
     fireEvent.blur(typeTrigger);
     fireEvent.pointerDown(typeTrigger);
@@ -436,9 +436,6 @@ describe("SkillsOverview", () => {
 
     const trigger = screen.getByRole("button", { name: /^Filters/ });
     fireEvent.pointerDown(trigger);
-    // Provider defaults to `bb`, which would hide both fixtures before the
-    // Type filter is reached — clear it so this test observes Type alone.
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
     fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "User" }));
 
     // Both provider-scoped skills reach the User bucket; the builtin does not.
@@ -591,8 +588,14 @@ describe("SkillsOverview", () => {
       <SkillsOverview
         providerRoster={
           new Map([
-            ["acp-foo", makeProviderInfo({ id: "acp-foo", displayName: "Foo Agent" })],
-            ["acp-bar", makeProviderInfo({ id: "acp-bar", displayName: "Bar Agent" })],
+            [
+              "acp-foo",
+              makeProviderInfo({ id: "acp-foo", displayName: "Foo Agent" }),
+            ],
+            [
+              "acp-bar",
+              makeProviderInfo({ id: "acp-bar", displayName: "Bar Agent" }),
+            ],
           ])
         }
         skills={[
@@ -674,7 +677,7 @@ describe("SkillsOverview", () => {
       screen
         .getByRole("menuitemcheckbox", { name: "bb" })
         .getAttribute("aria-disabled"),
-    ).toBeNull();
+    ).toBe("true");
   });
 
   it("labels the Provider filter and prefixes its logo tooltip", async () => {
@@ -701,7 +704,7 @@ describe("SkillsOverview", () => {
     // Merging Provider into the grouped Filters menu replaced the trigger's
     // logo tooltip with the group summary; the logos moved onto the rows.
     expect((await screen.findByRole("tooltip")).textContent?.trim()).toBe(
-      "Provider: bb",
+      "Filters: All",
     );
     fireEvent.blur(providerTrigger);
 
@@ -712,7 +715,7 @@ describe("SkillsOverview", () => {
     ).not.toBeNull();
   });
 
-  it("keeps the default BB filter selected when only provider skills exist", async () => {
+  it("shows provider skills when they are the only installed source", async () => {
     renderDom(
       <SkillsOverview
         providerRoster={NO_PROVIDER_ROSTER}
@@ -732,17 +735,13 @@ describe("SkillsOverview", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /^Filters/ })).toBeTruthy();
-      expect(screen.queryByText("codex-skill")).toBeNull();
+      expect(screen.getByText("codex-skill")).toBeTruthy();
     });
 
     fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
     const bbFilter = screen.getByRole("menuitemcheckbox", { name: "bb" });
-    expect(bbFilter.getAttribute("aria-checked")).toBe("true");
-    expect(bbFilter.getAttribute("aria-disabled")).toBeNull();
-
-    fireEvent.click(bbFilter);
-
-    expect(await screen.findByText("codex-skill")).toBeTruthy();
+    expect(bbFilter.getAttribute("aria-checked")).toBe("false");
+    expect(bbFilter.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("preserves a user-selected provider filter across library refreshes", async () => {
@@ -767,7 +766,6 @@ describe("SkillsOverview", () => {
     );
 
     fireEvent.pointerDown(screen.getByRole("button", { name: /^Filters/ }));
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "bb" }));
     fireEvent.click(
       screen.getByRole("menuitemcheckbox", { name: "Claude Code" }),
     );

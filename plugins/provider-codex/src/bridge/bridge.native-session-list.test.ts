@@ -1,5 +1,5 @@
 import { expect, it, vi, afterEach, beforeEach } from "vitest";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,12 +18,24 @@ const fakeAppServerPath = fileURLToPath(
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let recorder: BridgeRecorder;
 let recordingDir: string;
+let codexHomeDir: string;
 
 beforeEach(() => {
   recordingDir = mkdtempSync(join(tmpdir(), "spaceship-native-catalogue-"));
+  codexHomeDir = mkdtempSync(join(tmpdir(), "spaceship-codex-home-"));
+  writeFileSync(
+    join(codexHomeDir, ".codex-global-state.json"),
+    JSON.stringify({
+      "thread-workspace-root-hints": {
+        "codex-native-1": "/workspace-root",
+        "codex-archived-1": "/archived-workspace-root",
+      },
+    }),
+  );
   recorder = createBridgeRecorder({ dir: recordingDir });
   setBridgeRecorderForTesting(recorder);
   vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
+  vi.stubEnv("CODEX_HOME", codexHomeDir);
   vi.stubEnv(
     "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
     JSON.stringify([fakeAppServerPath]),
@@ -37,6 +49,7 @@ afterEach(() => {
   recorder.close();
   setBridgeRecorderForTesting(null);
   rmSync(recordingDir, { recursive: true, force: true });
+  rmSync(codexHomeDir, { recursive: true, force: true });
   vi.unstubAllEnvs();
 });
 
@@ -71,6 +84,9 @@ it("lists Codex sessions as metadata without leaking previews, paths, or turns",
           providerThreadId: "codex-native-1",
           title: "Release checklist",
           cwd: "/workspace",
+          projectId: "project-spaceship",
+          workspaceRoot: "/workspace-root",
+          status: "active",
           createdAt: 1_777_000_000,
           updatedAt: 1_777_000_100,
           archived: true,
@@ -103,6 +119,9 @@ it("reads authoritative active-session metadata without returning transcript fie
       providerThreadId: "codex-native-1",
       title: "Release checklist",
       cwd: "/workspace",
+      projectId: "project-spaceship",
+      workspaceRoot: "/workspace-root",
+      status: "active",
       createdAt: 1_777_000_000,
       updatedAt: 1_777_000_100,
       archived: false,

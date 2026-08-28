@@ -45,6 +45,7 @@ import {
 } from "@/lib/route-paths";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { sdk } from "@/lib/sdk";
+import { ProviderLogo } from "@/components/tools/SkillsCollection";
 
 const SEARCH_DEBOUNCE_MS = 250;
 function storageKey(providerId: string, field: string): string {
@@ -96,6 +97,10 @@ function getProjectLabel(cwd: string | null): string {
   return normalized.split("/").at(-1) || normalized || "/";
 }
 
+function isCodexWorktreePath(cwd: string | null): boolean {
+  return cwd?.includes("/.codex/worktrees/") ?? false;
+}
+
 function getChronologicalGroup(timestamp: number, now: number) {
   const startOfToday = new Date(now);
   startOfToday.setHours(0, 0, 0, 0);
@@ -130,8 +135,8 @@ function groupSessions({
     const descriptor =
       organization === "project"
         ? {
-            key: `project:${session.cwd ?? "unavailable"}`,
-            label: getProjectLabel(session.cwd),
+            key: `project:${session.workspaceRoot ?? session.projectId ?? session.cwd ?? "unavailable"}`,
+            label: getProjectLabel(session.workspaceRoot ?? session.cwd),
           }
         : getChronologicalGroup(getSessionTimestamp(session), now);
     const group = grouped.get(descriptor.key) ?? {
@@ -139,6 +144,14 @@ function groupSessions({
       sessions: [],
     };
     group.sessions.push(session);
+    if (
+      organization === "project" &&
+      session.workspaceRoot === null &&
+      !isCodexWorktreePath(session.cwd) &&
+      isCodexWorktreePath(group.sessions[0]?.cwd ?? null)
+    ) {
+      group.label = getProjectLabel(session.cwd);
+    }
     grouped.set(descriptor.key, group);
   }
 
@@ -152,6 +165,7 @@ function NativeSessionRow({
   now,
   onTogglePinned,
   providerReady,
+  providerId,
   session,
 }: {
   adopt: AdoptMutation;
@@ -160,6 +174,7 @@ function NativeSessionRow({
   now: number;
   onTogglePinned: (session: NativeSession) => void;
   providerReady: boolean;
+  providerId: string;
   session: NativeSession;
 }) {
   const disabled = !providerReady || session.cwd === null || adopt.isPending;
@@ -192,13 +207,20 @@ function NativeSessionRow({
             )}
             onClick={() => adopt.mutate(session)}
           >
-            <Icon
-              name={isOpening || isArchiving ? "Spinner" : "MessageSquare"}
-              className={cn(
-                "mt-0.5 size-3.5 text-muted-foreground",
-                (isOpening || isArchiving) && "animate-spin",
+            <span
+              data-provider-icon={providerId}
+              className="mt-0.5 flex size-3.5 shrink-0 items-center justify-center text-muted-foreground"
+            >
+              {isOpening || isArchiving || session.status === "active" ? (
+                <Icon
+                  name="Spinner"
+                  aria-label={`${title} is active`}
+                  className="size-3.5 animate-spin"
+                />
+              ) : (
+                <ProviderLogo providerId={providerId} className="size-3.5" />
               )}
-            />
+            </span>
             <span className="min-w-0 flex-1">
               <span className="flex min-w-0 items-center gap-1.5">
                 <span className="min-w-0 flex-1 truncate">{title}</span>
@@ -280,6 +302,7 @@ function NativeSessionSection({
   onToggleCollapsed,
   onTogglePinned,
   providerReady,
+  providerId,
 }: {
   adopt: AdoptMutation;
   archive: ArchiveMutation;
@@ -290,6 +313,7 @@ function NativeSessionSection({
   onToggleCollapsed: (key: string) => void;
   onTogglePinned: (session: NativeSession) => void;
   providerReady: boolean;
+  providerId: string;
 }) {
   return (
     <div>
@@ -320,6 +344,7 @@ function NativeSessionSection({
               now={now}
               onTogglePinned={onTogglePinned}
               providerReady={providerReady}
+              providerId={providerId}
               session={session}
             />
           ))}
@@ -599,6 +624,7 @@ export function NativeSessionThreadList({
               pinnedIds={pinnedIds}
               onToggleCollapsed={toggleCollapsed}
               onTogglePinned={togglePinned}
+              providerId={providerId}
               providerReady={sessions.hostId !== null}
             />
           ))}

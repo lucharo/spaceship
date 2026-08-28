@@ -82,6 +82,7 @@ export function useComposerTypeahead({
       },
       command: {
         trigger: commandSuggestions.trigger,
+        aliases: commandSuggestions.aliases,
         suggestions: commandSuggestions.suggestions,
         isLoading: commandSuggestions.isLoading,
         isError: commandSuggestions.isError,
@@ -99,6 +100,7 @@ export function useComposerTypeahead({
       commandSuggestions.isLoadingMore,
       commandSuggestions.loadMore,
       commandSuggestions.suggestions,
+      commandSuggestions.aliases,
       commandSuggestions.trigger,
       handleEditorFocus,
       promptMentions.isError,

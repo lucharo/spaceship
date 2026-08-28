@@ -312,6 +312,8 @@ export interface TypeaheadMentionConfig {
  */
 export interface TypeaheadCommandConfig {
   trigger: PromptMentionCommandTrigger | null;
+  /** Additional spellings that open the same catalogue, such as native `$skill`. */
+  aliases?: readonly PromptMentionCommandTrigger[];
   suggestions: readonly ComposerCommandSuggestion[];
   isLoading: boolean;
   isError: boolean;
@@ -346,6 +348,7 @@ export interface TypeaheadConfig {
  */
 export const INERT_TYPEAHEAD_COMMAND_CONFIG: TypeaheadCommandConfig = {
   trigger: null,
+  aliases: [],
   suggestions: [],
   isLoading: false,
   isError: false,
@@ -1243,6 +1246,7 @@ export function PromptBoxInternal({
   } = typeahead.mention;
   const {
     trigger: commandTriggerChar,
+    aliases: commandTriggerAliases = [],
     suggestions: commandSuggestions,
     isLoading: commandLoading,
     isError: commandError,
@@ -1599,8 +1603,14 @@ export function PromptBoxInternal({
     if (commandTriggerChar === null) {
       return mentionTriggers;
     }
-    return [...mentionTriggers, { char: commandTriggerChar, kind: "command" }];
-  }, [commandTriggerChar, mentionTriggerChars]);
+    return [
+      ...mentionTriggers,
+      ...[commandTriggerChar, ...commandTriggerAliases].map((char) => ({
+        char,
+        kind: "command" as const,
+      })),
+    ];
+  }, [commandTriggerAliases, commandTriggerChar, mentionTriggerChars]);
 
   // Fan the active query out to the matching data source and null the other,
   // so switching from `@foo` to `/bar` (or vice versa) clears the stale query.
@@ -2215,9 +2225,19 @@ export function PromptBoxInternal({
   // exact-name match this ordering hoists is the one the caret spells out.
   const activeCommandQuery =
     activeTrigger?.kind === "command" ? activeTrigger.query : "";
+  const visibleCommandSuggestions = useMemo(
+    () =>
+      activeTrigger?.kind === "command" && activeTrigger.char === "$"
+        ? commandSuggestions.filter(
+            (suggestion) => suggestion.source === "skill",
+          )
+        : commandSuggestions,
+    [activeTrigger, commandSuggestions],
+  );
   const orderedCommandSuggestions = useMemo(
-    () => orderCommandSuggestions(commandSuggestions, activeCommandQuery),
-    [activeCommandQuery, commandSuggestions],
+    () =>
+      orderCommandSuggestions(visibleCommandSuggestions, activeCommandQuery),
+    [activeCommandQuery, visibleCommandSuggestions],
   );
   // The suggestion list driving keyboard nav + Enter/Tab apply for whichever
   // trigger is active. Empty when no trigger is open. Memoized so the keyboard
@@ -2412,12 +2432,16 @@ export function PromptBoxInternal({
     (item: ProviderCommandSuggestion) => {
       const currentEditor = editorRef.current;
       if (!currentEditor || activeTrigger === null) return;
-      if (activeTrigger.char !== "/") return;
+      const commandTrigger = [
+        commandTriggerChar,
+        ...commandTriggerAliases,
+      ].find((trigger) => trigger === activeTrigger.char);
+      if (commandTrigger === undefined || commandTrigger === null) return;
 
-      const serializedText = `${activeTrigger.char}${item.name}`;
+      const serializedText = `${commandTrigger}${item.name}`;
       const resource = promptCommandResourceFromSuggestion({
         suggestion: item,
-        trigger: activeTrigger.char,
+        trigger: commandTrigger,
       });
       const trailingText = hasWhitespaceAfterPosition(
         currentEditor.state.doc,
@@ -2462,7 +2486,13 @@ export function PromptBoxInternal({
       }
       finishApply(currentEditor);
     },
-    [activeTrigger, finishApply, onCommandQueryChange],
+    [
+      activeTrigger,
+      commandTriggerAliases,
+      commandTriggerChar,
+      finishApply,
+      onCommandQueryChange,
+    ],
   );
 
   const applyTrigger = useCallback(

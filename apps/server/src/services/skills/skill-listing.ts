@@ -129,20 +129,32 @@ function compareSkillSummaries(
 
 /**
  * Assemble the per-provider daemon results into the listing: map each record to
- * its product scope and de-dupe by absolute `filePath` so a bb skill discovered
- * under both providers is listed once. Output is sorted by scope then name.
+ * its product scope and de-dupe by canonical file identity so provider-specific
+ * symlink views of one shared skill are listed once. Output is sorted by scope
+ * then name.
  */
 export function assembleSkillList(
   perProvider: readonly ProviderSkillDiscovery[],
 ): SkillSummary[] {
-  const byPath = new Map<string, SkillSummary>();
+  const byPath = new Map<
+    string,
+    { skill: DiscoveredSkill; provider: SkillProvider }
+  >();
   for (const { provider, skills } of perProvider) {
     for (const skill of skills) {
-      if (byPath.has(skill.filePath)) {
+      const existing = byPath.get(skill.canonicalFilePath);
+      const skillIsShared = skill.rootKind.startsWith("shared-");
+      const existingIsShared = existing?.skill.rootKind.startsWith("shared-");
+      if (existing !== undefined && (!skillIsShared || existingIsShared)) {
         continue;
       }
+      byPath.set(skill.canonicalFilePath, { skill, provider });
+    }
+  }
+  return [...byPath.values()]
+    .map(({ skill, provider }) => {
       const mapped = mapSkillScope(provider, skill.rootKind, skill.filePath);
-      byPath.set(skill.filePath, {
+      return {
         id: skill.id,
         name: skill.name,
         description: skill.description,
@@ -155,10 +167,9 @@ export function assembleSkillList(
         filePath: skill.filePath,
         manageable: mapped.manageable && !skill.linked,
         registrySkillId: null,
-      });
-    }
-  }
-  return [...byPath.values()].sort(compareSkillSummaries);
+      } satisfies SkillSummary;
+    })
+    .sort(compareSkillSummaries);
 }
 
 function skillId(identitySeed: string, logicalPath: string): string {

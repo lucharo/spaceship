@@ -185,6 +185,7 @@ function discovered(
     description: `${name} skill`,
     rootKind,
     filePath,
+    canonicalFilePath: filePath,
     linked: false,
   };
 }

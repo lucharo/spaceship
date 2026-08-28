@@ -612,6 +612,7 @@ interface DiscoverSkillsArgs {
 function buildSkillRecord(
   root: SkillScanRoot,
   match: SkillFileMatch,
+  canonicalFilePath: string,
 ): DiscoveredSkill {
   const rootPath =
     "rootPath" in root ? root.rootPath : path.dirname(root.filePath);
@@ -626,6 +627,7 @@ function buildSkillRecord(
     name: `${root.namePrefix}${match.name}`,
     description: match.frontmatter.description,
     filePath: match.filePath,
+    canonicalFilePath,
     rootKind: root.rootKind,
     linked: match.linked,
   };
@@ -645,17 +647,17 @@ export async function discoverSkills(
   const budget = { remainingEntries: MAX_SCAN_ENTRY_COUNT };
   for (const root of args.roots) {
     for (const match of await scanSkillFiles({ budget, root })) {
-      records.push(buildSkillRecord(root, match));
+      const canonicalFilePath = await fs
+        .realpath(match.filePath)
+        .catch(() => match.filePath);
+      records.push(buildSkillRecord(root, match, canonicalFilePath));
     }
   }
   const uniqueRecords: DiscoveredSkill[] = [];
   const seenFiles = new Set<string>();
   for (const record of records) {
-    const canonicalFilePath = await fs
-      .realpath(record.filePath)
-      .catch(() => record.filePath);
-    if (!seenFiles.has(canonicalFilePath)) {
-      seenFiles.add(canonicalFilePath);
+    if (!seenFiles.has(record.canonicalFilePath)) {
+      seenFiles.add(record.canonicalFilePath);
       uniqueRecords.push(record);
     }
   }

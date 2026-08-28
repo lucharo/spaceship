@@ -1262,6 +1262,7 @@ export function NewThreadComposer({
             },
             command: {
               trigger: commandSuggestions.trigger,
+              aliases: commandSuggestions.aliases,
               suggestions: commandSuggestions.suggestions,
               isLoading: commandSuggestions.isLoading,
               isError: commandSuggestions.isError,

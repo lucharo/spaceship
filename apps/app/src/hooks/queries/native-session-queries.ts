@@ -89,7 +89,14 @@ export function useProviderNativeSessions({
         ? undefined
         : { pages: [placeholder], pageParams: [null] },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    refetchInterval: 60_000,
+    refetchInterval: (activeQuery) => {
+      const pages = activeQuery.state.data?.pages ?? [];
+      return pages.some((page) =>
+        page.sessions.some((session) => session.status === "active"),
+      )
+        ? 5_000
+        : 60_000;
+    },
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
   });

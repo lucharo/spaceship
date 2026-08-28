@@ -191,6 +191,8 @@ describe("public project command typeahead route", () => {
               description: "Review code from one shared source.",
               filePath:
                 "/tmp/shared-skills/.agents/skills/portable-review/SKILL.md",
+              canonicalFilePath:
+                "/tmp/shared-skills/.agents/skills/portable-review/SKILL.md",
               rootKind: "shared-project",
               linked: false,
             },

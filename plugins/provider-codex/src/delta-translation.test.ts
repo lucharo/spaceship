@@ -483,6 +483,35 @@ describe("codex item translation", () => {
     );
   });
 
+  it("renders Codex citation markers as readable source references", () => {
+    const harness = createHarness();
+    const events = harness.translate(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 1,
+        item: {
+          type: "agentMessage",
+          id: "item-citations",
+          text: "Verified. \uE200cite\uE202turn0search1\uE202turn0search2\uE201",
+          phase: null,
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "Verified. [Sources: 1, 2]",
+        }),
+      }),
+    );
+  });
+
   it("suppresses item/started with userMessage as a provider echo", () => {
     const harness = createHarness();
     const events = harness.translate(
@@ -1558,6 +1587,41 @@ describe("codex delta and usage translation", () => {
         type: "item/agentMessage/delta",
         itemId,
         delta: "world",
+      }),
+    ]);
+  });
+
+  it("buffers citation markers split across streaming deltas", () => {
+    const harness = createHarness();
+    const first = harness.translate(
+      codexEvent("item/agentMessage/delta", {
+        threadId: "t1",
+        turnId: "turn-1",
+        itemId: "item-citations",
+        delta: "Answer. \uE200cite\uE202turn0",
+      }),
+    );
+    expect(first).toEqual([
+      expect.objectContaining({ type: "item/started" }),
+      expect.objectContaining({
+        type: "item/agentMessage/delta",
+        delta: "Answer. ",
+      }),
+    ]);
+
+    expect(
+      harness.translate(
+        codexEvent("item/agentMessage/delta", {
+          threadId: "t1",
+          turnId: "turn-1",
+          itemId: "item-citations",
+          delta: "search1\uE202turn0search2\uE201 Done.",
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/agentMessage/delta",
+        delta: "[Sources: 1, 2] Done.",
       }),
     ]);
   });

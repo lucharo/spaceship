@@ -52,6 +52,9 @@ const nativeSessions: SystemNativeSessionsResponse = {
       providerThreadId: "native-thread-1",
       title: "Recover a native session",
       cwd: "/Users/demo/Projects/spaceship",
+      projectId: "project-spaceship",
+      workspaceRoot: "/Users/demo/Projects/spaceship",
+      status: "active",
       createdAt: 1_777_000_000,
       updatedAt: 1_777_000_100,
       archived: false,
@@ -230,9 +233,20 @@ describe("NativeSessionThreadList", () => {
         {
           ...nativeSessions.sessions[0],
           providerThreadId: "native-thread-2",
-          title: "Review another project",
-          cwd: "/Users/demo/Projects/another-project",
+          title: "Review the worktree",
+          cwd: "/Users/demo/.codex/worktrees/a1b2/spaceship",
+          projectId: null,
+          workspaceRoot: "/Users/demo/Projects/spaceship",
           updatedAt: Math.floor((now - 2 * 24 * 60 * 60 * 1_000) / 1_000),
+        },
+        {
+          ...nativeSessions.sessions[0],
+          providerThreadId: "native-thread-3",
+          title: "Review another project",
+          projectId: "project-another",
+          cwd: "/Users/demo/Projects/another-project",
+          workspaceRoot: "/Users/demo/Projects/another-project",
+          updatedAt: Math.floor((now - 3 * 24 * 60 * 60 * 1_000) / 1_000),
         },
       ],
     });
@@ -253,6 +267,21 @@ describe("NativeSessionThreadList", () => {
 
     expect(await screen.findByText("spaceship")).toBeTruthy();
     expect(screen.getByText("another-project")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Collapse spaceship" }).textContent,
+    ).toContain("2");
+  });
+
+  it("shows native activity with the provider mark", async () => {
+    vi.mocked(sdk.providers.nativeSessions).mockResolvedValue(nativeSessions);
+
+    renderSidebar();
+
+    await screen.findByText("Recover a native session");
+    expect(
+      screen.getByLabelText("Recover a native session is active"),
+    ).toBeTruthy();
+    expect(document.querySelector('[data-provider-icon="codex"]')).toBeTruthy();
   });
 
   it("pins native threads without copying provider history", async () => {

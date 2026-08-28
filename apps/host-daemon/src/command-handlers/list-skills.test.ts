@@ -66,7 +66,9 @@ function declared(
   };
 }
 
-function skillRoots(skills: Partial<ProviderNativeRoots>): ProviderNativeRootSet {
+function skillRoots(
+  skills: Partial<ProviderNativeRoots>,
+): ProviderNativeRootSet {
   return {
     skills: { user: [], project: [], ...skills },
     commands: { user: [], project: [] },
@@ -143,6 +145,7 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
       name: "proj-bb",
       description: "proj-bb skill",
       filePath: files["proj-bb"],
+      canonicalFilePath: await realpath(files["proj-bb"]),
       rootKind: "bb-project",
       linked: false,
     });

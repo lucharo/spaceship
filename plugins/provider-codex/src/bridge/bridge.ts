@@ -114,6 +114,7 @@ import {
   createCodexEventTranslationState,
   translateCodexHistoryItemToDeltas,
 } from "../delta-translation.js";
+import { readCodexThreadWorkspaceRootHints } from "../native-session-metadata.js";
 import {
   createCodexAppServerConnection,
   CodexAppServerExitedError,
@@ -1007,6 +1008,13 @@ const codexThreadSummarySchema = z
     id: z.string().min(1),
     name: z.string().nullable(),
     cwd: z.string().nullable(),
+    projectId: z.string().nullable(),
+    status: z.discriminatedUnion("type", [
+      z.object({ type: z.literal("notLoaded") }),
+      z.object({ type: z.literal("idle") }),
+      z.object({ type: z.literal("systemError") }),
+      z.object({ type: z.literal("active") }).passthrough(),
+    ]),
     createdAt: z.number().int().nonnegative(),
     updatedAt: z.number().int().nonnegative(),
     source: z.unknown(),
@@ -1581,9 +1589,10 @@ async function handleNativeSessionList(
         }),
       { recordProviderIo: false },
     );
+    const workspaceRootHints = await readCodexThreadWorkspaceRootHints();
     sendResult(id, {
       sessions: result.data.map((thread) =>
-        toNativeSessionSummary(thread, params.archived),
+        toNativeSessionSummary(thread, params.archived, workspaceRootHints),
       ),
       nextCursor: result.nextCursor,
       backwardsCursor: result.backwardsCursor,
@@ -1599,11 +1608,18 @@ async function handleNativeSessionList(
   }
 }
 
-function toNativeSessionSummary(thread: CodexThreadSummary, archived: boolean) {
+function toNativeSessionSummary(
+  thread: CodexThreadSummary,
+  archived: boolean,
+  workspaceRootHints: ReadonlyMap<string, string>,
+) {
   return {
     providerThreadId: thread.id,
     title: thread.name,
     cwd: thread.cwd,
+    projectId: thread.projectId,
+    workspaceRoot: workspaceRootHints.get(thread.id) ?? thread.cwd,
+    status: thread.status.type === "systemError" ? "error" : thread.status.type,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
     archived,
@@ -1650,6 +1666,7 @@ async function handleNativeSessionRead(
   params: z.infer<typeof nativeSessionReadParamsSchema>,
 ): Promise<void> {
   try {
+    const workspaceRootHints = await readCodexThreadWorkspaceRootHints();
     const session = await withMaintenanceChild(
       async (connection) => {
         const result = await connection.request({
@@ -1667,7 +1684,7 @@ async function handleNativeSessionRead(
           false,
         );
         if (active !== null) {
-          return toNativeSessionSummary(active, false);
+          return toNativeSessionSummary(active, false, workspaceRootHints);
         }
         const archived = await findNativeSessionInCatalogue(
           connection,
@@ -1676,7 +1693,7 @@ async function handleNativeSessionRead(
         );
         return archived === null
           ? null
-          : toNativeSessionSummary(archived, true);
+          : toNativeSessionSummary(archived, true, workspaceRootHints);
       },
       { recordProviderIo: false },
     );
@@ -1705,6 +1722,7 @@ async function handleNativeSessionHistory(
   params: z.infer<typeof nativeSessionHistoryParamsSchema>,
 ): Promise<void> {
   try {
+    const workspaceRootHints = await readCodexThreadWorkspaceRootHints();
     const result = await withMaintenanceChild(
       async (connection) => {
         const read = await connection.request({
@@ -1746,7 +1764,11 @@ async function handleNativeSessionHistory(
 
     const translationState = createCodexEventTranslationState();
     sendResult(id, {
-      session: toNativeSessionSummary(result.catalogueThread, result.archived),
+      session: toNativeSessionSummary(
+        result.catalogueThread,
+        result.archived,
+        workspaceRootHints,
+      ),
       turns: result.thread.turns.map((turn) => ({
         providerTurnId: turn.id,
         startedAt: turn.startedAt,

@@ -331,6 +331,9 @@
 // replaces the owning turn retains it. The wire shape is unchanged, but the
 // server-to-daemon payload semantics differ.
 //
+// Version 176 carries provider-owned native-session project identity and
+// runtime status so clients can group worktrees and show live activity.
+//
 // Version 175 adds provider.native_sessions.history so the server can project
 // provider-owned history without copying it into bb's event store.
 //
@@ -352,7 +355,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 175 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 176 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
