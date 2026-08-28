@@ -398,7 +398,13 @@ export function useThreadCreationOptions(
   });
   const hostsQuery = useHosts();
   const systemConfig = useSystemConfig();
-  const providers = executionOptionsQuery.data?.providers ?? EMPTY_PROVIDERS;
+  const providers = useMemo(
+    () =>
+      (executionOptionsQuery.data?.providers ?? EMPTY_PROVIDERS).filter(
+        (provider) => provider.available !== false,
+      ),
+    [executionOptionsQuery.data?.providers],
+  );
   const isLoadingModels =
     executionOptionsQueryEnabled &&
     (executionOptionsQuery.isLoading ||

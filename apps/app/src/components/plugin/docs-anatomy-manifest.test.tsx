@@ -10,7 +10,7 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { Provider as JotaiProvider } from "jotai";
@@ -34,6 +34,19 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
+
+vi.mock("@/hooks/queries/native-session-queries", () => ({
+  useProviderNativeSessions: () => ({
+    hostId: "host_primary",
+    hostIsPending: false,
+    isPending: false,
+    isError: false,
+    sessions: [],
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    fetchNextPage: vi.fn(),
+  }),
+}));
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../../../..");
 
@@ -155,7 +168,6 @@ function renderAppSidebar() {
                         isResizing={false}
                         showTopReserve
                         settingsRoutePath="/settings"
-                        toolsRoutePath="/tools"
                       />
                     </SidebarProvider>
                   </ThreadActionsProvider>
@@ -202,8 +214,8 @@ describe("docs anatomy manifest", () => {
     const sectionSelectors: Record<string, string> = {
       "top-reserve": '[data-testid="app-sidebar-top-reserve-row"]',
       "primary-actions": '[data-testid="app-sidebar-primary-actions"]',
-      "plugin-nav": '[data-testid="plugin-nav-sidebar-items"]',
-      "thread-list": '[data-sidebar="content"]',
+      "native-sessions": '[data-testid="native-codex-sidebar"]',
+      "thread-list": '[data-testid="app-sidebar-thread-list"]',
       footer: '[data-sidebar="footer"]',
     };
     expect(Object.keys(sectionSelectors).sort()).toEqual(
@@ -226,8 +238,6 @@ describe("docs anatomy manifest", () => {
 
     const footerSelectors: Record<string, () => Element | null> = {
       settings: () => footer!.querySelector('a[aria-label^="Settings"]'),
-      "plugin-footer-actions": () =>
-        footer!.querySelector('button[aria-label="Anatomy footer action"]'),
       "bug-report": () => footer!.querySelector('[aria-label^="Report a bug"]'),
     };
     expect(Object.keys(footerSelectors).sort()).toEqual(

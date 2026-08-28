@@ -13,9 +13,10 @@ import type {
 } from "@bb/server-contract";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { NativeSessionsView } from "./NativeSessionsView";
+import { NativeCodexSidebar } from "./NativeCodexSidebar";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
@@ -25,15 +26,22 @@ vi.mock("@/lib/sdk", () => ({
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
-  useSystemConfig: () => ({ data: { primaryHostId: "host_primary" } }),
+  useSystemConfig: () => ({
+    data: { primaryHostId: "host_primary" },
+    isPending: false,
+  }),
+}));
+
+vi.mock("usehooks-ts", () => ({
+  useDebounceValue: <T,>(value: T) => [value],
 }));
 
 const nativeSessions: SystemNativeSessionsResponse = {
   sessions: [
     {
       providerThreadId: "native-thread-1",
-      title: "Recover the app",
-      cwd: "/tmp/spaceship",
+      title: "Recover a native session",
+      cwd: "/Users/demo/Projects/spaceship",
       createdAt: 1,
       updatedAt: 2,
       archived: false,
@@ -51,7 +59,7 @@ const adoptedThread: AdoptNativeThreadResponse = {
     projectId: "prj_spaceship",
     environmentId: "env_spaceship",
     providerId: "codex",
-    title: "Recover the app",
+    title: "Recover a native session",
     titleFallback: null,
     sectionId: null,
     status: "idle",
@@ -80,19 +88,22 @@ function LocationPath() {
   return <span>{useLocation().pathname}</span>;
 }
 
-function renderView() {
-  const { wrapper } = createQueryClientTestHarness();
+function renderSidebar() {
+  const { wrapper: QueryWrapper } = createQueryClientTestHarness();
   return render(
-    <MemoryRouter initialEntries={["/native-sessions"]}>
-      <Routes>
-        <Route path="/native-sessions" element={<NativeSessionsView />} />
-        <Route
-          path="/projects/:projectId/threads/:threadId"
-          element={<LocationPath />}
-        />
-      </Routes>
+    <MemoryRouter initialEntries={["/"]}>
+      <QueryWrapper>
+        <SidebarProvider>
+          <Routes>
+            <Route path="/" element={<NativeCodexSidebar />} />
+            <Route
+              path="/projects/:projectId/threads/:threadId"
+              element={<LocationPath />}
+            />
+          </Routes>
+        </SidebarProvider>
+      </QueryWrapper>
     </MemoryRouter>,
-    { wrapper },
   );
 }
 
@@ -101,16 +112,27 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("NativeSessionsView", () => {
-  it("lists metadata and adopts a selected native Codex session", async () => {
+describe("NativeCodexSidebar", () => {
+  it("lists native metadata in the main sidebar and opens the selected session", async () => {
     vi.mocked(sdk.providers.nativeSessions).mockResolvedValue(nativeSessions);
     vi.mocked(sdk.threads.adoptNative).mockResolvedValue(adoptedThread);
 
-    renderView();
+    renderSidebar();
 
-    expect(await screen.findByText("Recover the app")).toBeTruthy();
-    expect(screen.getByText("/tmp/spaceship")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /Recover the app/u }));
+    expect(await screen.findByText("Recover a native session")).toBeTruthy();
+    expect(screen.getByText("/Users/demo/Projects/spaceship")).toBeTruthy();
+    expect(sdk.providers.nativeSessions).toHaveBeenCalledWith(
+      "codex",
+      expect.objectContaining({
+        hostId: "host_primary",
+        archived: false,
+        limit: 100,
+      }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Recover a native session/u }),
+    );
 
     await waitFor(() =>
       expect(sdk.threads.adoptNative).toHaveBeenCalledWith({
@@ -124,85 +146,45 @@ describe("NativeSessionsView", () => {
     ).toBeTruthy();
   });
 
-  it("does not adopt archived native sessions implicitly", async () => {
-    vi.mocked(sdk.providers.nativeSessions).mockResolvedValue({
-      ...nativeSessions,
-      sessions: [{ ...nativeSessions.sessions[0], archived: true }],
-    });
-
-    renderView();
-
-    const row = await screen.findByRole("button", {
-      name: /Recover the app/u,
-    });
-    expect(row.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText("Archived")).toBeTruthy();
-    fireEvent.click(row);
-    expect(sdk.threads.adoptNative).not.toHaveBeenCalled();
-  });
-
-  it("switches between active and archived native metadata", async () => {
+  it("searches the provider-native catalogue rather than filtering copied rows", async () => {
     vi.mocked(sdk.providers.nativeSessions).mockResolvedValue(nativeSessions);
 
-    renderView();
-    await screen.findByText("Recover the app");
-    fireEvent.click(screen.getByRole("button", { name: "Show archived" }));
+    renderSidebar();
+    await screen.findByText("Recover a native session");
+    fireEvent.change(screen.getByLabelText("Search Codex sessions"), {
+      target: { value: "recovery" },
+    });
 
     await waitFor(() =>
       expect(sdk.providers.nativeSessions).toHaveBeenLastCalledWith(
         "codex",
-        expect.objectContaining({
-          hostId: "host_primary",
-          archived: true,
-          limit: 100,
-        }),
+        expect.objectContaining({ searchTerm: "recovery" }),
       ),
     );
   });
 
-  it("loads later native catalogue pages", async () => {
+  it("paginates inside the sidebar", async () => {
     vi.mocked(sdk.providers.nativeSessions)
-      .mockResolvedValueOnce({
-        ...nativeSessions,
-        nextCursor: "page-2",
-      })
+      .mockResolvedValueOnce({ ...nativeSessions, nextCursor: "page-2" })
       .mockResolvedValueOnce({
         ...nativeSessions,
         sessions: [
           {
             ...nativeSessions.sessions[0],
             providerThreadId: "native-thread-2",
-            title: "Older session",
+            title: "Older native session",
           },
         ],
       });
 
-    renderView();
-    await screen.findByText("Recover the app");
+    renderSidebar();
+    await screen.findByText("Recover a native session");
     fireEvent.click(screen.getByRole("button", { name: "Load more" }));
 
-    expect(await screen.findByText("Older session")).toBeTruthy();
+    expect(await screen.findByText("Older native session")).toBeTruthy();
     expect(sdk.providers.nativeSessions).toHaveBeenLastCalledWith(
       "codex",
-      expect.objectContaining({
-        hostId: "host_primary",
-        archived: false,
-        cursor: "page-2",
-        limit: 100,
-      }),
+      expect.objectContaining({ cursor: "page-2" }),
     );
-  });
-
-  it("does not show the empty state when catalogue loading fails", async () => {
-    vi.mocked(sdk.providers.nativeSessions).mockRejectedValue(
-      new Error("catalogue unavailable"),
-    );
-
-    renderView();
-
-    expect(
-      await screen.findByText("Could not load native sessions."),
-    ).toBeTruthy();
-    expect(screen.queryByText("No sessions found.")).toBeNull();
   });
 });

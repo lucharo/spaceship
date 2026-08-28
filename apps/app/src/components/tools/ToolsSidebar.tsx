@@ -7,8 +7,8 @@ import {
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
 import {
+  PRIMARY_TOOLS_NAV_ITEMS,
   resolveToolsActivePage,
-  TOOLS_NAV_ITEMS,
   TOOLS_PAGES,
 } from "./tools-navigation";
 
@@ -48,7 +48,7 @@ export function ToolsSidebar({
       showTopReserve={showTopReserve}
       testIdPrefix="tools"
     >
-      {TOOLS_NAV_ITEMS.map((section, index) => (
+      {PRIMARY_TOOLS_NAV_ITEMS.map((section, index) => (
         <div key={section.id} className={index > 0 ? "mt-4" : undefined}>
           <SectionSidebarLabel>{section.label}</SectionSidebarLabel>
           <div className="mt-1 space-y-0.5">

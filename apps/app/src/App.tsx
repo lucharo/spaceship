@@ -146,6 +146,10 @@ export function LegacySkillDetailRedirect() {
 }
 
 export function ExtensionsLandingRedirect() {
+  return <Navigate to={SKILLS_ROUTE_PATH} replace />;
+}
+
+export function LegacyPluginBrowseRedirect() {
   return <Navigate to={TOOLS_PLUGINS_ROUTE_PATH} replace />;
 }
 
@@ -327,7 +331,7 @@ function AppRoutes() {
           <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
           <Route
             path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
-            element={<ExtensionsLandingRedirect />}
+            element={<LegacyPluginBrowseRedirect />}
           />
           <Route
             path={LEGACY_SKILLS_ROUTE_PATH}

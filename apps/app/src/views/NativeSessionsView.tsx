@@ -1,39 +1,27 @@
 import { useState } from "react";
-import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import type { SystemNativeSessionsResponse } from "@bb/server-contract";
 import { useNavigate } from "react-router-dom";
 import { sdk } from "@/lib/sdk";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { useProviderNativeSessions } from "@/hooks/queries/native-session-queries";
 import { getThreadRoutePath } from "@/lib/route-paths";
 
 export function NativeSessionsView() {
   const navigate = useNavigate();
   const [archived, setArchived] = useState(false);
-  const hostId = useSystemConfig().data?.primaryHostId ?? null;
-  const sessions = useInfiniteQuery({
-    queryKey: ["native-sessions", "codex", hostId, archived],
-    enabled: hostId !== null,
-    initialPageParam: null as string | null,
-    queryFn: ({ pageParam }) =>
-      sdk.providers.nativeSessions("codex", {
-        hostId: hostId as string,
-        archived,
-        cursor: pageParam ?? undefined,
-        limit: 100,
-      }),
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  const sessions = useProviderNativeSessions({
+    providerId: "codex",
+    archived,
   });
-  const sessionRows =
-    sessions.data?.pages.flatMap((page) => page.sessions) ?? [];
   const adopt = useMutation({
     mutationFn: async (
       session: SystemNativeSessionsResponse["sessions"][number],
     ) => {
-      if (hostId === null || session.cwd === null) {
+      if (sessions.hostId === null || session.cwd === null) {
         throw new Error("This session has no usable working directory");
       }
       return sdk.threads.adoptNative({
-        hostId,
+        hostId: sessions.hostId,
         providerId: "codex",
         providerThreadId: session.providerThreadId,
       });
@@ -66,14 +54,22 @@ export function NativeSessionsView() {
           {archived ? "Show active" : "Show archived"}
         </button>
       </div>
-      {sessions.isPending ? <p>Loading native sessions…</p> : null}
+      {sessions.hostIsPending ? <p>Loading native sessions…</p> : null}
+      {!sessions.hostIsPending && sessions.hostId === null ? (
+        <p className="text-sm text-muted-foreground">
+          Connect this machine to list native sessions.
+        </p>
+      ) : null}
+      {sessions.hostId !== null && sessions.isPending ? (
+        <p>Loading native sessions…</p>
+      ) : null}
       {sessions.isError ? (
         <p className="text-sm text-destructive">
           Could not load native sessions.
         </p>
       ) : null}
       <div className="divide-y rounded-lg border">
-        {sessionRows.map((session) => (
+        {sessions.sessions.map((session) => (
           <button
             key={session.providerThreadId}
             type="button"
@@ -107,7 +103,10 @@ export function NativeSessionsView() {
           {sessions.isFetchingNextPage ? "Loading…" : "Load more"}
         </button>
       ) : null}
-      {sessionRows.length === 0 && !sessions.isPending && !sessions.isError ? (
+      {sessions.sessions.length === 0 &&
+      sessions.hostId !== null &&
+      !sessions.isPending &&
+      !sessions.isError ? (
         <p className="text-sm text-muted-foreground">No sessions found.</p>
       ) : null}
       {adopt.isError ? (

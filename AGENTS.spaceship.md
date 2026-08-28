@@ -17,3 +17,6 @@
   paths. Tests use synthetic fixtures.
 - BB remains the upstream application chassis. Keep upstream package names when
   changing them would create unrelated migration work.
+- Spaceship's default navigation is skills-first and provider-native. Keep
+  plugin, automation, mobile, and unavailable-provider surfaces out of the
+  primary path unless the user explicitly opens their compatibility routes.

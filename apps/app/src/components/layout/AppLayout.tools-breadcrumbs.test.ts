@@ -201,7 +201,7 @@ describe("resolveToolsAreaHeaderMeta", () => {
     ).toEqual({ kind: "extensions-title", title: "Extensions" });
     expect(resolveToolsAreaHeaderMeta("/extensions/skills/registry")).toEqual({
       kind: "extensions-title",
-      title: "Extensions",
+      title: "Skills",
     });
   });
 

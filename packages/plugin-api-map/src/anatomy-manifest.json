@@ -3,11 +3,11 @@
   "appSidebar": [
     "top-reserve",
     "primary-actions",
-    "plugin-nav",
+    "native-sessions",
     "thread-list",
     "footer"
   ],
-  "sidebarFooter": ["settings", "plugin-footer-actions", "bug-report"],
+  "sidebarFooter": ["settings", "bug-report"],
   "messageActionBar": [
     "copy",
     "edit",

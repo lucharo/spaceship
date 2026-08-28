@@ -31,10 +31,11 @@ the fork is established.
 
 ## Native Codex sessions
 
-Open **Native sessions** in the sidebar to list active or archived Codex
-sessions. The list is metadata-only. Selecting a session creates a lightweight
-Spaceship projection keyed by the native Codex thread ID; selecting it again
-opens the same projection.
+Active Codex sessions appear directly in the main sidebar. Search and paging
+query Codex app-server's native catalogue without reading transcript bodies.
+The clock action opens the active/archived catalogue. Selecting a session
+creates a lightweight Spaceship projection keyed by the native Codex thread ID;
+selecting it again opens the same projection.
 
 The first message sent from that thread resumes Codex through its native bridge.
 Existing native transcript rendering is not implemented yet and is tracked as

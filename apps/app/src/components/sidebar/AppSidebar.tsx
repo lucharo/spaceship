@@ -17,9 +17,6 @@ import {
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
-import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
-import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
-import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -32,8 +29,8 @@ import {
 } from "@/lib/bb-desktop";
 import {
   getRootComposeRoutePath,
+  getSkillsRoutePath,
   getThreadRoutePath,
-  NATIVE_SESSIONS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
@@ -53,6 +50,7 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
+import { NativeCodexSidebar } from "./NativeCodexSidebar";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -68,7 +66,6 @@ interface AppSidebarProps {
   isResizing: boolean;
   showTopReserve: boolean;
   settingsRoutePath: string;
-  toolsRoutePath?: string;
   /**
    * Compact drawer hosting. When set, the sidebar renders its body only,
    * inside a persistent `<Sidebar>` panel owned by AppLayoutSidebar, and stays
@@ -83,7 +80,6 @@ export function AppSidebar({
   isResizing,
   showTopReserve,
   settingsRoutePath,
-  toolsRoutePath,
   mobileHosted,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
@@ -271,45 +267,31 @@ export function AppSidebar({
           onSearchThreads={closeOnMobile}
         />
       </div>
-      <PluginNavSidebarItems
-        onNavigate={closeOnMobile}
-        splitEnabled
-        toolsRoutePath={toolsRoutePath}
-      />
       <div className="shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              tooltip={{ children: "Native sessions" }}
-            >
-              <Link to={NATIVE_SESSIONS_ROUTE_PATH} onClick={closeOnMobile}>
-                <Icon name="Clock" />
-                <span>Native sessions</span>
+            <SidebarMenuButton asChild tooltip={{ children: "Skills" }}>
+              <Link to={getSkillsRoutePath()} onClick={closeOnMobile}>
+                <Icon name="Zap" />
+                <span>Skills</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </div>
       <SidebarContent>
-        <PluginThreadList
-          replacement={threadListReplacement}
-          original={originalThreadList}
-          searchQuery=""
-          onNavigate={closeOnMobile}
-        />
+        <NativeCodexSidebar onNavigate={closeOnMobile} />
+        <div data-testid="app-sidebar-thread-list" className="min-w-0">
+          <PluginThreadList
+            replacement={threadListReplacement}
+            original={originalThreadList}
+            searchQuery=""
+            onNavigate={closeOnMobile}
+          />
+        </div>
       </SidebarContent>
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
-        {/* The footer holds a variable number of plugin action buttons, so a
-         * narrowed sidebar plus several plugins can no longer fit the action
-         * row and the update chips on one line. `flex-wrap-reverse` plus the
-         * flexible spacer below handles both layouts without measuring:
-         * while everything fits, the spacer stretches and pushes the chips to
-         * the right of a single row; once it doesn't, the chips wrap onto
-         * their own line, which wrap-reverse renders above the actions, and
-         * they sit flush left because the spacer stays behind on the action
-         * line. */}
         <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
           <SidebarMenuItem className="min-w-0">
             <SidebarMenuButton
@@ -335,7 +317,6 @@ export function AppSidebar({
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
-          <PluginSidebarFooterActions onNavigate={closeOnMobile} />
           <SidebarMenuItem className="min-w-0">
             <SidebarMenuButton
               className={SIDEBAR_FOOTER_ACTION_CLASS}
@@ -355,10 +336,6 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
           <li aria-hidden="true" className="min-w-0 flex-1" />
-          <SidebarPluginAttentionGlyph
-            className={SIDEBAR_FOOTER_ACTION_CLASS}
-            onNavigate={closeOnMobile}
-          />
           <SidebarUpdatesBadge onNavigate={closeOnMobile} />
         </SidebarMenu>
       </SidebarFooter>

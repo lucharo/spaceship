@@ -8,12 +8,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 
 afterEach(cleanup);
 
-const PAGE_ROWS = [
-  "Browse plugins",
-  "Installed plugins",
-  "Browse skills",
-  "My skills",
-];
+const PAGE_ROWS = ["Browse skills", "My skills"];
 
 function renderAt(path: string, appRoutePath = "/") {
   return render(
@@ -33,17 +28,11 @@ function renderAt(path: string, appRoutePath = "/") {
 const row = (name: string) => screen.getByRole("link", { name });
 
 describe("ToolsSidebar", () => {
-  it("lists every Extensions page under its section and keeps the back target", () => {
-    renderAt("/extensions/plugins", "/projects/proj_one");
+  it("keeps the primary tools sidebar focused on Skills", () => {
+    renderAt("/extensions/skills", "/projects/proj_one");
 
-    expect(screen.getByText("Plugins")).toBeTruthy();
     expect(screen.getByText("Skills")).toBeTruthy();
-    expect(row("Browse plugins").getAttribute("href")).toBe(
-      "/extensions/plugins",
-    );
-    expect(row("Installed plugins").getAttribute("href")).toBe(
-      "/extensions/plugins?view=installed",
-    );
+    expect(screen.queryByText("Plugins")).toBeNull();
     expect(row("Browse skills").getAttribute("href")).toBe(
       "/extensions/skills",
     );
@@ -55,10 +44,6 @@ describe("ToolsSidebar", () => {
   });
 
   it.each([
-    ["/extensions/plugins", "Browse plugins"],
-    ["/extensions/plugins?view=installed", "Installed plugins"],
-    ["/extensions/plugins/github", "Browse plugins"],
-    ["/extensions/plugins/github?view=installed", "Installed plugins"],
     ["/extensions/skills", "Browse skills"],
     ["/extensions/skills/registry", "Browse skills"],
     ["/extensions/skills?view=library", "My skills"],

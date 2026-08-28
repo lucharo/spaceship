@@ -19,7 +19,8 @@ Codex app-server <-> Spaceship provider bridge <-> Spaceship UI
 
 1. The Codex provider bridge asks app-server for native session metadata.
 2. Spaceship shows title, working directory, timestamps, archive state, source,
-   and the native thread ID. It does not read transcript bodies for discovery.
+   and the native thread ID. Active sessions are searchable and pageable in the
+   main sidebar. It does not read transcript bodies for discovery.
 3. Opening a row re-reads metadata from Codex, confirms the session is active,
    then creates or reuses a lightweight local projection keyed by the host,
    provider, and native thread ID.

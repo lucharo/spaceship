@@ -330,7 +330,7 @@ describe("useThreadCreationOptions", () => {
     ).toBeDefined();
   });
 
-  it("does not switch away from a provider when its failed plugin response arrives", async () => {
+  it("removes an unavailable provider from the new-thread picker", async () => {
     window.localStorage.setItem("bb.promptbox.provider", "codex");
     writeCachedProviderList(
       providerListCacheKey({ environmentId: null, hostId: null }),
@@ -381,14 +381,14 @@ describe("useThreadCreationOptions", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.selectedProviderId).toBe("codex");
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
       expect(result.current.modelLoadError).toEqual({
         providerId: "codex",
         code: "provider_unavailable",
       });
       expect(
         result.current.providerOptions.map((option) => option.value),
-      ).toContain("codex");
+      ).not.toContain("codex");
     });
   });
 

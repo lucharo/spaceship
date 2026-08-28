@@ -451,12 +451,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     };
   }, [location.pathname, setResourceRouteLabel]);
   const navigate = useNavigate();
-  const {
-    appRoutePath,
-    settingsRoutePath,
-    toolsBackRoutePath,
-    toolsRoutePath,
-  } = useAppSettingsRouteMemory();
+  const { appRoutePath, settingsRoutePath, toolsBackRoutePath } =
+    useAppSettingsRouteMemory();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   useEffect(
     () =>
@@ -816,7 +812,6 @@ export function AppLayout({ children }: AppLayoutProps) {
               appRoutePath={appRoutePath}
               settingsRoutePath={settingsRoutePath}
               toolsBackRoutePath={toolsBackRoutePath}
-              toolsRoutePath={toolsRoutePath}
             />
             <SidebarInset>
               <div
