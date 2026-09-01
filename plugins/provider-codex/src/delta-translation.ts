@@ -101,6 +101,7 @@ interface CodexEventTranslationState {
   injectedToolsByName: Map<string, CodexInjectedTool>;
   retryErrorsByTurnKey: Map<string, CodexRetryErrorContext>;
   citationBuffersByItemKey: Map<string, string>;
+  commentaryAgentMessageKeys: Set<string>;
 }
 
 export function createCodexEventTranslationState(): CodexEventTranslationState {
@@ -109,6 +110,7 @@ export function createCodexEventTranslationState(): CodexEventTranslationState {
     injectedToolsByName: new Map(),
     retryErrorsByTurnKey: new Map(),
     citationBuffersByItemKey: new Map(),
+    commentaryAgentMessageKeys: new Set(),
   };
 }
 
@@ -806,6 +808,19 @@ function translateCodexItemShape(
   const parsedItem: CodexHandledThreadItem = parsed.data;
   switch (parsedItem.type) {
     case "agentMessage":
+      if (parsedItem.phase === "commentary") {
+        return {
+          kind: "translated",
+          shape: {
+            type: "reasoning",
+            summary: [normalizeCodexCitationText(parsedItem.text)],
+            content: [],
+          },
+          presentation: REASONING_PRESENTATION,
+          status: "completed",
+          approvalDenied: false,
+        };
+      }
       return {
         kind: "translated",
         shape: {
@@ -1183,6 +1198,16 @@ export function translateCodexEventToDeltas(
       ];
     case "item/started":
     case "item/completed": {
+      const itemKey = citationBufferKey(
+        handledEvent.params.turnId,
+        handledEvent.params.item.id,
+      );
+      if (
+        handledEvent.params.item.type === "agentMessage" &&
+        handledEvent.params.item.phase === "commentary"
+      ) {
+        state.commentaryAgentMessageKeys.add(itemKey);
+      }
       const translation = translateCodexItemShape(
         handledEvent.params.item,
         state,
@@ -1210,12 +1235,8 @@ export function translateCodexEventToDeltas(
         ];
       }
       if (handledEvent.params.item.type === "agentMessage") {
-        state.citationBuffersByItemKey.delete(
-          citationBufferKey(
-            handledEvent.params.turnId,
-            handledEvent.params.item.id,
-          ),
-        );
+        state.citationBuffersByItemKey.delete(itemKey);
+        state.commentaryAgentMessageKeys.delete(itemKey);
       }
       return [
         {
@@ -1241,7 +1262,14 @@ export function translateCodexEventToDeltas(
         {
           kind: "item.textDelta",
           key: { providerItemId: handledEvent.params.itemId },
-          channel: "agentMessage",
+          channel: state.commentaryAgentMessageKeys.has(
+            citationBufferKey(
+              handledEvent.params.turnId,
+              handledEvent.params.itemId,
+            ),
+          )
+            ? "reasoningSummary"
+            : "agentMessage",
           text,
           providerTurnId: handledEvent.params.turnId,
         },

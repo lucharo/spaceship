@@ -483,6 +483,38 @@ describe("codex item translation", () => {
     );
   });
 
+  it("translates commentary-phase agent messages as collapsible reasoning", () => {
+    const harness = createHarness();
+    const events = harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "item-commentary",
+          text: "Checking the implementation",
+          phase: "commentary",
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: {
+          type: "reasoning",
+          id: harness.itemId("item-commentary"),
+          summary: ["Checking the implementation"],
+          content: [],
+          presentation: REASONING_PRESENTATION,
+        },
+      }),
+    );
+  });
+
   it("renders Codex citation markers as readable source references", () => {
     const harness = createHarness();
     const events = harness.translate(
@@ -1546,6 +1578,42 @@ describe("codex web item translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex delta and usage translation", () => {
+  it("streams commentary-phase agent messages into reasoning summaries", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "item-commentary",
+          text: "",
+          phase: "commentary",
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+
+    expect(
+      harness.translate(
+        codexEvent("item/agentMessage/delta", {
+          threadId: "t1",
+          turnId: "turn-1",
+          itemId: "item-commentary",
+          delta: "Checking the implementation",
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/reasoning/summaryTextDelta",
+        itemId: harness.itemId("item-commentary"),
+        delta: "Checking the implementation",
+      }),
+    ]);
+  });
+
   it("synthesizes item/started for a delta-first agent message and keeps the id", () => {
     const harness = createHarness();
     const events = harness.translate(

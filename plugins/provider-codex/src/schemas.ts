@@ -360,6 +360,7 @@ export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
       type: z.literal("agentMessage"),
       id: z.string(),
       text: z.string(),
+      phase: z.enum(["commentary", "final_answer"]).nullable().optional(),
     })
     .passthrough(),
   z

@@ -173,6 +173,31 @@ describe("createAgentRuntime command contracts", () => {
     }
   });
 
+  it("preserves native turn start and completion timestamps in projected history", async () => {
+    const { runtime } = createContractRuntime();
+
+    try {
+      const history = await runtime.readNativeSessionHistory({
+        bridgeLaunch: createScriptedEchoLaunch(),
+        providerId: "fake",
+        providerThreadId: "provider-native-1",
+        threadId: "thread-native-1",
+      });
+
+      expect(
+        history.events.map(({ createdAt, event }) => ({
+          createdAt,
+          type: event.type,
+        })),
+      ).toEqual([
+        { createdAt: 1_777_000_010_000, type: "turn/started" },
+        { createdAt: 1_777_000_070_000, type: "turn/completed" },
+      ]);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
   it("passes runtime workspace-write roots to the provider as provider options", async () => {
     const additionalWorkspaceWriteRoots = [
       "/repo/.git/worktrees/bb13",

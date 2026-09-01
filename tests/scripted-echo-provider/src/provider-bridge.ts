@@ -60,6 +60,7 @@ import {
   initializeParamsSchema,
   modelListParamsSchema,
   nativeSessionListParamsSchema,
+  nativeSessionHistoryParamsSchema,
   nativeSessionReadParamsSchema,
   skillsConfigureParamsSchema,
   threadArchiveParamsSchema,
@@ -89,6 +90,7 @@ const scriptedMethodSchema = z.enum([
   "initialize",
   "model/list",
   "native/session/list",
+  "native/session/history",
   "native/session/read",
   "thread/start",
   "thread/resume",
@@ -1083,7 +1085,7 @@ const handlers: Record<string, RequestHandler> = {
         grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
         steerMode: "inject",
         skills: { configure: true },
-        nativeSessions: { list: true, read: true, history: false },
+        nativeSessions: { list: true, read: true, history: true },
       },
     });
   },
@@ -1150,6 +1152,47 @@ const handlers: Record<string, RequestHandler> = {
       source: "test",
       status: "idle",
       preview: "private preview",
+    });
+  },
+
+  [BRIDGE_REQUEST_METHODS.nativeSessionHistory]: (id, params) => {
+    const parsed = nativeSessionHistoryParamsSchema.safeParse(params);
+    if (!parsed.success) {
+      invalidParams(
+        id,
+        BRIDGE_REQUEST_METHODS.nativeSessionHistory,
+        parsed.error.issues,
+      );
+      return;
+    }
+    io.sendResult(id, {
+      session: {
+        providerThreadId: parsed.data.providerThreadId,
+        title: "Native session",
+        cwd: "/workspace",
+        projectId: "project-native",
+        workspaceRoot: "/workspace",
+        createdAt: 1_777_000_000,
+        updatedAt: 1_777_000_100,
+        archived: false,
+        source: "test",
+        status: "idle",
+      },
+      turns: [
+        {
+          providerTurnId: "provider-turn-1",
+          startedAt: 1_777_000_010,
+          completedAt: 1_777_000_070,
+          deltas: [
+            { kind: "turn.open", providerTurnId: "provider-turn-1" },
+            {
+              kind: "turn.boundary",
+              providerTurnId: "provider-turn-1",
+              status: "completed",
+            },
+          ],
+        },
+      ],
     });
   },
 

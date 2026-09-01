@@ -61,6 +61,7 @@ const mocks = vi.hoisted(() => ({
   },
   queuedMessages: [] as ThreadQueuedMessage[],
   reorderQueuedMessageMutateAsync: vi.fn(),
+  sendMessageMutateAsync: vi.fn(),
   sendQueuedMessageMutateAsync: vi.fn(),
   setQueuedMessageGroupBoundaryMutateAsync: vi.fn(),
   stopThreadMutate: vi.fn(),
@@ -713,7 +714,7 @@ function buildPromptAreaElement({
       resolveMentionLink={() => null}
       sendMessage={{
         isPending: false,
-        mutateAsync: vi.fn(),
+        mutateAsync: mocks.sendMessageMutateAsync,
       }}
       sentMessageEdit={sentMessageEdit}
       steerActiveThreadOnEnter={false}
@@ -738,6 +739,7 @@ beforeEach(() => {
     text: mocks.promptDraft.text,
   }));
   mocks.queuedMessages = [];
+  mocks.sendMessageMutateAsync.mockResolvedValue(undefined);
   mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
   mocks.useThreadCreationOptions.mockClear();
   mocks.useThreadDefaultExecutionOptions.mockClear();
@@ -755,6 +757,37 @@ afterEach(() => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("submits the visible picker selection when an adopted native thread has no stored execution defaults", async () => {
+    mocks.promptDraft.text = "Continue the native thread";
+
+    renderPromptArea();
+
+    expect(screen.getByTestId("selected-model").textContent).toBe("gpt-5");
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    await waitFor(() => {
+      expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith({
+        id: "thr_1",
+        input: [
+          {
+            mentions: [],
+            text: "Continue the native thread",
+            type: "text",
+          },
+        ],
+        mode: "queue-if-active",
+        model: "gpt-5",
+        permissionMode: "auto",
+        reasoningLevel: "medium",
+        executionInputSources: {
+          model: "explicit",
+          permissionMode: "explicit",
+          reasoningLevel: "explicit",
+        },
+      });
+    });
+  });
+
   it("keeps sent-message edit submission out of the normal send path", () => {
     mocks.defaultExecutionOptions = {
       model: "gpt-5",

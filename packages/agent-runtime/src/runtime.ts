@@ -2579,22 +2579,39 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       return {
         session: result.session,
         events: result.turns.flatMap((turn) => {
-          const rawCreatedAt =
+          const rawStartedAt =
             turn.startedAt ?? turn.completedAt ?? result.session.updatedAt;
-          const createdAt =
-            rawCreatedAt < 100_000_000_000
-              ? rawCreatedAt * 1_000
-              : rawCreatedAt;
+          const startedAt =
+            rawStartedAt < 100_000_000_000
+              ? rawStartedAt * 1_000
+              : rawStartedAt;
+          const completedAt =
+            turn.completedAt === null
+              ? null
+              : turn.completedAt < 100_000_000_000
+                ? turn.completedAt * 1_000
+                : turn.completedAt;
           return assembler
             .assemble({ threadId, deltas: turn.deltas })
-            .map((event, index) => ({
-              createdAt: createdAt + index,
-              event: stampThreadEventScope({
-                event,
-                providerThreadId,
-                threadId,
-              }),
-            }));
+            .map((event, index) => {
+              const createdAt =
+                event.type === "turn/completed" && completedAt !== null
+                  ? completedAt
+                  : completedAt !== null
+                    ? Math.min(
+                        startedAt + index,
+                        Math.max(startedAt, completedAt - 1),
+                      )
+                    : startedAt + index;
+              return {
+                createdAt,
+                event: stampThreadEventScope({
+                  event,
+                  providerThreadId,
+                  threadId,
+                }),
+              };
+            });
         }),
       };
     },
