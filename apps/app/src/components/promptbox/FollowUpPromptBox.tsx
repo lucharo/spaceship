@@ -340,6 +340,7 @@ function FollowUpPromptBoxWithComposer({
       : undefined;
   const canStopRuntime = onStopRuntime !== undefined;
   const attachmentCount = attachments.items?.length ?? 0;
+  const hasDraftContent = composer.message.length > 0 || attachmentCount > 0;
   const composerScope =
     pluginComposerScope ?? pluginComposerHost?.scope ?? null;
   const [composerLayout, setComposerLayout] =
@@ -511,6 +512,13 @@ function FollowUpPromptBoxWithComposer({
           return;
         }
 
+        // A blur should never hide work the user has already put in the
+        // composer. Keep text and attachments visible until they submit,
+        // clear, or explicitly collapse the wide composer themselves.
+        if (hasDraftContent) {
+          return;
+        }
+
         const collapse = () => {
           cancelPendingFocusExpansion();
           setInteractionExpanded(false);
@@ -575,6 +583,7 @@ function FollowUpPromptBoxWithComposer({
     [
       cancelPendingFocusExpansion,
       cancelPendingFocusLoss,
+      hasDraftContent,
       isCompactViewport,
       isPointerCoarse,
       setInteractionExpanded,

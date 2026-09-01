@@ -819,6 +819,8 @@ describe("FollowUpPromptBox", () => {
       value: visualViewport,
     });
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    if (props.composer === null) throw new Error("Missing composer");
+    props.composer.message = "";
 
     try {
       render(<FollowUpPromptBox {...props} />);
@@ -967,11 +969,12 @@ describe("FollowUpPromptBox", () => {
 
   it("stays expanded during a timeline gesture and collapses when focus leaves", async () => {
     mocks.isCompactViewport = true;
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    if (props.composer === null) throw new Error("Missing composer");
+    props.composer.message = "";
     render(
       <>
-        <FollowUpPromptBox
-          {...createFollowUpPromptBoxProps({ kind: "ready" })}
-        />
+        <FollowUpPromptBox {...props} />
         <button type="button">Outside composer</button>
       </>,
     );
@@ -997,11 +1000,12 @@ describe("FollowUpPromptBox", () => {
 
   it("stays expanded while a composer-owned overlay is open", async () => {
     mocks.isCompactViewport = true;
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    if (props.composer === null) throw new Error("Missing composer");
+    props.composer.message = "";
     render(
       <>
-        <FollowUpPromptBox
-          {...createFollowUpPromptBoxProps({ kind: "ready" })}
-        />
+        <FollowUpPromptBox {...props} />
         <button type="button">Portaled picker content</button>
       </>,
     );
@@ -1065,13 +1069,12 @@ describe("FollowUpPromptBox", () => {
       configurable: true,
       value: visualViewport,
     });
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    if (props.composer === null) throw new Error("Missing composer");
+    props.composer.message = "";
 
     try {
-      render(
-        <FollowUpPromptBox
-          {...createFollowUpPromptBoxProps({ kind: "ready" })}
-        />,
-      );
+      render(<FollowUpPromptBox {...props} />);
       const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
       act(() => input.focus());
       act(() => {
@@ -1151,11 +1154,12 @@ describe("FollowUpPromptBox", () => {
   );
 
   it("exposes focus state so narrow prompt containers can expand", async () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    if (props.composer === null) throw new Error("Missing composer");
+    props.composer.message = "";
     render(
       <>
-        <FollowUpPromptBox
-          {...createFollowUpPromptBoxProps({ kind: "ready" })}
-        />
+        <FollowUpPromptBox {...props} />
         <button type="button">Outside composer</button>
       </>,
     );
@@ -1190,6 +1194,55 @@ describe("FollowUpPromptBox", () => {
       "compact",
     );
   });
+
+  it.each([
+    ["text", "Keep this draft", []],
+    [
+      "attachment",
+      "",
+      [
+        {
+          type: "localImage" as const,
+          path: "attachments/image.png",
+          name: "image.png",
+          mimeType: "image/png",
+          sizeBytes: 128,
+        },
+      ],
+    ],
+  ])(
+    "keeps the composer expanded after blur when it has %s",
+    async (_, message, items) => {
+      const props = createFollowUpPromptBoxProps({ kind: "ready" });
+      if (props.composer === null) throw new Error("Missing composer");
+      props.composer.message = message;
+      props.attachments.items = items;
+
+      render(
+        <>
+          <FollowUpPromptBox {...props} />
+          <button type="button">Outside composer</button>
+        </>,
+      );
+      const composer = document.querySelector("[data-follow-up-composer]");
+      const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+
+      act(() => input.focus());
+      fireEvent.pointerDown(
+        screen.getByRole("button", { name: "Outside composer" }),
+      );
+      act(() =>
+        screen.getByRole("button", { name: "Outside composer" }).focus(),
+      );
+      await act(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 20));
+      });
+
+      expect(composer?.hasAttribute("data-follow-up-composer-expanded")).toBe(
+        true,
+      );
+    },
+  );
 
   it("keeps the composer mounted across compact breakpoint changes", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
