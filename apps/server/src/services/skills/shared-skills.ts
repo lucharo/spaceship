@@ -61,6 +61,7 @@ function toSharedSkill(
       scope: sourceType,
       pluginId: null,
       filePath: skill.filePath,
+      canonicalFilePath: skill.canonicalFilePath,
       manageable: false,
       registrySkillId: null,
     },

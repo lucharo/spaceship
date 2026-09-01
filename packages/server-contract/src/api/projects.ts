@@ -419,6 +419,8 @@ export const skillSummarySchema = z.object({
   pluginId: z.string().min(1).nullable(),
   /** Absolute path to the SKILL.md. */
   filePath: z.string(),
+  /** Resolved file identity used for de-duplication and safe read-only access. */
+  canonicalFilePath: z.string().optional(),
   /** `true` when the skill is user-owned and its full lifecycle is manageable. */
   manageable: z.boolean(),
   /** Exact registry entry that installed this skill; `null` for every other source. */

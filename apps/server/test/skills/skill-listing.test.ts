@@ -198,6 +198,7 @@ describe("assembleSkillList", () => {
       provider: null,
       scope: "shared-user",
       filePath: "/home/.agents/skills/wrapup/SKILL.md",
+      canonicalFilePath,
       manageable: false,
     });
   });

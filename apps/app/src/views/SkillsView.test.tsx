@@ -35,6 +35,7 @@ import {
 import {
   SkillDetailDialogView,
   SkillsOverview,
+  skillSourceGroupLabel,
 } from "../components/tools/SkillsCollection";
 import { SkillsLibrary } from "../components/tools/SkillsLibrary";
 
@@ -54,6 +55,7 @@ function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     scope: "provider-user",
     pluginId: null,
     filePath: "/home/u/.claude/skills/code-review/SKILL.md",
+    canonicalFilePath: "/home/u/.claude/skills/code-review/SKILL.md",
     manageable: true,
     registrySkillId: null,
     ...overrides,
@@ -291,6 +293,55 @@ function NavigateButton({ to, label }: { to: string; label: string }) {
 }
 
 describe("SkillsOverview", () => {
+  it("groups installed skills by canonical repository or folder source", () => {
+    const refinedSkill = makeSkill({
+      id: `skill_${"b".repeat(64)}`,
+      name: "wrapup",
+      provider: null,
+      scope: "shared-user",
+      filePath: "/home/u/.agents/skills/wrapup/SKILL.md",
+      canonicalFilePath: "/home/u/.refined/skills/engineering/wrapup/SKILL.md",
+    });
+    const repositorySkill = makeSkill({
+      id: `skill_${"c".repeat(64)}`,
+      name: "storyboard",
+      provider: null,
+      scope: "shared-user",
+      filePath: "/home/u/.agents/skills/storyboard/SKILL.md",
+      canonicalFilePath:
+        "/home/u/Projects/github.com/matpoko/skills/creative/storyboard/SKILL.md",
+    });
+
+    expect(skillSourceGroupLabel(refinedSkill, NO_PROVIDER_ROSTER)).toBe(
+      "Refined / engineering",
+    );
+    expect(skillSourceGroupLabel(repositorySkill, NO_PROVIDER_ROSTER)).toBe(
+      "matpoko/skills / creative",
+    );
+
+    renderDom(
+      <SkillsOverview
+        providerRoster={NO_PROVIDER_ROSTER}
+        skills={[refinedSkill, repositorySkill]}
+        isLoading={false}
+        hasError={false}
+        onCreateSkill={() => {}}
+        onSelectSkill={() => {}}
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("region", { name: "Refined / engineering" })
+        .textContent?.includes("wrapup"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("region", { name: "matpoko/skills / creative" })
+        .textContent?.includes("storyboard"),
+    ).toBe(true);
+  });
+
   it("defaults to every installed skill source", () => {
     const markup = render({
       skills: [

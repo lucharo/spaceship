@@ -165,6 +165,7 @@ export function assembleSkillList(
             ? (skill.name.split(":", 1)[0] ?? skill.name)
             : null,
         filePath: skill.filePath,
+        canonicalFilePath: skill.canonicalFilePath,
         manageable: mapped.manageable && !skill.linked,
         registrySkillId: null,
       } satisfies SkillSummary;
@@ -204,6 +205,7 @@ function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
         scope: builtin ? "bb-builtin" : "bb-user",
         pluginId: null,
         filePath: path.join(rootPath, runtimeSource.entryPath),
+        canonicalFilePath: path.join(rootPath, runtimeSource.entryPath),
         manageable: !builtin,
         registrySkillId: builtin ? null : readRegistrySkillProvenance(rootPath),
       };
@@ -230,6 +232,7 @@ function listBbPluginSkills(deps: AppDeps): SkillSummary[] {
         scope: "plugin",
         pluginId: provenance.pluginId,
         filePath: path.join(rootPath, runtimeSource.entryPath),
+        canonicalFilePath: path.join(rootPath, runtimeSource.entryPath),
         manageable: false,
         registrySkillId: null,
       };
@@ -419,7 +422,7 @@ export async function listProjectSkillFiles(
   if (isServerOwnedSkill(deps, skill)) {
     return listServerSkillFiles(skill);
   }
-  const rootPath = hostPathDirname(skill.filePath);
+  const rootPath = hostPathDirname(skill.canonicalFilePath ?? skill.filePath);
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
@@ -461,7 +464,7 @@ export async function readProjectSkill(
       revision: createHash("sha256").update(contents).digest("hex"),
     };
   }
-  const rootPath = hostPathDirname(skill.filePath);
+  const rootPath = hostPathDirname(skill.canonicalFilePath ?? skill.filePath);
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,

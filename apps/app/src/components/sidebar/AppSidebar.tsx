@@ -28,8 +28,8 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import {
+  getPluginsRoutePath,
   getRootComposeRoutePath,
-  getSkillsRoutePath,
   getThreadRoutePath,
 } from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
@@ -50,6 +50,7 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
+import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
@@ -270,9 +271,20 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip={{ children: "Skills" }}>
-              <Link to={getSkillsRoutePath()} onClick={closeOnMobile}>
+              <Link
+                to={getToolsOwnedCollectionRoutePath("skills")}
+                onClick={closeOnMobile}
+              >
                 <Icon name="Zap" />
                 <span>Skills</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip={{ children: "Plugins" }}>
+              <Link to={getPluginsRoutePath()} onClick={closeOnMobile}>
+                <Icon name="Toolbox" />
+                <span>Plugins</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

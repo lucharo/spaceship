@@ -178,6 +178,7 @@ function discovered(
   name: string,
   rootKind: DiscoveredSkill["rootKind"],
   filePath: string,
+  canonicalFilePath = filePath,
 ): DiscoveredSkill {
   return {
     id: skillId(filePath),
@@ -185,8 +186,8 @@ function discovered(
     description: `${name} skill`,
     rootKind,
     filePath,
-    canonicalFilePath: filePath,
-    linked: false,
+    canonicalFilePath,
+    linked: canonicalFilePath !== filePath,
   };
 }
 
@@ -294,6 +295,8 @@ describe("public project skills route", () => {
           scope: "shared-project",
           pluginId: null,
           filePath:
+            "/tmp/shared-skill-list/.agents/skills/portable-review/SKILL.md",
+          canonicalFilePath:
             "/tmp/shared-skill-list/.agents/skills/portable-review/SKILL.md",
           manageable: false,
           registrySkillId: null,
@@ -1169,6 +1172,7 @@ describe("public project skills route", () => {
           scope: "bb-user",
           pluginId: null,
           filePath: "/data/skills/bb-helper/SKILL.md",
+          canonicalFilePath: "/data/skills/bb-helper/SKILL.md",
           manageable: true,
           registrySkillId: null,
         },
@@ -1180,6 +1184,7 @@ describe("public project skills route", () => {
           scope: "provider-project",
           pluginId: null,
           filePath: "/cwd/.cursor/skills/impeccable/SKILL.md",
+          canonicalFilePath: "/cwd/.cursor/skills/impeccable/SKILL.md",
           manageable: false,
           registrySkillId: null,
         },
@@ -1191,6 +1196,7 @@ describe("public project skills route", () => {
           scope: "provider-project",
           pluginId: null,
           filePath: "/cwd/.claude/skills/cp/SKILL.md",
+          canonicalFilePath: "/cwd/.claude/skills/cp/SKILL.md",
           manageable: true,
           registrySkillId: null,
         },
@@ -1202,6 +1208,7 @@ describe("public project skills route", () => {
           scope: "provider-user",
           pluginId: null,
           filePath: "/home/.claude/skills/cu/SKILL.md",
+          canonicalFilePath: "/home/.claude/skills/cu/SKILL.md",
           manageable: true,
           registrySkillId: null,
         },
@@ -1213,6 +1220,7 @@ describe("public project skills route", () => {
           scope: "provider-user",
           pluginId: null,
           filePath: "/home/.codex/skills/cx/SKILL.md",
+          canonicalFilePath: "/home/.codex/skills/cx/SKILL.md",
           manageable: true,
           registrySkillId: null,
         },
@@ -1580,6 +1588,83 @@ describe("public project skills route", () => {
         type: "host.read_file_relative",
         rootPath: "/home/.codex/skills/documents",
         path: "references/layout.md",
+        dotfiles: "deny",
+      });
+    });
+  });
+
+  it("reads linked skills through their canonical root", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-linked-skill-files",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/linked-skill-files-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/linked-skill-files-env",
+      });
+      const logicalPath = "/home/.claude/skills/wrapup/SKILL.md";
+      const canonicalPath = "/home/.refined/skills/engineering/wrapup/SKILL.md";
+      const stub = registerSkillRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        skillsByProvider: {
+          "claude-code": [
+            discovered("wrapup", "provider-user", logicalPath, canonicalPath),
+          ],
+        },
+        listedFiles: ["SKILL.md"],
+        fileContentsByRoot: {
+          "/home/.refined/skills/engineering/wrapup": "# Wrap up",
+        },
+      });
+      const listResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills?environmentId=${environment.id}`,
+      );
+      expect(listResponse.status).toBe(200);
+      const listed = skillListResponseSchema.parse(
+        await readJson(listResponse),
+      );
+      const skill = listed.skills.find(
+        (candidate) => candidate.name === "wrapup",
+      );
+      expect(skill).toMatchObject({
+        filePath: logicalPath,
+        canonicalFilePath: canonicalPath,
+      });
+      if (skill === undefined) throw new Error("Expected linked skill");
+
+      const query = new URLSearchParams({
+        skillId: skill.id,
+        environmentId: environment.id,
+      });
+      const filesResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills/files?${query}`,
+      );
+      expect(filesResponse.status).toBe(200);
+
+      query.set("path", "SKILL.md");
+      const contentResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills/content?${query}`,
+      );
+      expect(contentResponse.status).toBe(200);
+      expect(
+        skillContentResponseSchema.parse(await readJson(contentResponse)),
+      ).toMatchObject({ content: "# Wrap up" });
+
+      expect(stub.requests.map((request) => request.command)).toContainEqual({
+        type: "host.list_files",
+        path: "/home/.refined/skills/engineering/wrapup",
+        limit: 200,
+      });
+      expect(stub.requests.map((request) => request.command)).toContainEqual({
+        type: "host.read_file_relative",
+        rootPath: "/home/.refined/skills/engineering/wrapup",
+        path: "SKILL.md",
         dotfiles: "deny",
       });
     });

@@ -188,6 +188,18 @@ describe("docs anatomy manifest", () => {
     );
   });
 
+  it("keeps Skills and Plugins in the primary Spaceship navigation", () => {
+    registerTestPlugin();
+    renderAppSidebar();
+
+    expect(
+      screen.getByRole("link", { name: "Skills" }).getAttribute("href"),
+    ).toBe("/extensions/skills?view=library");
+    expect(
+      screen.getByRole("link", { name: "Plugins" }).getAttribute("href"),
+    ).toBe("/extensions/plugins");
+  });
+
   it("keeps every surface fixture anchored to current product source", () => {
     for (const [fixtureId, fixture] of Object.entries(
       manifest.surfaceFixtures,
