@@ -12,6 +12,7 @@ implementation detail stays in code, architecture docs, and tracker issues.
 | [Native history on demand](native_history_on_demand.md)   | Implemented for Codex; pagination is tracked in [#12](https://github.com/lucharo/spaceship/issues/12)                      |
 | [Native session cache](native_session_cache.md)           | Implemented for last-known Codex metadata                                                                                  |
 | [Native session activity](native_session_activity.md)     | Implemented from Codex app-server status                                                                                   |
+| [Native provider identity](native_provider_identity.md)   | Provider-owned thread icons tracked in [#15](https://github.com/lucharo/spaceship/issues/15)                               |
 | [Native references](native_references.md)                 | Readable Codex citations implemented; rich source links remain follow-up work                                              |
 | [Native turn presentation](native_turn_presentation.md)   | Native turn grouping implemented; thread-wide focus mode tracked in [#14](https://github.com/lucharo/spaceship/issues/14)  |
 | [Plugin-first features](plugin_first_features.md)         | Implemented for the Codex thread list                                                                                      |
