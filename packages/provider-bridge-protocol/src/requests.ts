@@ -235,6 +235,8 @@ export const nativeSessionSummarySchema = z.object({
   projectId: z.string().nullable(),
   /** Provider-owned workspace root used to group linked worktrees. */
   workspaceRoot: z.string().nullable(),
+  /** Repository identity used to group provider-managed worktrees. */
+  repositoryUrl: z.string().nullable().optional(),
   /** Provider-owned runtime state; `notLoaded` is distinct from idle. */
   status: z.enum(["notLoaded", "idle", "active", "error"]),
   createdAt: z.number().int().nonnegative(),

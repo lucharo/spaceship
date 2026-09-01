@@ -97,6 +97,16 @@ function getProjectLabel(cwd: string | null): string {
   return normalized.split("/").at(-1) || normalized || "/";
 }
 
+function getRepositoryLabel(repositoryUrl: string): string {
+  const normalized = repositoryUrl
+    .replace(/\.git$/iu, "")
+    .replace(/\/+$/u, "")
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//iu, "")
+    .replace(/^[^@/]+@/u, "")
+    .replace(":", "/");
+  return normalized.split("/").filter(Boolean).at(-1) ?? repositoryUrl;
+}
+
 function isCodexWorktreePath(cwd: string | null): boolean {
   return cwd?.includes("/.codex/worktrees/") ?? false;
 }
@@ -135,8 +145,12 @@ function groupSessions({
     const descriptor =
       organization === "project"
         ? {
-            key: `project:${session.workspaceRoot ?? session.projectId ?? session.cwd ?? "unavailable"}`,
-            label: getProjectLabel(session.workspaceRoot ?? session.cwd),
+            key: `project:${session.repositoryUrl ?? session.workspaceRoot ?? session.projectId ?? session.cwd ?? "unavailable"}`,
+            label:
+              session.repositoryUrl === undefined ||
+              session.repositoryUrl === null
+                ? getProjectLabel(session.workspaceRoot ?? session.cwd)
+                : getRepositoryLabel(session.repositoryUrl),
           }
         : getChronologicalGroup(getSessionTimestamp(session), now);
     const group = grouped.get(descriptor.key) ?? {

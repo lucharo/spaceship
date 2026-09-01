@@ -1009,6 +1009,10 @@ const codexThreadSummarySchema = z
     name: z.string().nullable(),
     cwd: z.string().nullable(),
     projectId: z.string().nullable(),
+    gitInfo: z
+      .object({ originUrl: z.string().nullable() })
+      .passthrough()
+      .nullable(),
     status: z.discriminatedUnion("type", [
       z.object({ type: z.literal("notLoaded") }),
       z.object({ type: z.literal("idle") }),
@@ -1619,6 +1623,7 @@ function toNativeSessionSummary(
     cwd: thread.cwd,
     projectId: thread.projectId,
     workspaceRoot: workspaceRootHints.get(thread.id) ?? thread.cwd,
+    repositoryUrl: thread.gitInfo?.originUrl ?? null,
     status: thread.status.type === "systemError" ? "error" : thread.status.type,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
