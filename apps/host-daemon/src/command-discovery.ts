@@ -609,10 +609,182 @@ interface DiscoverSkillsArgs {
   roots: readonly SkillScanRoot[];
 }
 
+interface SkillSourceProvenance {
+  sourceRepository: string;
+  sourceRelativePath: string;
+}
+
+interface SkillLockEntry {
+  source: string;
+  skillPath: string;
+}
+
+type SkillLock = ReadonlyMap<string, SkillLockEntry>;
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+async function readSkillLock(root: SkillScanRoot): Promise<SkillLock> {
+  const rootPath =
+    "rootPath" in root ? root.rootPath : path.dirname(root.filePath);
+  const lockDirectory =
+    path.basename(rootPath) === "skills" ? path.dirname(rootPath) : rootPath;
+  for (const filename of [".skill-lock.json", "skill-lock.json"]) {
+    try {
+      const parsed: unknown = JSON.parse(
+        await fs.readFile(path.join(lockDirectory, filename), "utf8"),
+      );
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        !("skills" in parsed) ||
+        typeof parsed.skills !== "object" ||
+        parsed.skills === null
+      ) {
+        continue;
+      }
+      const entries = new Map<string, SkillLockEntry>();
+      for (const [name, value] of Object.entries(parsed.skills)) {
+        if (typeof value !== "object" || value === null) continue;
+        const source = nonEmptyString(Reflect.get(value, "source"));
+        const skillPath = nonEmptyString(Reflect.get(value, "skillPath"));
+        if (source !== null && skillPath !== null) {
+          entries.set(name, { source, skillPath });
+        }
+      }
+      return entries;
+    } catch {
+      // Missing, unreadable, or malformed lockfiles do not block discovery.
+    }
+  }
+  return new Map();
+}
+
+function repositorySlugFromRemote(remote: string): string | null {
+  const trimmed = remote
+    .trim()
+    .replace(/\.git$/u, "")
+    .replace(/\/$/u, "");
+  if (trimmed.length === 0) return null;
+  const scpPath = trimmed.match(/^[^@]+@[^:]+:(.+)$/u)?.[1];
+  const repositoryPath = (() => {
+    if (scpPath !== undefined) return scpPath;
+    try {
+      return new URL(trimmed).pathname;
+    } catch {
+      return trimmed.startsWith("/") ? null : trimmed;
+    }
+  })();
+  if (repositoryPath === null) return null;
+  const segments = repositoryPath.split(/[\\/]/u).filter(Boolean);
+  return segments.length >= 2 ? segments.slice(-2).join("/") : null;
+}
+
+function originRemoteFromConfig(content: string): string | null {
+  let inOrigin = false;
+  for (const rawLine of content.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (line.startsWith("[") && line.endsWith("]")) {
+      inOrigin = /^\[remote\s+"origin"\]$/u.test(line);
+      continue;
+    }
+    if (!inOrigin) continue;
+    const match = line.match(/^url\s*=\s*(.+)$/u);
+    if (match?.[1] !== undefined) return match[1];
+  }
+  return null;
+}
+
+async function readGitConfig(gitMarkerPath: string): Promise<string | null> {
+  const marker = await fs.lstat(gitMarkerPath).catch(() => null);
+  if (marker?.isDirectory()) {
+    return fs
+      .readFile(path.join(gitMarkerPath, "config"), "utf8")
+      .catch(() => null);
+  }
+  if (!marker?.isFile()) return null;
+  const markerContent = await fs
+    .readFile(gitMarkerPath, "utf8")
+    .catch(() => null);
+  const gitDirValue = markerContent?.match(/^gitdir:\s*(.+)$/mu)?.[1]?.trim();
+  if (gitDirValue === undefined) return null;
+  const gitDir = path.resolve(path.dirname(gitMarkerPath), gitDirValue);
+  const commonDirValue = await fs
+    .readFile(path.join(gitDir, "commondir"), "utf8")
+    .catch(() => null);
+  const configRoot =
+    commonDirValue === null
+      ? gitDir
+      : path.resolve(gitDir, commonDirValue.trim());
+  return fs.readFile(path.join(configRoot, "config"), "utf8").catch(() => null);
+}
+
+async function resolveGitSkillProvenance(
+  canonicalFilePath: string,
+  cache: Map<string, SkillSourceProvenance | null>,
+): Promise<SkillSourceProvenance | null> {
+  let current = path.dirname(canonicalFilePath);
+  const visited: string[] = [];
+  while (true) {
+    const cached = cache.get(current);
+    if (cached !== undefined || cache.has(current)) {
+      for (const directory of visited) cache.set(directory, cached ?? null);
+      return cached ?? null;
+    }
+    visited.push(current);
+    const config = await readGitConfig(path.join(current, ".git"));
+    if (config !== null) {
+      const remote = originRemoteFromConfig(config);
+      const sourceRepository = remote && repositorySlugFromRemote(remote);
+      const provenance =
+        sourceRepository === null
+          ? null
+          : {
+              sourceRepository,
+              sourceRelativePath: path
+                .relative(current, canonicalFilePath)
+                .split(path.sep)
+                .join("/"),
+            };
+      for (const directory of visited) cache.set(directory, provenance);
+      return provenance;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      for (const directory of visited) cache.set(directory, null);
+      return null;
+    }
+    current = parent;
+  }
+}
+
+async function resolveSkillSourceProvenance(
+  root: SkillScanRoot,
+  match: SkillFileMatch,
+  canonicalFilePath: string,
+  skillLock: SkillLock,
+  gitCache: Map<string, SkillSourceProvenance | null>,
+): Promise<SkillSourceProvenance | null> {
+  const lockEntry =
+    skillLock.get(match.name) ??
+    skillLock.get(path.basename(path.dirname(match.filePath)));
+  if (lockEntry !== undefined) {
+    return {
+      sourceRepository: lockEntry.source,
+      sourceRelativePath: lockEntry.skillPath.replaceAll("\\", "/"),
+    };
+  }
+  return resolveGitSkillProvenance(canonicalFilePath, gitCache);
+}
+
 function buildSkillRecord(
   root: SkillScanRoot,
   match: SkillFileMatch,
   canonicalFilePath: string,
+  provenance: SkillSourceProvenance | null,
 ): DiscoveredSkill {
   const rootPath =
     "rootPath" in root ? root.rootPath : path.dirname(root.filePath);
@@ -628,6 +800,8 @@ function buildSkillRecord(
     description: match.frontmatter.description,
     filePath: match.filePath,
     canonicalFilePath,
+    sourceRepository: provenance?.sourceRepository ?? null,
+    sourceRelativePath: provenance?.sourceRelativePath ?? null,
     rootKind: root.rootKind,
     linked: match.linked,
   };
@@ -645,12 +819,23 @@ export async function discoverSkills(
 ): Promise<DiscoveredSkill[]> {
   const records: DiscoveredSkill[] = [];
   const budget = { remainingEntries: MAX_SCAN_ENTRY_COUNT };
+  const gitCache = new Map<string, SkillSourceProvenance | null>();
   for (const root of args.roots) {
+    const skillLock = await readSkillLock(root);
     for (const match of await scanSkillFiles({ budget, root })) {
       const canonicalFilePath = await fs
         .realpath(match.filePath)
         .catch(() => match.filePath);
-      records.push(buildSkillRecord(root, match, canonicalFilePath));
+      const provenance = await resolveSkillSourceProvenance(
+        root,
+        match,
+        canonicalFilePath,
+        skillLock,
+        gitCache,
+      );
+      records.push(
+        buildSkillRecord(root, match, canonicalFilePath, provenance),
+      );
     }
   }
   const uniqueRecords: DiscoveredSkill[] = [];

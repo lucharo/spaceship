@@ -62,6 +62,8 @@ function toSharedSkill(
       pluginId: null,
       filePath: skill.filePath,
       canonicalFilePath: skill.canonicalFilePath,
+      sourceRepository: skill.sourceRepository,
+      sourceRelativePath: skill.sourceRelativePath,
       manageable: false,
       registrySkillId: null,
     },

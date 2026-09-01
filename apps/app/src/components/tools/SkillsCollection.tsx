@@ -245,6 +245,15 @@ export function skillSourceGroupLabel(
   skill: SkillSummary,
   providerRoster: ProviderRoster,
 ): string {
+  if (skill.sourceRepository !== null) {
+    const sourceSegments = pathSegments(skill.sourceRelativePath ?? "");
+    const skillsIndex = sourceSegments.indexOf("skills");
+    const category =
+      skillsIndex >= 0 && sourceSegments.length - skillsIndex > 2
+        ? sourceSegments[skillsIndex + 1]
+        : null;
+    return `${skill.sourceRepository}${category ? ` / ${category}` : ""}`;
+  }
   const segments = pathSegments(skill.canonicalFilePath ?? skill.filePath);
   const githubIndex = segments.findIndex(
     (segment, index) =>

@@ -166,6 +166,8 @@ export function assembleSkillList(
             : null,
         filePath: skill.filePath,
         canonicalFilePath: skill.canonicalFilePath,
+        sourceRepository: skill.sourceRepository,
+        sourceRelativePath: skill.sourceRelativePath,
         manageable: mapped.manageable && !skill.linked,
         registrySkillId: null,
       } satisfies SkillSummary;
@@ -206,6 +208,8 @@ function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
         pluginId: null,
         filePath: path.join(rootPath, runtimeSource.entryPath),
         canonicalFilePath: path.join(rootPath, runtimeSource.entryPath),
+        sourceRepository: null,
+        sourceRelativePath: null,
         manageable: !builtin,
         registrySkillId: builtin ? null : readRegistrySkillProvenance(rootPath),
       };
@@ -233,6 +237,8 @@ function listBbPluginSkills(deps: AppDeps): SkillSummary[] {
         pluginId: provenance.pluginId,
         filePath: path.join(rootPath, runtimeSource.entryPath),
         canonicalFilePath: path.join(rootPath, runtimeSource.entryPath),
+        sourceRepository: null,
+        sourceRelativePath: null,
         manageable: false,
         registrySkillId: null,
       };

@@ -56,6 +56,8 @@ function makeSkill(overrides: Partial<SkillSummary> = {}): SkillSummary {
     pluginId: null,
     filePath: "/home/u/.claude/skills/code-review/SKILL.md",
     canonicalFilePath: "/home/u/.claude/skills/code-review/SKILL.md",
+    sourceRepository: null,
+    sourceRelativePath: null,
     manageable: true,
     registrySkillId: null,
     ...overrides,
@@ -301,6 +303,8 @@ describe("SkillsOverview", () => {
       scope: "shared-user",
       filePath: "/home/u/.agents/skills/wrapup/SKILL.md",
       canonicalFilePath: "/home/u/.refined/skills/engineering/wrapup/SKILL.md",
+      sourceRepository: "lucharo/skills",
+      sourceRelativePath: "skills/engineering/wrapup/SKILL.md",
     });
     const repositorySkill = makeSkill({
       id: `skill_${"c".repeat(64)}`,
@@ -313,7 +317,7 @@ describe("SkillsOverview", () => {
     });
 
     expect(skillSourceGroupLabel(refinedSkill, NO_PROVIDER_ROSTER)).toBe(
-      "Refined / engineering",
+      "lucharo/skills / engineering",
     );
     expect(skillSourceGroupLabel(repositorySkill, NO_PROVIDER_ROSTER)).toBe(
       "matpoko/skills / creative",
@@ -332,7 +336,7 @@ describe("SkillsOverview", () => {
 
     expect(
       screen
-        .getByRole("region", { name: "Refined / engineering" })
+        .getByRole("region", { name: "lucharo/skills / engineering" })
         .textContent?.includes("wrapup"),
     ).toBe(true);
     expect(

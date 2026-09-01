@@ -135,6 +135,8 @@ describe("assembleSkillList", () => {
     rootKind: SkillRootKind,
     filePath: string,
     canonicalFilePath = filePath,
+    sourceRepository?: string,
+    sourceRelativePath?: string,
   ): DiscoveredSkill {
     return {
       id: `skill_${createHash("sha256").update(filePath).digest("hex")}`,
@@ -143,6 +145,8 @@ describe("assembleSkillList", () => {
       rootKind,
       filePath,
       canonicalFilePath,
+      sourceRepository: sourceRepository ?? null,
+      sourceRelativePath: sourceRelativePath ?? null,
       linked: false,
     };
   }
@@ -200,6 +204,29 @@ describe("assembleSkillList", () => {
       filePath: "/home/.agents/skills/wrapup/SKILL.md",
       canonicalFilePath,
       manageable: false,
+    });
+  });
+
+  it("preserves authoritative skill source provenance", () => {
+    const [skill] = assembleSkillList([
+      {
+        provider: "codex",
+        skills: [
+          discovered(
+            "wrapup",
+            "shared-user",
+            "/home/.agents/skills/wrapup/SKILL.md",
+            "/home/.refined/skills/engineering/wrapup/SKILL.md",
+            "lucharo/skills",
+            "skills/engineering/wrapup/SKILL.md",
+          ),
+        ],
+      },
+    ]);
+
+    expect(skill).toMatchObject({
+      sourceRepository: "lucharo/skills",
+      sourceRelativePath: "skills/engineering/wrapup/SKILL.md",
     });
   });
 

@@ -177,7 +177,12 @@ describe("createAgentRuntime command contracts", () => {
     const { runtime } = createContractRuntime();
 
     try {
-      const history = await runtime.readNativeSessionHistory({
+      const readNativeSessionHistory = runtime.readNativeSessionHistory;
+      expect(readNativeSessionHistory).toBeTypeOf("function");
+      if (readNativeSessionHistory === undefined) {
+        throw new Error("Native session history is unavailable");
+      }
+      const history = await readNativeSessionHistory({
         bridgeLaunch: createScriptedEchoLaunch(),
         providerId: "fake",
         providerThreadId: "provider-native-1",

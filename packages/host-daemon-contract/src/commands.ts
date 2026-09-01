@@ -769,6 +769,10 @@ const discoveredSkillSchema = z.object({
   filePath: z.string(),
   /** Resolved file identity used to collapse provider symlink views. */
   canonicalFilePath: z.string(),
+  /** Canonical source repository slug when discovery can prove one. */
+  sourceRepository: z.string().min(1).nullable(),
+  /** Path to SKILL.md inside sourceRepository; null when provenance is unknown. */
+  sourceRelativePath: z.string().min(1).nullable(),
   rootKind: skillRootKindSchema,
   /** True when discovery followed either the skill directory or SKILL.md symlink. */
   linked: z.boolean(),

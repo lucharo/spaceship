@@ -1480,6 +1480,8 @@ describe("thread runtime config", () => {
               description: "Review code from one shared source.",
               filePath: skillFilePath,
               canonicalFilePath: skillFilePath,
+              sourceRepository: null,
+              sourceRelativePath: null,
               rootKind: "shared-project",
               linked: false,
             },

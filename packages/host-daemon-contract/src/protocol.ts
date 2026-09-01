@@ -331,6 +331,11 @@
 // replaces the owning turn retains it. The wire shape is unchanged, but the
 // server-to-daemon payload semantics differ.
 //
+// Version 177 adds nullable skill source provenance to host.list_skills results:
+// sourceRepository and sourceRelativePath. The strict result schema makes this
+// incompatible with older daemons in both directions, so enrolled hosts must
+// update before the server can group installed skills by their real source.
+//
 // Version 176 carries provider-owned native-session project identity and
 // runtime status so clients can group worktrees and show live activity.
 //
@@ -355,7 +360,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 176 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 177 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
