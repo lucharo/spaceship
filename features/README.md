@@ -13,7 +13,9 @@ implementation detail stays in code, architecture docs, and tracker issues.
 | [Native session cache](native_session_cache.md)           | Implemented for last-known Codex metadata                                                                                  |
 | [Native session activity](native_session_activity.md)     | Implemented from Codex app-server status                                                                                   |
 | [Native references](native_references.md)                 | Readable Codex citations implemented; rich source links remain follow-up work                                              |
+| [Native turn presentation](native_turn_presentation.md)   | Native turn grouping implemented; thread-wide focus mode tracked in [#14](https://github.com/lucharo/spaceship/issues/14)  |
 | [Plugin-first features](plugin_first_features.md)         | Implemented for the Codex thread list                                                                                      |
+| [ACPX adapter](acpx_adapter.md)                           | Optional ACP transport candidate tracked through [#5](https://github.com/lucharo/spaceship/issues/5)                       |
 | [Remote native hosts](remote_native_hosts.md)             | Tracked in [#3](https://github.com/lucharo/spaceship/issues/3)                                                             |
 | [Skills management](skills_management.md)                 | Shared and provider skill roots are listed; native writes tracked in [#10](https://github.com/lucharo/spaceship/issues/10) |
 | [Native skill invocation](native_skill_invocation.md)     | Installed skills support both `$name` and `/name` invocation                                                               |
