@@ -9,7 +9,13 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDir, "..");
 
 void runDevSupervisor({
-  childArgs: ["--conditions=source", "--import", "tsx", "src/index.ts"],
+  childArgs: [
+    "--use-system-ca",
+    "--conditions=source",
+    "--import",
+    "tsx",
+    "src/index.ts",
+  ],
   childCommand: process.execPath,
   childCwd: packageRoot,
   childEnv: { BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD: "1" },

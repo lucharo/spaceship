@@ -25,6 +25,7 @@ import {
   completeFullStackSupervision,
   createDaemonEnv,
   createHostEnrollKeyRequestBody,
+  createServerProcessArgs,
   createServerEnv,
   createHostDaemonJoinEnv,
   parseLauncherArgs,
@@ -488,6 +489,13 @@ async function captureStdout(run: () => Promise<void>): Promise<string> {
 }
 
 describe("bb-app launcher", () => {
+  it("starts the server with the operating system certificate store", () => {
+    expect(createServerProcessArgs("/app/server.js")).toEqual([
+      "--use-system-ca",
+      "/app/server.js",
+    ]);
+  });
+
   it("waits for the expected host daemon identity and connection", async () => {
     let statusRequests = 0;
     const server = createServer((request, response) => {

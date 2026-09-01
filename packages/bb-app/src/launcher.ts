@@ -94,6 +94,7 @@ const SET_COMMAND = "set";
 const REMOVE_COMMAND = "remove";
 const CONFIG_UNSET_COMMAND = "unset";
 const CONFIG_LIST_COMMAND = "list";
+const NODE_USE_SYSTEM_CA_ARG = "--use-system-ca";
 const CONFIG_REFRESH_COMMAND = "refresh";
 
 type ManagedConfigValueKey = BbAppManagedConfigKey;
@@ -2853,14 +2854,18 @@ Usage:
   }
   assertBbAppArtifacts(runtime.context);
 
-  const childProcess = spawn(process.execPath, [runtime.context.serverEntry], {
-    cwd: process.cwd(),
-    env: createServerEnv({
-      context: runtime.context,
-      env: runtime.serverEnv,
-    }),
-    stdio: "inherit",
-  });
+  const childProcess = spawn(
+    process.execPath,
+    createServerProcessArgs(runtime.context.serverEntry),
+    {
+      cwd: process.cwd(),
+      env: createServerEnv({
+        context: runtime.context,
+        env: runtime.serverEnv,
+      }),
+      stdio: "inherit",
+    },
+  );
   process.exitCode = toExitCode(await waitForProcessExit(childProcess));
 }
 
@@ -3073,7 +3078,7 @@ export async function startFullStackServerProcess(
   // Fresh per spawn: the probe must match this child, not any earlier one.
   const launchId = randomUUID();
   const serverRun = spawnNamedManagedProcess({
-    args: [args.context.serverEntry],
+    args: createServerProcessArgs(args.context.serverEntry),
     command: process.execPath,
     env: { ...args.env, BB_SERVER_LAUNCH_ID: launchId },
     outputBuffer: args.outputBuffer,
@@ -3101,6 +3106,10 @@ export async function startFullStackServerProcess(
       `Server failed to become healthy: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+export function createServerProcessArgs(serverEntry: string): string[] {
+  return [NODE_USE_SYSTEM_CA_ARG, serverEntry];
 }
 
 async function startFullStackDaemonProcess(
