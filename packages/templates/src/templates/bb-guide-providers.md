@@ -20,6 +20,9 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
   bb provider adopt <providerId> <providerThreadId>
       [--machine <id-or-name> | --environment <id>]
                                           Adopt a native session
+  bb provider archive <providerId> <providerThreadId>
+      [--machine <id-or-name> | --environment <id>]
+                                          Archive a native session
 
 Use these before spawning threads if you are unsure which provider or model to use.
 `--host` is an alias for `--machine`. Machine and environment selectors are
@@ -30,6 +33,8 @@ opaque provider thread ID to open or adopt a selected session through a client
 that supports native sessions. `bb provider adopt` resolves the selected
 session's current metadata from the provider and links it without copying its
 history. Archived sessions must be unarchived natively before adoption.
+`bb provider archive` delegates the lifecycle operation to the provider's
+authoritative native store without first adopting or copying the session.
 When provider and model are omitted from bb thread spawn, the project's
 remembered defaults apply. If the project has no remembered choice, bb uses
 the explicitly requested provider or Codex, then resolves the model marked

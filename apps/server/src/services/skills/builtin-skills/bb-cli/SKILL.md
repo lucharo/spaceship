@@ -345,6 +345,10 @@ environment pull-request show <id>`. Diff commands require an explicit target
   copying its history. Add a machine selector, or pass `--environment <id>`
   to reuse that environment's host and workspace. Archived sessions must be
   unarchived natively first.
+- Use `bb provider archive <provider-id> <provider-thread-id>` to archive a
+  session in the provider's authoritative native store without adopting or
+  copying it first. Add `--machine <id-or-name>` or `--environment <id>` to
+  use the same host selection as list and adopt.
 - Known ACP agents can appear automatically when their CLI is installed on the
   host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
   `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
