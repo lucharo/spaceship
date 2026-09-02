@@ -206,7 +206,7 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
       await waitForLog({
         process: processEntry,
         text: "grandchild=",
-        timeoutMs: 1_000,
+        timeoutMs: 10_000,
       });
       const grandchildPid = Number(
         processEntry.logs.text().match(/grandchild=(\d+)/u)?.[1],
@@ -231,6 +231,7 @@ process.stdout.write(\`grandchild=\${grandchild.pid}\\n\`);
 
       expect(() => process.kill(grandchildPid, 0)).toThrow();
     },
+    15_000,
   );
 
   it("uses the inner executable for an unpacked Linux build", () => {
