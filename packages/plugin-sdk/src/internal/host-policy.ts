@@ -10,6 +10,7 @@ import {
   normalizeProviderNativeRoots,
   providerNativeRootsInputSchema,
   providerNativeRootsSchema,
+  type PromptMentionCommandTrigger,
   type ProviderNativeRoots,
 } from "@bb/domain";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
@@ -1081,10 +1082,12 @@ export type NormalizedPluginProviderDeclaration = Omit<
   PluginProviderDeclaration,
   | "experimental_nativeSkillRoots"
   | "experimental_nativeCommandRoots"
+  | "experimental_skillCommandAliases"
   | "experimental_resolvesNativeRoots"
 > & {
   readonly experimental_nativeSkillRoots?: ProviderNativeRoots;
   readonly experimental_nativeCommandRoots?: ProviderNativeRoots;
+  readonly experimental_skillCommandAliases: readonly PromptMentionCommandTrigger[];
   readonly experimental_resolvesNativeRoots: boolean;
   readonly maintenance: {
     readonly health: boolean;
@@ -1132,6 +1135,7 @@ const READ_EXPERIMENTAL_PROVIDER_DECLARATION_FIELDS: ReadonlySet<string> =
   new Set([
     "experimental_bridgeOptions",
     "experimental_visibility",
+    "experimental_skillCommandAliases",
     "experimental_nativeSkillRoots",
     "experimental_nativeCommandRoots",
     "experimental_resolvesNativeRoots",
@@ -1339,6 +1343,13 @@ export function validatePluginProviderDeclaration(
     allowed: PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES,
     requireNonEmpty: false,
   });
+  const skillCommandAliases = validateProviderLiteralArray({
+    providerId: id,
+    field: "experimental_skillCommandAliases",
+    value: declaration.experimental_skillCommandAliases ?? [],
+    allowed: ["$"] as const,
+    requireNonEmpty: false,
+  });
   const bridgeOptions =
     declaration.experimental_bridgeOptions === undefined
       ? undefined
@@ -1443,6 +1454,7 @@ export function validatePluginProviderDeclaration(
     maintenance: normalizedMaintenance,
     capabilities: normalizedCapabilities,
     composerActions,
+    experimental_skillCommandAliases: skillCommandAliases,
     ...(strings === undefined ? {} : { strings: strings }),
     ...(serviceTiers === undefined ? {} : { serviceTiers: serviceTiers }),
     ...(reasoningLevels === undefined

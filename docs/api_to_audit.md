@@ -323,6 +323,18 @@ The per-root options and the symlink boundary rule are in
 the right vocabulary or whether a root should carry a shape like the
 resolver's answer does.
 
+## `PluginProviderDeclaration.experimental_skillCommandAliases`
+
+**What it does.** Lets a provider plugin add alternate trigger characters for
+the universal skills picker without teaching core about a provider id. The
+canonical `/` trigger remains implicit; Codex declares `$` so `$wrapup` and
+other native skill names open the same picker as `/wrapup`.
+
+**Audit before stabilizing.** Confirm whether aliases belong on the provider
+declaration or on a future command-catalog response, and whether providers
+need any aliases beyond `$`. The validator currently rejects `/` as redundant,
+duplicates, and every other character.
+
 ## `PluginProviderDeclaration.experimental_nativeCommandRoots`
 
 **What it does.** Names the directories a provider's agent reads its own

@@ -1224,6 +1224,7 @@ bb.providers.register({
   reasoningLevels: [{ id: "medium", label: "Medium" }],
   serviceTiers: undefined, // e.g. [{ id: "fast", label: "Fast" }]
   composerActions: [], // skills typeahead is implicit; ["plan"] opts into plan mode
+  experimental_skillCommandAliases: ["$"], // optional extra skills triggers
   // Cold-cache fallback models: shown only until the first model/list probe
   // completes, or when a probe fails transiently. Exactly one isDefault.
   // `scope` says how far one model/list answer travels: "host" when the

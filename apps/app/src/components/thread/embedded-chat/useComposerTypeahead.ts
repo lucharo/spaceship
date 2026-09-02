@@ -64,6 +64,7 @@ export function useComposerTypeahead({
     providerId,
     commandScope: "thread",
     skillsTrigger: providerPromptActions.skillsTrigger,
+    skillsAliases: providerPromptActions.skillTriggerAliases,
     promptActions,
     environmentId,
     query: commandQuery,

@@ -86,7 +86,7 @@ function LocationPath() {
 function renderView() {
   const { wrapper } = createQueryClientTestHarness();
   return render(
-    <MemoryRouter initialEntries={["/native-sessions"]}>
+    <MemoryRouter initialEntries={["/native-sessions?provider=example-agent"]}>
       <Routes>
         <Route path="/native-sessions" element={<NativeSessionsView />} />
         <Route
@@ -99,13 +99,35 @@ function renderView() {
   );
 }
 
+function renderViewWithoutProvider() {
+  const { wrapper } = createQueryClientTestHarness();
+  return render(
+    <MemoryRouter initialEntries={["/native-sessions"]}>
+      <Routes>
+        <Route path="/native-sessions" element={<NativeSessionsView />} />
+      </Routes>
+    </MemoryRouter>,
+    { wrapper },
+  );
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
 
 describe("NativeSessionsView", () => {
-  it("lists metadata and adopts a selected native Codex session", async () => {
+  it("does not query without an explicit provider", () => {
+    renderViewWithoutProvider();
+
+    expect(
+      screen.getByText(/Choose a provider's native session catalogue/u),
+    ).toBeTruthy();
+    expect(screen.queryByText("Loading native sessions…")).toBeNull();
+    expect(sdk.providers.nativeSessions).not.toHaveBeenCalled();
+  });
+
+  it("lists metadata and adopts a selected provider-native session", async () => {
     vi.mocked(sdk.providers.nativeSessions).mockResolvedValue(nativeSessions);
     vi.mocked(sdk.threads.adoptNative).mockResolvedValue(adoptedThread);
 
@@ -118,7 +140,7 @@ describe("NativeSessionsView", () => {
     await waitFor(() =>
       expect(sdk.threads.adoptNative).toHaveBeenCalledWith({
         hostId: "host_primary",
-        providerId: "codex",
+        providerId: "example-agent",
         providerThreadId: "native-thread-1",
       }),
     );
@@ -153,7 +175,7 @@ describe("NativeSessionsView", () => {
 
     await waitFor(() =>
       expect(sdk.providers.nativeSessions).toHaveBeenLastCalledWith(
-        "codex",
+        "example-agent",
         expect.objectContaining({
           hostId: "host_primary",
           archived: true,
@@ -186,7 +208,7 @@ describe("NativeSessionsView", () => {
 
     expect(await screen.findByText("Older session")).toBeTruthy();
     expect(sdk.providers.nativeSessions).toHaveBeenLastCalledWith(
-      "codex",
+      "example-agent",
       expect.objectContaining({
         hostId: "host_primary",
         archived: false,

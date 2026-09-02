@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import type { Context } from "hono";
 import type * as z from "zod";
 import type {
+  PromptMentionCommandTrigger,
   ProviderNativeRootInput,
   ProviderNativeRootsInputLike,
 } from "@bb/domain";
@@ -782,6 +783,9 @@ export interface PluginProviderDeclaration {
   /** Composer actions this provider supports. No duplicates; may be empty
    * (the universal skills typeahead is implicit). */
   composerActions: readonly PluginProviderComposerAction[];
+  /** Optional extra trigger characters for the universal skills typeahead.
+   * The canonical slash trigger remains implicit and cannot be repeated. */
+  experimental_skillCommandAliases?: readonly PromptMentionCommandTrigger[];
   // -------------------------------------------------------------------------
   // Target-state declaration fields (docs/provider-plugin-api.md §1). Each is
   // validated and carried on the normalized declaration; WS2a projects them

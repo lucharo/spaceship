@@ -75,6 +75,7 @@ bb.providers.register({
   ],
   serviceTiers: undefined, // optional; open list, model/list is precise
   composerActions: ["plan"], // "plan" | "goal"
+  experimental_skillCommandAliases: ["$"], // optional extra skills triggers
   extensionKinds: {}, // "<name>": { item?: Schema, state?: Schema }
   models: { fallback: [], scope: "host" }, // cold-cache placeholder; scope is
   // "host" | "workspace" (default): how far one
@@ -92,7 +93,9 @@ bb.providers.register({
 Still experimental on the declaration (see api_to_audit.md):
 `experimental_visibility` (`"installed"` hides the row until the bridge's
 health probe finds the agent), `experimental_bridgeOptions` (immutable JSON
-forwarded opaquely to the bridge), `experimental_nativeSkillRoots` and
+forwarded opaquely to the bridge), `experimental_skillCommandAliases`
+(extra trigger characters for the universal skills picker; `/` remains the
+canonical trigger), `experimental_nativeSkillRoots` and
 `experimental_nativeCommandRoots` (where the agent keeps its own skills and
 slash commands; each root is a path or `{ path, recursive?, ancestors?,
 namePrefix?, skipIfManifest? }`, where `recursive` scans nested skill

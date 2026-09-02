@@ -72,6 +72,7 @@ const providerComposerActionSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("skills"),
     trigger: promptMentionCommandTriggerSchema,
+    aliases: z.array(promptMentionCommandTriggerSchema).optional(),
   }),
   z.object({
     kind: z.literal("plan"),

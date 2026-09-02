@@ -586,9 +586,9 @@ export function NativeSessionThreadList({
           className="size-7 text-muted-foreground"
         >
           <Link
-            to={NATIVE_SESSIONS_ROUTE_PATH}
+            to={`${NATIVE_SESSIONS_ROUTE_PATH}?provider=${encodeURIComponent(providerId)}`}
             onClick={onNavigate}
-            aria-label="Open active and archived Codex sessions"
+            aria-label={`Open active and archived ${providerLabel} sessions`}
           >
             <Icon name="Clock" className="size-3.5" />
           </Link>

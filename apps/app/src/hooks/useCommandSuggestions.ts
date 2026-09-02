@@ -17,6 +17,7 @@ interface UseCommandSuggestionsArgs {
   /** Composer surface used to exclude commands that require an existing thread. */
   commandScope: "new-thread" | "thread";
   skillsTrigger: PromptMentionCommandTrigger | null;
+  skillsAliases?: readonly PromptMentionCommandTrigger[];
   promptActions?: readonly CommandSuggestionPromptAction[];
   /**
    * Environment whose workspace scopes discovery (e.g. a thread's worktree, or
@@ -271,7 +272,7 @@ export function useCommandSuggestions(
 
   return {
     trigger,
-    aliases: trigger === "/" && args.providerId === "codex" ? ["$"] : [],
+    aliases: args.skillsAliases ?? [],
     suggestions,
     isLoading,
     isError,

@@ -990,6 +990,7 @@ export function NewThreadComposer({
     providerId: selectedProviderId,
     commandScope: "new-thread",
     skillsTrigger: providerPromptActions.skillsTrigger,
+    skillsAliases: providerPromptActions.skillTriggerAliases,
     promptActions,
     environmentId: reuseEnvironmentId,
     hostId: projectHostId,

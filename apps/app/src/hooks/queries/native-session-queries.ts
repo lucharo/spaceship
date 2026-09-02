@@ -12,6 +12,7 @@ import { useSystemConfig } from "./system-queries";
 interface UseProviderNativeSessionsArgs {
   providerId: string;
   archived?: boolean;
+  enabled?: boolean;
   limit?: number;
   replayLastKnown?: boolean;
   searchTerm?: string;
@@ -34,6 +35,7 @@ export function nativeSessionsQueryKey({
 export function useProviderNativeSessions({
   providerId,
   archived = false,
+  enabled = true,
   limit = 100,
   replayLastKnown = false,
   searchTerm,
@@ -60,7 +62,7 @@ export function useProviderNativeSessions({
       archived,
       searchTerm: normalizedSearchTerm,
     }),
-    enabled: hostId !== null,
+    enabled: enabled && hostId !== null,
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam, signal }) => {
       const response = await sdk.providers.nativeSessions(providerId, {

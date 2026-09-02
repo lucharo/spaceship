@@ -86,6 +86,7 @@ export default function plugin(bb: BbPluginApi) {
       { id: "fast", label: "Fast" },
     ],
     composerActions: ["plan", "goal"],
+    experimental_skillCommandAliases: ["$"],
     deriveProviderOptions(context) {
       return {
         memoryEnabled: context.settings.memoryEnabled !== false,

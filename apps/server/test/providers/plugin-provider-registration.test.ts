@@ -303,6 +303,21 @@ describe("buildPluginProviderRegistration", () => {
     expect(registration.info.serviceTiers).toBeUndefined();
   });
 
+  it("projects provider-declared skill trigger aliases", () => {
+    const registration = buildPluginProviderRegistration({
+      available: true,
+      pluginId: "acme-agent",
+      declaration: declaration({ experimental_skillCommandAliases: ["$"] }),
+      readSettings: NO_SETTINGS,
+    });
+
+    expect(registration.info.composerActions[0]).toStrictEqual({
+      kind: "skills",
+      trigger: "/",
+      aliases: ["$"],
+    });
+  });
+
   it("projects a named glyph icon by name and a path icon as a logo URL, never both", () => {
     // `icon: "Zap"` has no bytes for the logo route to serve; before this the
     // glyph was dropped and the picker showed the display name's initial.

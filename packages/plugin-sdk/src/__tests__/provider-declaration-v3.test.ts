@@ -81,6 +81,25 @@ describe("provider declaration target-state fields", () => {
     expect("serviceTiers" in normalized).toBe(false);
     expect("reasoningLevels" in normalized).toBe(false);
     expect("extensionKinds" in normalized).toBe(false);
+    expect(normalized.experimental_skillCommandAliases).toEqual([]);
+  });
+
+  it("validates optional skill command aliases", () => {
+    expect(
+      validatePluginProviderDeclaration(
+        declaration({ experimental_skillCommandAliases: ["$"] }),
+      ).experimental_skillCommandAliases,
+    ).toEqual(["$"]);
+    expect(() =>
+      validatePluginProviderDeclaration(
+        declaration({ experimental_skillCommandAliases: ["$", "$"] }),
+      ),
+    ).toThrow(/experimental_skillCommandAliases entry "\$" is duplicated/u);
+    expect(() =>
+      validatePluginProviderDeclaration(
+        declaration({ experimental_skillCommandAliases: ["/"] }),
+      ),
+    ).toThrow(/experimental_skillCommandAliases entry "\/" is invalid/u);
   });
 
   it("rejects incomplete strings, duplicate option ids, and malformed extension kinds", () => {
@@ -354,12 +373,14 @@ describe("provider declaration fields renamed in SDK 0.4.16", () => {
       declaration({
         experimental_bridgeOptions: { tier: "fast" },
         experimental_visibility: "always",
+        experimental_skillCommandAliases: ["$"],
         experimental_nativeSkillRoots: { project: ["skills"] },
         experimental_nativeCommandRoots: { project: ["commands"] },
         experimental_resolvesNativeRoots: true,
       }),
     );
     expect(normalized.experimental_bridgeOptions).toEqual({ tier: "fast" });
+    expect(normalized.experimental_skillCommandAliases).toEqual(["$"]);
     expect(normalized.experimental_resolvesNativeRoots).toBe(true);
   });
 

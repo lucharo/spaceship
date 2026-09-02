@@ -91,6 +91,7 @@ const REGISTRATION_FIELDS = {
   supportsServiceTier: "capabilities.supportsServiceTier",
   maintenance: "maintenance",
   composerActions: "composerActions",
+  experimental_skillCommandAliases: "experimental_skillCommandAliases",
   extensionKinds: "extensionKinds",
   models: "models",
   env: "env",

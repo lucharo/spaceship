@@ -160,7 +160,13 @@ export function buildPluginProviderRegistration(args: {
   // provider), so it always leads; declared actions carry the composer's own
   // fixed command syntax, identical to the core catalog entries.
   const composerActions: ProviderComposerAction[] = [
-    { kind: "skills", trigger: "/" },
+    {
+      kind: "skills",
+      trigger: "/",
+      ...(declaration.experimental_skillCommandAliases.length === 0
+        ? {}
+        : { aliases: [...declaration.experimental_skillCommandAliases] }),
+    },
   ];
   for (const action of declaration.composerActions) {
     composerActions.push(

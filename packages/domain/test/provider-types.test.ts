@@ -30,7 +30,7 @@ describe("provider info schema", () => {
       providerInfoSchema.parse({
         ...baseProviderInfo,
         composerActions: [
-          { kind: "skills", trigger: "/" },
+          { kind: "skills", trigger: "/", aliases: ["$"] },
           {
             kind: "plan",
             command: { trigger: "/", name: "plan", trailingText: " " },
@@ -42,7 +42,7 @@ describe("provider info schema", () => {
         ],
       }).composerActions,
     ).toEqual([
-      { kind: "skills", trigger: "/" },
+      { kind: "skills", trigger: "/", aliases: ["$"] },
       {
         kind: "plan",
         command: { trigger: "/", name: "plan", trailingText: " " },
