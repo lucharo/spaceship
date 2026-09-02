@@ -1632,10 +1632,9 @@ describe("migrate", () => {
       });
       expect(
         db.$client
-          .prepare<
-            [],
-            { key: string; value: string }
-          >("SELECT key, value FROM app_settings_values WHERE key LIKE 'codex%' OR key LIKE 'claudeCode%' ORDER BY key")
+          .prepare<[], { key: string; value: string }>(
+            "SELECT key, value FROM app_settings_values WHERE key LIKE 'codex%' OR key LIKE 'claudeCode%' ORDER BY key",
+          )
           .all(),
       ).toEqual([
         { key: "claudeCodeMemoryEnabled", value: "true" },
@@ -1697,49 +1696,22 @@ describe("migrate", () => {
 
       expect(
         db.$client
-          .prepare<
-            [],
-            { pluginId: string; key: string; value: string; updatedAt: number }
-          >("SELECT plugin_id AS pluginId, key, value, updated_at AS updatedAt FROM plugin_settings ORDER BY plugin_id, key")
+          .prepare<[], { pluginId: string; key: string; value: string; updatedAt: number }>(
+            "SELECT plugin_id AS pluginId, key, value, updated_at AS updatedAt FROM plugin_settings ORDER BY plugin_id, key",
+          )
           .all(),
       ).toEqual([
-        {
-          pluginId: "provider-claude-code",
-          key: "memoryEnabled",
-          value: "false",
-          updatedAt: 99,
-        },
-        {
-          pluginId: "provider-claude-code",
-          key: "subagentsDisabled",
-          value: "false",
-          updatedAt: 14,
-        },
-        {
-          pluginId: "provider-claude-code",
-          key: "workflowsDisabled",
-          value: "true",
-          updatedAt: 15,
-        },
-        {
-          pluginId: "provider-codex",
-          key: "memoryEnabled",
-          value: "false",
-          updatedAt: 11,
-        },
-        {
-          pluginId: "provider-codex",
-          key: "subagentsDisabled",
-          value: "true",
-          updatedAt: 12,
-        },
+        { pluginId: "provider-claude-code", key: "memoryEnabled", value: "false", updatedAt: 99 },
+        { pluginId: "provider-claude-code", key: "subagentsDisabled", value: "false", updatedAt: 14 },
+        { pluginId: "provider-claude-code", key: "workflowsDisabled", value: "true", updatedAt: 15 },
+        { pluginId: "provider-codex", key: "memoryEnabled", value: "false", updatedAt: 11 },
+        { pluginId: "provider-codex", key: "subagentsDisabled", value: "true", updatedAt: 12 },
       ]);
       expect(
         db.$client
-          .prepare<
-            [],
-            { key: string }
-          >("SELECT key FROM app_settings_values ORDER BY key")
+          .prepare<[], { key: string }>(
+            "SELECT key FROM app_settings_values ORDER BY key",
+          )
           .all(),
       ).toEqual([{ key: "showKeyboardHints" }]);
     } finally {
