@@ -331,6 +331,11 @@
 // replaces the owning turn retains it. The wire shape is unchanged, but the
 // server-to-daemon payload semantics differ.
 //
+// Version 180 preserves unsupported Codex history items and defers native
+// agent-message classification until the provider supplies its phase. The
+// translated timeline semantics cross the server-to-daemon boundary, so
+// enrolled hosts must update with the server.
+//
 // Version 179 confines a directly symlinked SKILL.md to that one resolved file.
 // Older daemons expose the target directory as the logical skill root.
 //
@@ -363,7 +368,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 179 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 180 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
