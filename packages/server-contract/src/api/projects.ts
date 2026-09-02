@@ -421,7 +421,7 @@ export const skillSummarySchema = z.object({
   filePath: z.string(),
   /** Resolved file identity used for de-duplication and safe read-only access. */
   canonicalFilePath: z.string().optional(),
-  /** Resolved directory containing this logical skill's files. */
+  /** Resolved skill directory, or the resolved file for a direct SKILL.md symlink. */
   canonicalRootPath: z.string().optional(),
   /** Canonical source repository slug when host discovery can prove one. */
   sourceRepository: z.string().min(1).nullable(),

@@ -331,6 +331,9 @@
 // replaces the owning turn retains it. The wire shape is unchanged, but the
 // server-to-daemon payload semantics differ.
 //
+// Version 179 confines a directly symlinked SKILL.md to that one resolved file.
+// Older daemons expose the target directory as the logical skill root.
+//
 // Version 177 adds nullable skill source provenance to host.list_skills results:
 // sourceRepository and sourceRelativePath. The strict result schema makes this
 // incompatible with older daemons in both directions, so enrolled hosts must
@@ -360,7 +363,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 178 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 179 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

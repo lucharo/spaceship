@@ -1077,6 +1077,9 @@ describe("host-daemon command schemas", () => {
   // Version 134 keeps replayed Codex resume/fork usage snapshots off turn ids
   // bb never stored a turn/started for (token usage dropped, context usage
   // thread-scoped).
+  // Version 179 confines a directly symlinked SKILL.md to that one file.
+  // Older daemons expose the target directory as the skill root, so enrolled
+  // machines must update before listing or reading such skills.
   // Version 140 reports the daemon's browser-local helper port during session
   // open so remote pages can discover helpers on non-primary machines.
   // Version 139 keeps resumed Claude task notifications from claiming newly
@@ -1105,7 +1108,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(178);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(179);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

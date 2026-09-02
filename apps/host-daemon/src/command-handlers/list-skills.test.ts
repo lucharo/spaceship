@@ -371,11 +371,16 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
     });
   });
 
-  it("uses the target directory as the canonical root for a linked skill file", async () => {
+  it("uses the target file as the canonical root for a directly linked skill file", async () => {
     const fixture = await makeWorkspaceFixture();
     const targetDirectory = path.join(tempRoot, "linked-skill-target");
-    const targetFile = path.join(targetDirectory, "SKILL.md");
+    const targetFile = path.join(targetDirectory, "actual-skill.md");
     await writeSkill(targetFile, "linked-file");
+    await writeFile(
+      path.join(targetDirectory, "private-notes.md"),
+      "private",
+      "utf8",
+    );
     const logicalDirectory = path.join(
       fixture.homeDir,
       ".agents",
@@ -394,7 +399,7 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
 
     expect(byName(skills, "linked-file")).toMatchObject({
       canonicalFilePath: await realpath(targetFile),
-      canonicalRootPath: await realpath(targetDirectory),
+      canonicalRootPath: await realpath(targetFile),
       linked: true,
     });
   });

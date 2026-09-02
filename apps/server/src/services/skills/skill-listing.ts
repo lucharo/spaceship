@@ -431,6 +431,12 @@ export async function listProjectSkillFiles(
   if (isServerOwnedSkill(deps, skill)) {
     return listServerSkillFiles(skill);
   }
+  if (
+    skill.canonicalFilePath !== undefined &&
+    skill.canonicalRootPath === skill.canonicalFilePath
+  ) {
+    return { files: [SKILL_FILE_NAME], truncated: false };
+  }
   const rootPath =
     skill.canonicalRootPath ??
     hostPathDirname(skill.canonicalFilePath ?? skill.filePath);
@@ -473,6 +479,26 @@ export async function readProjectSkill(
     return {
       content: contents.toString("utf8"),
       revision: createHash("sha256").update(contents).digest("hex"),
+    };
+  }
+  if (
+    skill.canonicalFilePath !== undefined &&
+    skill.canonicalRootPath === skill.canonicalFilePath
+  ) {
+    if (args.path !== SKILL_FILE_NAME) {
+      throw new ApiError(404, "not_found", "Skill file not found");
+    }
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: args.workspace.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: { type: "host.read_file", path: skill.canonicalFilePath },
+    });
+    return {
+      content:
+        result.contentEncoding === "utf8"
+          ? result.content
+          : Buffer.from(result.content, "base64").toString("utf8"),
+      revision: result.sha256,
     };
   }
   const rootPath =

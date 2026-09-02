@@ -20,5 +20,5 @@ implementation detail stays in code, architecture docs, and tracker issues.
 | [ACPX adapter](acpx_adapter.md)                           | Optional ACP transport candidate tracked through [#5](https://github.com/lucharo/spaceship/issues/5)                                |
 | [Remote native hosts](remote_native_hosts.md)             | Tracked in [#3](https://github.com/lucharo/spaceship/issues/3)                                                                      |
 | [Skills management](skills_management.md)                 | Shared and provider skill roots are listed; native writes tracked in [#10](https://github.com/lucharo/spaceship/issues/10)          |
-| [Native skill invocation](native_skill_invocation.md)     | Installed skills support both `$name` and `/name` invocation                                                                        |
+| [Native skill invocation](native_skill_invocation.md)     | Codex supports both `$name` and `/name`; other providers use `/name`                                                                |
 | [Minimal by default](minimal_by_default.md)               | Primary navigation simplified                                                                                                       |

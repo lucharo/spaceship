@@ -137,6 +137,20 @@ function registerSkillRpc(
           },
         };
       }
+      if (request.command.type === "host.read_file") {
+        const content =
+          args.fileContents?.[request.command.path] ?? "# Skill content";
+        return {
+          ok: true,
+          result: {
+            path: request.command.path,
+            content,
+            contentEncoding: "utf8" as const,
+            sizeBytes: content.length,
+            sha256: "0".repeat(64),
+          },
+        };
+      }
       if (request.command.type === "host.write_file") {
         return {
           ok: true,
@@ -1690,6 +1704,80 @@ describe("public project skills route", () => {
         path: "SKILL.md",
         dotfiles: "deny",
       });
+    });
+  });
+
+  it("confines a directly linked skill file to logical SKILL.md", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-direct-linked-skill-file",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/direct-linked-skill-project",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/direct-linked-skill-env",
+      });
+      const logicalPath = "/home/.agents/skills/direct/SKILL.md";
+      const canonicalPath = "/home/.refined/direct/actual-skill.md";
+      const stub = registerSkillRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        skillsByProvider: {
+          codex: [
+            discovered(
+              "direct",
+              "provider-user",
+              logicalPath,
+              canonicalPath,
+              canonicalPath,
+            ),
+          ],
+        },
+        fileContents: { [canonicalPath]: "# Direct skill" },
+      });
+      const query = new URLSearchParams({
+        skillId: skillId(logicalPath),
+        environmentId: environment.id,
+      });
+
+      const filesResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills/files?${query}`,
+      );
+      expect(filesResponse.status).toBe(200);
+      expect(await readJson(filesResponse)).toEqual({
+        files: ["SKILL.md"],
+        truncated: false,
+      });
+
+      query.set("path", "SKILL.md");
+      const contentResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills/content?${query}`,
+      );
+      expect(contentResponse.status).toBe(200);
+      expect(await readJson(contentResponse)).toMatchObject({
+        content: "# Direct skill",
+      });
+
+      query.set("path", "private-notes.md");
+      const siblingResponse = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills/content?${query}`,
+      );
+      expect(siblingResponse.status).toBe(404);
+      expect(stub.requests.map((request) => request.command)).toContainEqual({
+        type: "host.read_file",
+        path: canonicalPath,
+      });
+      expect(
+        stub.requests.some(
+          (request) =>
+            request.command.type === "host.list_files" ||
+            request.command.type === "host.read_file_relative",
+        ),
+      ).toBe(false);
     });
   });
 

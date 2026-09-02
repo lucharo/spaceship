@@ -202,12 +202,20 @@ function paginateNativeHistoryRows(
       : rows.filter((row) => row.sourceSeqStart < page.beforeCursor.anchorSeq);
   const segments: TimelineRow[][] = [];
   let current: TimelineRow[] = [];
+  let currentTurnId: string | null | undefined;
   for (const row of eligibleRows) {
-    if (row.kind === "turn" && current.length > 0) {
+    const startsNewTurn =
+      current.length > 0 &&
+      row.turnId !== null &&
+      currentTurnId !== undefined &&
+      row.turnId !== currentTurnId;
+    if (startsNewTurn) {
       segments.push(current);
       current = [];
+      currentTurnId = undefined;
     }
     current.push(row);
+    if (row.turnId !== null) currentTurnId = row.turnId;
   }
   if (current.length > 0) segments.push(current);
 

@@ -1300,6 +1300,14 @@ export function validatePluginProviderDeclaration(
       `provider "${id}" capabilities.fork must be one of ${PROVIDER_FORK_VALUES.join(", ")}`,
     );
   }
+  if (
+    capabilities.experimental_supportsNativeSessionHistory !== undefined &&
+    typeof capabilities.experimental_supportsNativeSessionHistory !== "boolean"
+  ) {
+    throw new Error(
+      `provider "${id}" capabilities.experimental_supportsNativeSessionHistory must be a boolean`,
+    );
+  }
   const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
     experimental_supportsNativeSessionHistory:
       capabilities.experimental_supportsNativeSessionHistory ?? false,

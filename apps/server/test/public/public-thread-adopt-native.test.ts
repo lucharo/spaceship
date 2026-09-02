@@ -200,16 +200,6 @@ describe("public native thread adoption", () => {
               },
             },
           },
-          {
-            createdAt: 1_777_000_023_000,
-            event: {
-              type: "turn/completed",
-              threadId: adopted.thread.id,
-              providerThreadId,
-              scope: turnScope("native-turn-2"),
-              status: "completed",
-            },
-          },
         ],
       };
 
@@ -236,11 +226,9 @@ describe("public native thread adoption", () => {
         await readJson(timelineResponse),
       );
       expect(timeline.nativeHistoryProjection).toBe(true);
-      expect(
-        timeline.rows
-          .filter((row) => row.kind === "turn")
-          .map((row) => row.turnId),
-      ).toEqual(["native-turn-2"]);
+      expect([
+        ...new Set(timeline.rows.map((row) => row.turnId).filter(Boolean)),
+      ]).toEqual(["native-turn-2"]);
       expect(timeline.timelinePage).toMatchObject({
         returnedSegmentCount: 1,
         hasOlderRows: true,
