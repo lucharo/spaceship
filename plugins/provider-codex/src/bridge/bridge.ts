@@ -2210,6 +2210,7 @@ async function handleThreadStop(
     sendThreadDeltas(
       session,
       session.translator.clearExitedChildThreadState({
+        pendingMessageStatus: "interrupted",
         providerThreadId: session.codexThreadId,
       }),
     );

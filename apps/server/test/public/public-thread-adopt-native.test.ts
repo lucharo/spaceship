@@ -107,6 +107,46 @@ describe("public native thread adoption", () => {
       const adopted = adoptNativeThreadResponseSchema.parse(
         await readJson(adoptionResponse),
       );
+      let sequence = getLatestThreadSequence(harness.db, {
+        threadId: adopted.thread.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: adopted.thread.id,
+        environmentId: adopted.thread.environmentId,
+        providerThreadId,
+        sequence: (sequence += 1),
+        type: "item/completed",
+        scope: turnScope("native-turn-summary"),
+        data: {
+          item: {
+            type: "planSteps",
+            id: "native-plan-summary",
+            steps: [{ step: "Finish the native handoff", status: "active" }],
+            status: "completed",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: adopted.thread.id,
+        environmentId: adopted.thread.environmentId,
+        providerThreadId,
+        sequence: (sequence += 1),
+        type: "item/started",
+        scope: turnScope("native-turn-summary"),
+        data: {
+          item: {
+            id: "native-workflow-summary",
+            type: "backgroundTask",
+            taskType: "local_workflow",
+            description: "Verify native summary state",
+            status: "pending",
+            taskStatus: "running",
+            skipTranscript: false,
+            workflowName: "native-summary",
+            usage: { totalTokens: 20, toolUses: 1, durationMs: 100 },
+          },
+        },
+      });
 
       const response = await harness.app.request(
         `/api/v1/threads/${adopted.thread.id}/timeline?summaryOnly=true`,
@@ -118,6 +158,12 @@ describe("public native thread adoption", () => {
       ).toMatchObject({
         rows: [],
         maxSeq: expect.any(Number),
+        pendingTodos: {
+          items: [{ text: "Finish the native handoff", status: "in_progress" }],
+        },
+        activeWorkflows: [
+          { description: "Verify native summary state", status: "running" },
+        ],
       });
       expect(
         listQueuedCommands(harness, "provider.native_sessions.history"),

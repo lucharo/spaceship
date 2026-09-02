@@ -584,13 +584,16 @@ export function createCodexEventTranslator(
    */
   function clearExitedChildThreadState({
     providerThreadId,
+    pendingMessageStatus = "failed",
   }: {
+    pendingMessageStatus?: Exclude<ThreadEventItemStatus, "pending">;
     providerThreadId: string;
   }): ThreadDelta[] {
     rawCommandOutputStateByProviderThreadId.delete(providerThreadId);
     const pendingMessageDeltas = clearCodexEventTranslationThreadState(
       eventTranslationState,
       providerThreadId,
+      pendingMessageStatus,
     );
     clearGitWritableRootsByProviderThreadId({ providerThreadId });
     return [

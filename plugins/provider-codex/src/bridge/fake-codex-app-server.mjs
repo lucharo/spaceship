@@ -69,6 +69,8 @@ const LATE_TURN_START_DELAY_MS = 60;
 
 /** A prompt that stays open until the client sends turn/interrupt. */
 const INTERRUPTIBLE_PROMPT_TEXT = "/wait-for-interrupt";
+const IGNORED_INTERRUPT_PROMPT_TEXT = "/ignore-interrupt";
+const ignoredInterruptThreadIds = new Set();
 
 /**
  * A prompt that spawns a native subagent (open thread work) and then dies with
@@ -667,6 +669,37 @@ async function handleRequest(message) {
         respond(id, {});
         return;
       }
+      if (firstInputText(params.input) === IGNORED_INTERRUPT_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        const itemId = `item-fx-${turnCounter}`;
+        openTurnIdsByThreadId.set(params.threadId, turnId);
+        ignoredInterruptThreadIds.add(params.threadId);
+        notify("turn/started", {
+          threadId: params.threadId,
+          turn: { id: turnId, status: "inProgress" },
+        });
+        notify("item/started", {
+          threadId: params.threadId,
+          turnId,
+          item: {
+            type: "agentMessage",
+            id: itemId,
+            text: "",
+            phase: null,
+            memoryCitation: null,
+            delivery: null,
+          },
+        });
+        notify("item/agentMessage/delta", {
+          threadId: params.threadId,
+          turnId,
+          itemId,
+          delta: "partial interrupted output",
+        });
+        respond(id, {});
+        return;
+      }
       if (scriptedTurns) {
         await runScriptFileTurn(params.threadId);
       } else {
@@ -682,6 +715,10 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     case "turn/interrupt": {
+      if (ignoredInterruptThreadIds.has(params.threadId)) {
+        respond(id, {});
+        return;
+      }
       const openTurnId = openTurnIdsByThreadId.get(params.threadId);
       if (openTurnId !== undefined) {
         openTurnIdsByThreadId.delete(params.threadId);

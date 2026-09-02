@@ -519,12 +519,14 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.archiveNative, async (context, payload) => {
     requireNonDestroyedHostWithStatus(deps, payload.hostId);
+    await archiveProviderNativeSession(deps, payload);
     const existing = findThreadByNativeIdentity(deps.db, payload);
     if (existing !== null) {
-      archiveThreadAndChildren(deps, { parentThread: existing });
-      return context.json({ ok: true as const });
+      archiveThreadAndChildren(deps, {
+        parentThread: existing,
+        skipProviderArchiveThreadId: existing.id,
+      });
     }
-    await archiveProviderNativeSession(deps, payload);
     return context.json({ ok: true as const });
   });
 

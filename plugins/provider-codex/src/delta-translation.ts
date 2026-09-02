@@ -491,6 +491,7 @@ function takeCodexRetryError(
 export function clearCodexEventTranslationThreadState(
   state: CodexEventTranslationState,
   threadId: string,
+  status: Exclude<ThreadEventItemStatus, "pending"> = "failed",
 ): ThreadDelta[] {
   const prefix = codexTurnKey({ threadId });
   for (const key of state.retryErrorsByTurnKey.keys()) {
@@ -508,7 +509,7 @@ export function clearCodexEventTranslationThreadState(
     takePendingAgentMessageDeltasForTurn(state, {
       threadId,
       turnId,
-      status: "failed",
+      status,
     }),
   );
   clearAgentMessageStateForPrefix(state, prefix);

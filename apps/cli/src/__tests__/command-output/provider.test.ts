@@ -229,6 +229,41 @@ describe("bb provider command output", () => {
     });
   });
 
+  it("bb provider archive archives a native session on a selected machine", async () => {
+    const archive = vi.fn(async () => ({ ok: true }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-remote",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          lastRejectedProtocolVersion: null,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+      "v1.threads.archive-native.$post": archive,
+    });
+
+    await runCommand(
+      ["provider", "archive", "codex", "native-1", "--machine", "builder"],
+      register,
+    );
+
+    expect(archive).toHaveBeenCalledWith({
+      json: {
+        hostId: "host-remote",
+        providerId: "codex",
+        providerThreadId: "native-1",
+      },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Archived native session native-1",
+    ]);
+  });
+
   it("bb provider models includes a matching selected-only model", async () => {
     const get = vi.fn(async () => ({
       providers: [],

@@ -35,6 +35,7 @@ interface ArchiveThreadEnvironment {
 
 interface ArchiveThreadWithLifecycleEffectsArgs {
   environment: ArchiveThreadEnvironment | null;
+  skipProviderArchive?: boolean;
   thread: Pick<Thread, "environmentId" | "id" | "status">;
 }
 
@@ -48,6 +49,7 @@ interface ArchiveEnvironmentThreadsArgs {
 
 interface ArchiveThreadAndChildrenArgs {
   parentThread: Thread;
+  skipProviderArchiveThreadId?: string;
 }
 
 /**
@@ -105,9 +107,11 @@ function archiveThreadWithLifecycleEffects(
       args.environment,
     );
   }
-  dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
-    threadId: archivedThread.id,
-  });
+  if (!args.skipProviderArchive) {
+    dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
+      threadId: archivedThread.id,
+    });
+  }
   resetActiveThreadEventPruningState(archivedThread.id);
   pruneThreadEventHistoryBestEffort(deps, {
     mode: "archived",
@@ -206,6 +210,7 @@ export function archiveThreadAndChildren(
     const environment = resolveArchiveThreadEnvironment(deps, { thread });
     const result = archiveThreadWithLifecycleEffects(deps, {
       environment,
+      skipProviderArchive: thread.id === args.skipProviderArchiveThreadId,
       thread,
     });
     if (!result) {

@@ -44,6 +44,8 @@ interface ProviderAdoptCommandOptions {
   machine?: string;
 }
 
+type ProviderArchiveCommandOptions = ProviderAdoptCommandOptions;
+
 interface IncludeSelectedOnlyModelArgs {
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
@@ -210,6 +212,52 @@ export function registerProviderCommands(
           console.log(
             `${result.created ? "Adopted" : "Opened"} native session as thread ${result.thread.id}`,
           );
+        },
+      ),
+    );
+
+  addProviderRoutingOptions(
+    provider.command("archive <providerId> <providerThreadId>"),
+  )
+    .description("Archive a provider-native session in its authoritative store")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          providerId: string,
+          providerThreadId: string,
+          opts: ProviderArchiveCommandOptions,
+        ) => {
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
+          const routing = await resolveMachineEnvironmentRouting(
+            opts,
+            serverUrl,
+          );
+          let hostId: string;
+          if (routing.environmentId !== undefined) {
+            hostId = (
+              await sdk.environments.get({
+                environmentId: routing.environmentId,
+              })
+            ).hostId;
+          } else if (routing.hostId !== undefined) {
+            hostId = routing.hostId;
+          } else {
+            const { primaryHostId } = await sdk.system.config();
+            if (primaryHostId === null) {
+              throw new Error("No primary machine is configured");
+            }
+            hostId = primaryHostId;
+          }
+
+          const result = await sdk.threads.archiveNative({
+            hostId,
+            providerId,
+            providerThreadId,
+          });
+          if (outputJson(opts, result)) return;
+          console.log(`Archived native session ${providerThreadId}`);
         },
       ),
     );

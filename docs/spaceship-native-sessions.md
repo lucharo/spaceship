@@ -51,9 +51,11 @@ Codex app-server <-> Spaceship provider bridge <-> Spaceship UI
   [#12](https://github.com/lucharo/spaceship/issues/12).
 - Archiving an active row delegates directly to Codex app-server. A session
   does not need a working directory or a Spaceship projection merely to be
-  archived. Existing local projections can recover through native unarchive,
-  but the archived catalogue does not yet expose a direct unarchive action.
-  That affordance, native rename, and fork parity remain tracked in
+  archived. The same native operation is available as
+  `bb provider archive <providerId> <providerThreadId>`. Existing local
+  projections can recover through native unarchive, but the archived catalogue
+  does not yet expose a direct unarchive action. That affordance, native rename,
+  and fork parity remain tracked in
   [#4](https://github.com/lucharo/spaceship/issues/4).
 - The default new-thread path is Codex-only until another provider has an
   equivalent native adapter; see
