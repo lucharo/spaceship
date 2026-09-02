@@ -24,7 +24,9 @@ Codex app-server <-> Spaceship provider bridge <-> Spaceship UI
 3. Opening a row re-reads metadata from Codex, confirms the session is active,
    then creates or reuses a lightweight local projection keyed by the host,
    provider, and native thread ID.
-4. Sending the next message dispatches `turn.submit`. If no local runtime is
+4. Spaceship reads the selected thread's native history on demand and projects
+   Codex turns into the timeline without copying them into BB event storage.
+5. Sending the next message dispatches `turn.submit`. If no local runtime is
    alive, the host daemon resumes the native Codex thread first.
 
 ## Authority rules
@@ -41,12 +43,11 @@ Codex app-server <-> Spaceship provider bridge <-> Spaceship UI
 
 ## Current limits
 
-- Existing Codex transcript rendering is not yet available in Spaceship; see
-  [#1](https://github.com/lucharo/spaceship/issues/1).
-- Archived Codex sessions are listed read-only until native lifecycle actions
-  are wired provider-first.
-- Rename, archive, unarchive, and fork should be performed in a native Codex
-  client until those Spaceship actions delegate to app-server.
+- The current native-history projection opens the latest complete history;
+  bounded older-page loading and full-output hydration are tracked in
+  [#12](https://github.com/lucharo/spaceship/issues/12).
+- Archive and unarchive delegate to Codex app-server. Native rename and fork
+  parity remain tracked in [#4](https://github.com/lucharo/spaceship/issues/4).
 - The default new-thread path is Codex-only until another provider has an
   equivalent native adapter; see
   [#5](https://github.com/lucharo/spaceship/issues/5).

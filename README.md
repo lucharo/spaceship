@@ -13,6 +13,8 @@ from [BB](https://github.com/get-bb/bb). It is not another canonical harness:
 Codex, Claude, Pi, OpenCode, and future providers keep ownership of their own
 sessions while Spaceship supplies one deliberate interface and safer defaults.
 
+The short name is **sp**.
+
 The first native integration is Codex. Spaceship lists Codex session metadata
 through Codex app-server, adopts a selected native thread idempotently, and
 continues it using the same native session ID. It does not duplicate the thread
@@ -37,9 +39,10 @@ The clock action opens the active/archived catalogue. Selecting a session
 creates a lightweight Spaceship projection keyed by the native Codex thread ID;
 selecting it again opens the same projection.
 
-The first message sent from that thread resumes Codex through its native bridge.
-Existing native transcript rendering is not implemented yet and is tracked as
-follow-up work.
+The thread opens its existing Codex history on demand, and the first new
+message resumes Codex through its native bridge. Large-history pagination and
+full-output hydration remain tracked in
+[#12](https://github.com/lucharo/spaceship/issues/12).
 
 See [Native session architecture](docs/spaceship-native-sessions.md) for the
 authority and privacy model.
@@ -195,6 +198,8 @@ See [System overview](docs/system-overview.md) for runtime architecture, data mo
 ## Further Reading
 
 - [Vision](docs/VISION.md)
+- [FAQ](docs/faq/README.md)
+- [Retrospectives](docs/retrospectives/README.md)
 - [Platform support](docs/platform-support.md)
 - [Configuration](docs/configuration.md)
 - [Using bb on multiple devices](docs/multiple-devices.md)

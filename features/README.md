@@ -5,6 +5,7 @@ implementation detail stays in code, architecture docs, and tracker issues.
 
 | Feature                                                   | Status                                                                                                                     |
 | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [Short name](short_name.md)                               | `sp`; `ss` is deliberately not used                                                                                        |
 | [Native harness interfaces](native_harness_interfaces.md) | Codex sessions first; broader native state tracked in [#10](https://github.com/lucharo/spaceship/issues/10)                |
 | [Native sessions](native_sessions.md)                     | Implemented for Codex through its provider plugin                                                                          |
 | [Thread organisation](thread_organization.md)             | Implemented for active Codex threads                                                                                       |

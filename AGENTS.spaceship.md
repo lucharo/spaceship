@@ -2,6 +2,7 @@
 
 - Spaceship is a control layer over native agent harnesses, not a replacement
   canonical history store.
+- Use **sp** as Spaceship's short name. Do not introduce `ss` as an alias.
 - Keep each provider's native store authoritative. Never edit Codex rollout
   JSONL or SQLite directly; use Codex app-server operations.
 - Discover with metadata only. Read transcript content only after the user
