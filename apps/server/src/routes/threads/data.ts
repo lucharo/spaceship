@@ -400,6 +400,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     })[0];
     const providerThreadId = getLastStoredProviderThreadId(deps.db, thread.id);
     if (
+      !summaryOnly &&
       firstStoredEvent?.type === "thread/identity" &&
       providerThreadId !== null &&
       thread.environmentId !== null &&

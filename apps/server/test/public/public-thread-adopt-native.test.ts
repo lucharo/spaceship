@@ -92,6 +92,39 @@ async function postAdoptNativeThread(
 }
 
 describe("public native thread adoption", () => {
+  it("serves summary-only state without reading the native transcript", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-summary",
+      });
+      const providerThreadId = "native-thread-summary";
+      const adoptionResponse = await postAdoptNativeThread(harness, {
+        hostId: host.id,
+        providerId: "codex",
+        providerThreadId,
+      });
+      expect(adoptionResponse.status).toBe(200);
+      const adopted = adoptNativeThreadResponseSchema.parse(
+        await readJson(adoptionResponse),
+      );
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${adopted.thread.id}/timeline?summaryOnly=true`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(
+        threadTimelineResponseSchema.parse(await readJson(response)),
+      ).toMatchObject({
+        rows: [],
+        maxSeq: expect.any(Number),
+      });
+      expect(
+        listQueuedCommands(harness, "provider.native_sessions.history"),
+      ).toEqual([]);
+    });
+  });
+
   it("projects native provider history on demand without copying it into bb storage", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
