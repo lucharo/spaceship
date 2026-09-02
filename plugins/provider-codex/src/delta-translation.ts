@@ -1049,7 +1049,24 @@ export function translateCodexHistoryItemToDeltas(
   providerTurnId: string,
 ): ThreadDelta[] {
   const parsed = codexHandledThreadItemSchema.safeParse(item);
-  if (!parsed.success) return [];
+  if (!parsed.success) {
+    const rawType =
+      typeof item === "object" &&
+      item !== null &&
+      "type" in item &&
+      typeof item.type === "string"
+        ? item.type
+        : "unknown";
+    return buildUnhandledCodexDeltas({
+      rawEvent: {
+        jsonrpc: "2.0",
+        method: "native/session/history/item",
+        params: { item },
+      },
+      rawType,
+      providerTurnId,
+    });
+  }
   if (parsed.data.type === "userMessage") {
     if (parsed.data.content.length === 0) return [];
     return [
@@ -1224,14 +1241,27 @@ export function translateCodexEventToDeltas(
         handledEvent.params.turnId,
         handledEvent.params.item.id,
       );
+      const agentMessagePhaseIsUnknown =
+        handledEvent.params.item.type === "agentMessage" &&
+        handledEvent.params.item.phase == null;
       if (
         handledEvent.params.item.type === "agentMessage" &&
         handledEvent.params.item.phase === "commentary"
       ) {
         state.commentaryAgentMessageKeys.add(itemKey);
       }
-      if (handledEvent.params.item.type === "agentMessage") {
+      if (
+        handledEvent.params.item.type === "agentMessage" &&
+        (!agentMessagePhaseIsUnknown ||
+          handledEvent.method === "item/completed")
+      ) {
         state.classifiedAgentMessageKeys.add(itemKey);
+      }
+      if (
+        handledEvent.method === "item/started" &&
+        agentMessagePhaseIsUnknown
+      ) {
+        return [];
       }
       const translation = translateCodexItemShape(
         handledEvent.params.item,
