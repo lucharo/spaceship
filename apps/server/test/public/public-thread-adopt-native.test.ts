@@ -19,6 +19,7 @@ import {
 import {
   adoptNativeThreadResponseSchema,
   threadTimelineResponseSchema,
+  type TimelineRow,
 } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -109,6 +110,15 @@ describe("public native thread adoption", () => {
       );
       let sequence = getLatestThreadSequence(harness.db, {
         threadId: adopted.thread.id,
+      });
+      seedEvent(harness.deps, {
+        threadId: adopted.thread.id,
+        environmentId: adopted.thread.environmentId,
+        providerThreadId,
+        sequence: (sequence += 1),
+        type: "turn/started",
+        scope: turnScope("native-turn-summary"),
+        data: { providerThreadId },
       });
       seedEvent(harness.deps, {
         threadId: adopted.thread.id,
@@ -561,19 +571,38 @@ describe("public native thread adoption", () => {
         expect(response.status).toBe(200);
         return threadTimelineResponseSchema.parse(await readJson(response));
       };
-      const conversationTexts = (timeline: {
-        rows: Array<{ kind: string; text?: string }>;
-      }) =>
-        timeline.rows.flatMap((row) =>
+      const nestedRows = (row: TimelineRow): readonly TimelineRow[] => {
+        if (row.kind === "turn") {
+          return row.children ?? [];
+        }
+        if (row.kind === "work" && row.workKind === "delegation") {
+          return row.childRows;
+        }
+        return [];
+      };
+      const flattenRows = (rows: readonly TimelineRow[]): TimelineRow[] => {
+        const flattened: TimelineRow[] = [];
+        const visit = (currentRows: readonly TimelineRow[]): void => {
+          for (const row of currentRows) {
+            flattened.push(row);
+            visit(nestedRows(row));
+          }
+        };
+        visit(rows);
+        return flattened;
+      };
+      const conversationTexts = (timeline: { rows: TimelineRow[] }) =>
+        flattenRows(timeline.rows).flatMap((row) =>
           row.kind === "conversation" && row.text !== undefined
             ? [row.text]
             : [],
         );
       const expectDeterministicUniqueRows = (timeline: {
-        rows: Array<{ id: string; sourceSeqStart: number }>;
+        rows: TimelineRow[];
       }) => {
-        const ids = timeline.rows.map((row) => row.id);
-        const sequences = timeline.rows.map((row) => row.sourceSeqStart);
+        const rows = flattenRows(timeline.rows);
+        const ids = rows.map((row) => row.id);
+        const sequences = rows.map((row) => row.sourceSeqStart);
         expect(new Set(ids).size).toBe(ids.length);
         expect(new Set(sequences).size).toBe(sequences.length);
         expect(sequences).toEqual(
@@ -596,7 +625,7 @@ describe("public native thread adoption", () => {
           (text) => text === "Settled local request",
         ),
       ).toHaveLength(1);
-      const pendingRow = beforeMutation.rows.find(
+      const pendingRow = flattenRows(beforeMutation.rows).find(
         (row) =>
           row.kind === "conversation" &&
           row.role === "user" &&
