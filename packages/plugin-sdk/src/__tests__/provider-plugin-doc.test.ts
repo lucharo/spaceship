@@ -80,6 +80,8 @@ const REGISTRATION_FIELDS = {
   planModeCopy: "strings.planModeCopy",
   iconTint: "strings.iconTint",
   capabilities: "capabilities",
+  experimental_supportsNativeSessionHistory:
+    "capabilities.experimental_supportsNativeSessionHistory",
   permissionModes: "capabilities.permissionModes",
   reasoningLevels: "reasoningLevels",
   serviceTiers: "serviceTiers",
@@ -319,7 +321,7 @@ describe("guardrail G10: docs/provider-plugin-api.md matches the contract", () =
       "{ childRef: string, label: string, status: ItemStatus,",
       "presentation: {",
       "TimelineRow { kind: string, payload, presentation }",
-      "app.slots.experimental_timelineRenderer({ kind, component })",
+      "app.slots.experimental_timelineRenderer({ kind, component });",
     ]);
   });
 
