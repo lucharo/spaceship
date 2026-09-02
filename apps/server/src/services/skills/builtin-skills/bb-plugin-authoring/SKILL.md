@@ -1210,6 +1210,9 @@ bb.providers.register({
   // supported: false for one id.
   maintenance: { health: false, usage: false, installation: false },
   capabilities: {
+    // Enables provider-neutral native-first surfaces when the bridge can
+    // project existing native history without importing it into bb.
+    experimental_supportsNativeSessionHistory: false,
     supportsServiceTier: false,
     supportsNativeUserQuestion: false,
     fork: "none", // "none" | "tip" | "checkpoint"

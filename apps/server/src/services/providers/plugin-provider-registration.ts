@@ -212,6 +212,9 @@ export function buildPluginProviderRegistration(args: {
       ? { icon: { glyph: declaration.icon } }
       : {}),
     capabilities: {
+      ...(capabilities.experimental_supportsNativeSessionHistory
+        ? { experimental_supportsNativeSessionHistory: true }
+        : {}),
       supportsThreadArchive,
       supportsThreadRename,
       supportsServiceTier,

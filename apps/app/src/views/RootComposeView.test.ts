@@ -31,6 +31,7 @@ import {
   readSectionIdFromLocationState,
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
+  resolveNativeThreadProviderIds,
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
@@ -43,6 +44,26 @@ import {
   resolveRootComposeProjectRouting,
   resolveRootComposeProviderRouting,
 } from "./root-compose-environment-selection";
+
+describe("Spaceship native provider eligibility", () => {
+  it("exposes only providers that declare native session history", () => {
+    expect(
+      resolveNativeThreadProviderIds([
+        {
+          id: "codex",
+          capabilities: {
+            experimental_supportsNativeSessionHistory: true,
+          },
+        },
+        { id: "claude-code", capabilities: {} },
+      ]),
+    ).toEqual(["codex"]);
+  });
+
+  it("keeps the new-thread provider list closed while metadata loads", () => {
+    expect(resolveNativeThreadProviderIds(undefined)).toEqual([]);
+  });
+});
 
 describe("root-compose project file routing", () => {
   it("uses a persisted opener host instead of the newly selected context", () => {

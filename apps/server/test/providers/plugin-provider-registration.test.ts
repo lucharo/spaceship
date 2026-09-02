@@ -111,10 +111,15 @@ describe("buildPluginProviderRegistration", () => {
   });
 
   it("projects the target-state declaration fields onto ProviderInfo", () => {
+    const nativeCapabilities = declaration().capabilities;
     const registration = buildPluginProviderRegistration({
       available: true,
       pluginId: "acme-agent",
       declaration: declaration({
+        capabilities: {
+          ...nativeCapabilities,
+          experimental_supportsNativeSessionHistory: true,
+        },
         family: "remote",
         strings: {
           signInHint: "Run `my-agent login`.",
@@ -143,6 +148,9 @@ describe("buildPluginProviderRegistration", () => {
     });
 
     expect(registration.info.family).toBe("remote");
+    expect(
+      registration.info.capabilities.experimental_supportsNativeSessionHistory,
+    ).toBe(true);
     expect(registration.info.strings).toStrictEqual({
       signInHint: "Run `my-agent login`.",
       expiredHint: "Session expired.",

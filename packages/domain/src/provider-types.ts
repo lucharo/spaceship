@@ -33,6 +33,10 @@ export type ProviderModelCatalogScope = z.infer<
 >;
 
 const providerCapabilitiesSchema = z.object({
+  /** The provider can project an existing native session's history without
+   * importing it into BB's event store. Experimental until a second provider
+   * validates the shared contract. */
+  experimental_supportsNativeSessionHistory: z.boolean().optional(),
   supportsThreadArchive: z.boolean(),
   supportsThreadRename: z.boolean(),
   supportsServiceTier: z.boolean(),

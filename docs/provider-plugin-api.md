@@ -59,6 +59,7 @@ bb.providers.register({
   maintenance: { health: true, usage: true, installation: true }, // each defaults to false
   capabilities: {
     // pre-session facts, one client shape: ProviderInfo
+    experimental_supportsNativeSessionHistory: false,
     permissionModes: ["accept-edits", "auto", "full"], // closed core enum
     fork: "checkpoint", // "none" | "tip" | "checkpoint"
     supportsNativeUserQuestion: true,
@@ -369,7 +370,7 @@ plugin renders its own extension kinds and the generic `tool` items its
 provider emitted:
 
 ```ts
-app.slots.experimental_timelineRenderer({ kind, component })
+app.slots.experimental_timelineRenderer({ kind, component });
 // component props: { row, payload, presentation, thread, Original }
 ```
 

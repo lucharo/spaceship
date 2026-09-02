@@ -275,6 +275,11 @@ describe("first-party provider plugins", () => {
           kind: "plan",
           command: { trigger: "/", name: "plan", trailingText: " " },
         } as const;
+        const codexSkills = {
+          kind: "skills",
+          trigger: "/",
+          aliases: ["$"],
+        } as const;
         const goal = {
           kind: "goal",
           command: { trigger: "/", name: "goal", trailingText: " " },
@@ -287,6 +292,7 @@ describe("first-party provider plugins", () => {
           available: true,
           maintenance: { health: true, usage: true, installation: true },
           capabilities: {
+            experimental_supportsNativeSessionHistory: true,
             supportsThreadArchive: true,
             supportsThreadRename: true,
             supportsServiceTier: true,
@@ -296,7 +302,7 @@ describe("first-party provider plugins", () => {
             supportsSessionRewind: true,
             modelCatalogScope: "host",
           },
-          composerActions: [skills, plan, goal],
+          composerActions: [codexSkills, plan, goal],
         });
         expect(clientFields("claude-code")).toStrictEqual({
           id: "claude-code",

@@ -236,6 +236,8 @@ policy at the server boundary before making the helper stable.
 
 **Kept experimental (2026-09-02).** Declares that a provider can project an
 existing native session's history without importing it into BB's event store.
+The declaration is projected onto `ProviderInfo` so provider-neutral clients
+can gate native-first surfaces without matching provider ids.
 
 **Audit before stabilizing.** Confirm the history response identity and
 pagination contract across at least two provider implementations, and decide

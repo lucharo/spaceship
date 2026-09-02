@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { findCachedProviderInfo } from "@/hooks/queries/system-queries";
+import {
+  findCachedProviderInfo,
+  useSystemProviders,
+} from "@/hooks/queries/system-queries";
 import {
   findLocalPathProjectSourceForHost,
   type EnvironmentStatus,
   type Host,
+  type ProviderInfo,
   type ReasoningLevel,
   type ServiceTier,
   type ThreadListEntry,
@@ -487,12 +491,36 @@ export function LegacyProjectComposeRedirect({
   return <RouteLoadingSkeleton />;
 }
 
+type NativeThreadProviderCandidate = Pick<ProviderInfo, "id"> & {
+  capabilities: Pick<
+    ProviderInfo["capabilities"],
+    "experimental_supportsNativeSessionHistory"
+  >;
+};
+
+export function resolveNativeThreadProviderIds(
+  providers: readonly NativeThreadProviderCandidate[] | undefined,
+): string[] {
+  return (providers ?? [])
+    .filter(
+      (provider) =>
+        provider.capabilities.experimental_supportsNativeSessionHistory ===
+        true,
+    )
+    .map((provider) => provider.id);
+}
+
 export function RootComposeView() {
   const [rootComposeProjectId, setRootComposeProjectId] =
     useRootComposeProjectId();
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const providersQuery = useSystemProviders();
+  const nativeThreadProviderIds = useMemo(
+    () => resolveNativeThreadProviderIds(providersQuery.data),
+    [providersQuery.data],
+  );
   const createThread = useCreateThread();
   const [rootComposeSectionId, setRootComposeSectionId] = useState<
     string | null
@@ -588,7 +616,9 @@ export function RootComposeView() {
       onProjectChange={handleProjectChange}
       draftStorage={{ kind: "new-thread" }}
       selectionScope="new-thread"
-      allowedProviderIds={forkSeed === null ? undefined : [forkSeed.providerId]}
+      allowedProviderIds={
+        forkSeed === null ? nativeThreadProviderIds : [forkSeed.providerId]
+      }
       seed={composerSeed}
       resetKey={forkSeed?.sourceThreadId ?? null}
       preferReadyProviderWhenUnset={forkSeed === null}
