@@ -131,6 +131,20 @@ Cached native metadata can support a fast initial paint, but a definitive provid
 
 _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
 
+## Why does the default new-thread picker currently show only Codex?
+
+**Short answer:** Spaceship shows only providers whose plugin declares native-session history support; today only Codex declares that capability.
+
+The gate is provider-owned metadata rather than a Codex id check in core, so a future native adapter can opt in without another Spaceship-specific branch.
+
+### Sources
+
+- [Codex-first decision](../../features/codex_first.md) — current product boundary.
+- [Provider registration projection](../../apps/server/src/services/providers/plugin-provider-registration.ts) — generic capability projection.
+- [Root composer](../../apps/app/src/views/RootComposeView.tsx) — provider-neutral picker gate.
+
+_Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
+
 ## How are long native histories loaded?
 
 **Short answer:** Spaceship returns bounded turn pages with older-page cursors, while Codex remains the source of the underlying history snapshot.

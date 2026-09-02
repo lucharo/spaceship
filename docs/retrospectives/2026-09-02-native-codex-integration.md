@@ -25,6 +25,8 @@ The isolated runtime found two more faults that unit-only checks would not have 
 
 The landing review caught the remaining boundary failures: native history needed identity verification and turn pagination, including an active final turn; catalogue projection needed one batched native-identity lookup rather than one database query per row; unavailable providers needed to stop retrying and yield the sidebar; directly symlinked skill files needed a single-file read boundary; provisional picker values could not be sent before their catalogues were verified; and `$skill` completion had to remain Codex-specific until other providers declare equivalent support.
 
+The exact-head review then caught two small but important violations of that same rule. Removing the last Codex id check had accidentally exposed compatibility providers in the default new-thread picker, so native-session eligibility is now provider-declared metadata projected through the generic provider contract. It also found that a `$` query with only slash-command matches could open an empty menu; the composer now suppresses the menu from the provider-filtered result, with a mutation-proven regression test.
+
 It also exposed two existing macOS test assumptions: Linux process supervision expected `/proc`, and temporary paths could compare as `/tmp` versus `/private/tmp`. Those checks now use portable behaviour. The Electron window smoke itself cannot be torn down by this agent host because macOS denies signalling the spawned process; that test remains a runtime-environment exception rather than a product assertion.
 
 ## What remains intentionally open
@@ -35,7 +37,7 @@ Spaceship's short name is `sp`. `ss` is deliberately not used.
 
 ## Question audit
 
-The session contained 18 durable product questions. Eleven now have concise, source-linked answers in the [Spaceship FAQ](../faq/README.md); the FAQ also records two operational edge cases found during landing review. Five questions are represented by current feature specifications or tracker issues because their answer is intentionally incomplete. Two comparative questions about unrelated external projects were left out because this repository cannot verify them as durable Spaceship facts.
+The session contained 18 durable product questions. Twelve now have concise, source-linked answers in the [Spaceship FAQ](../faq/README.md); the FAQ also records two operational edge cases found during landing review. Four questions are represented by current feature specifications or tracker issues because their answer is intentionally incomplete. Two comparative questions about unrelated external projects were left out because this repository cannot verify them as durable Spaceship facts.
 
 ---
 
