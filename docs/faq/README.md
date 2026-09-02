@@ -67,13 +67,14 @@ _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02 · Scope/ver
 
 ## How are active and archived Codex sessions handled?
 
-**Short answer:** Active sessions appear in the main thread list, archived sessions are separated, and archiving delegates to Codex app-server.
+**Short answer:** Active sessions appear in the main thread list, archived sessions are separated, and archiving delegates to Codex app-server from either the sidebar or `bb provider archive`.
 
-Archiving a native row does not adopt it, create a Spaceship thread, or require a working directory. Existing local projections can recover through native unarchive. A direct unarchive action in the archived catalogue, plus rename and fork parity, remains tracked rather than being emulated in Spaceship.
+Archiving a native row does not adopt it, create a Spaceship thread, or require a working directory. When a lightweight local projection already exists, Spaceship archives Codex once and then reconciles that projection without sending a duplicate provider command. Existing local projections can recover through native unarchive. A direct unarchive action in the archived catalogue, plus rename and fork parity, remains tracked rather than being emulated in Spaceship.
 
 ### Sources
 
 - [Native session architecture](../spaceship-native-sessions.md) — current lifecycle limits.
+- `bb provider archive <providerId> <providerThreadId>` — CLI access to the same native operation.
 - [Lifecycle parity issue](https://github.com/lucharo/spaceship/issues/4) — remaining direct unarchive, rename, and fork work.
 
 _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
