@@ -106,14 +106,42 @@ _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
 
 ## Can I invoke a skill with `$name` as well as `/name`?
 
-**Short answer:** Yes. `$` searches installed skills only, while `/` keeps the broader command surface.
+**Short answer:** Yes for Codex. `$` searches installed skills only, while `/` keeps the broader command surface for every provider.
 
-Insertion preserves the prefix the user typed, so selecting `wrapup` from a dollar-prefixed search inserts `$wrapup`.
+Insertion preserves the prefix the user typed, so selecting `wrapup` from a dollar-prefixed Codex search inserts `$wrapup`. Other providers keep slash syntax until they declare equivalent native support.
 
 ### Sources
 
 - [Native skill invocation](../../features/native_skill_invocation.md) — product contract.
 - [Prompt box](../../apps/app/src/components/promptbox/PromptBoxInternal.tsx) — command parsing and insertion.
+
+_Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
+
+## What happens when Codex is unavailable?
+
+**Short answer:** Spaceship immediately restores BB's ordinary thread list and stops retrying or polling the unavailable native catalogue.
+
+Cached native metadata can support a fast initial paint, but a definitive provider error never leaves the sidebar trapped in an error loop.
+
+### Sources
+
+- [Native session cache](../../features/native_session_cache.md) — cache ownership and limits.
+- [Native Codex sidebar](../../apps/app/src/components/sidebar/NativeCodexSidebar.tsx) — fallback presentation.
+- [Native session query](../../apps/app/src/hooks/queries/native-session-queries.ts) — retry and polling behaviour.
+
+_Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
+
+## How are long native histories loaded?
+
+**Short answer:** Spaceship returns bounded turn pages with older-page cursors, while Codex remains the source of the underlying history snapshot.
+
+Codex app-server currently supplies `thread/read` as a complete snapshot. Provider-side incremental history reads and full-output hydration remain tracked in issue #12.
+
+### Sources
+
+- [Native history on demand](../../features/native_history_on_demand.md) — current paging boundary.
+- [Thread timeline route](../../apps/server/src/routes/threads/data.ts) — native turn pagination.
+- [History pagination issue](https://github.com/lucharo/spaceship/issues/12) — provider-side and output follow-up work.
 
 _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
 

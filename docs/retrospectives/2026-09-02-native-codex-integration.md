@@ -23,17 +23,19 @@ The final sweep found several contract edges that narrower tests had missed: eve
 
 The isolated runtime found two more faults that unit-only checks would not have exposed. Plugin SDK bare aliases were swallowing explicit subpath imports at runtime, so the resolver now registers current and legacy subpaths before the package root. A completed Codex turn could also remain visually "running" until reload; completion events now invalidate the thread detail query, and a no-reload continuation confirmed that the composer returns to idle.
 
+The landing review caught the remaining boundary failures: native history needed identity verification and turn pagination; catalogue projection needed one batched native-identity lookup rather than one database query per row; unavailable providers needed to stop retrying and yield the sidebar; directly symlinked skill files needed their target directory as the read boundary; provisional picker values could not be sent before their catalogues were verified; and `$skill` completion had to remain Codex-specific until other providers declare equivalent support.
+
 It also exposed two existing macOS test assumptions: Linux process supervision expected `/proc`, and temporary paths could compare as `/tmp` versus `/private/tmp`. Those checks now use portable behaviour. The Electron window smoke itself cannot be torn down by this agent host because macOS denies signalling the spawned process; that test remains a runtime-environment exception rather than a product assertion.
 
 ## What remains intentionally open
 
-Large-history pagination, native rename and fork, additional provider adapters, remote hosts, richer source links, provider icons, native configuration writes, focus mode, public privacy automation, and reproducible packaged releases remain in GitHub issues. They were not folded into this integration merely to make the first release look broader.
+Provider-side incremental history reads and full-output hydration, direct archived-catalogue unarchive, native rename and fork, additional provider adapters, remote hosts, richer source links, provider icons, native configuration writes, focus mode, public privacy automation, and reproducible packaged releases remain in GitHub issues. They were not folded into this integration merely to make the first release look broader.
 
 Spaceship's short name is `sp`. `ss` is deliberately not used.
 
 ## Question audit
 
-The session contained 18 durable questions. Eleven now have concise, source-linked answers in the [Spaceship FAQ](../faq/README.md). Five are represented by current feature specifications or tracker issues because their answer is intentionally incomplete. Two comparative questions about unrelated external projects were left out because this repository cannot verify them as durable Spaceship facts.
+The session contained 18 durable product questions. Eleven now have concise, source-linked answers in the [Spaceship FAQ](../faq/README.md); the FAQ also records two operational edge cases found during landing review. Five questions are represented by current feature specifications or tracker issues because their answer is intentionally incomplete. Two comparative questions about unrelated external projects were left out because this repository cannot verify them as durable Spaceship facts.
 
 ---
 

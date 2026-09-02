@@ -43,8 +43,9 @@ Codex app-server <-> Spaceship provider bridge <-> Spaceship UI
 
 ## Current limits
 
-- The current native-history projection opens the latest complete history;
-  bounded older-page loading and full-output hydration are tracked in
+- Spaceship serves native history as bounded turn pages. Codex app-server's
+  `thread/read` still supplies a complete provider snapshot; provider-side
+  incremental reads and full-output hydration are tracked in
   [#12](https://github.com/lucharo/spaceship/issues/12).
 - Archiving an active row delegates to Codex app-server. Existing local
   projections can recover through native unarchive, but the archived catalogue
