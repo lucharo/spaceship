@@ -66,6 +66,7 @@ import {
   archiveThreadAndChildren,
   archiveThreadAndHiddenSourceForks,
   resolveArchiveThreadEnvironment,
+  withThreadArchiveMutation,
 } from "../../services/threads/thread-archive.js";
 import {
   requireThreadCommandEnvironment,
@@ -523,44 +524,50 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(routes.archive, async (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (thread.archivedAt !== null) {
-      deps.terminalSessions.closeArchivedThreadTerminals({
-        threadId: thread.id,
+    const threadId = context.req.param("id");
+    return withThreadArchiveMutation(threadId, async () => {
+      const thread = requirePublicThread(deps.db, threadId);
+      if (thread.archivedAt !== null) {
+        deps.terminalSessions.closeArchivedThreadTerminals({
+          threadId: thread.id,
+        });
+        return context.json({ ok: true });
+      }
+      const shouldRequestCleanup = wouldCleanupEnvironment(deps, {
+        environmentId: thread.environmentId,
+        excludeThreadId: thread.id,
       });
+      const environment = resolveArchiveThreadEnvironment(deps, { thread });
+      const archiveResult = archiveThreadAndHiddenSourceForks(deps, {
+        environment,
+        thread,
+      });
+      if (!archiveResult) {
+        throw new ApiError(404, "thread_not_found", "Thread not found");
+      }
+      if (shouldRequestCleanup) {
+        requestEnvironmentCleanup(deps, {
+          environmentId: thread.environmentId,
+        });
+        requestEnvironmentCleanupAdvance(deps, {
+          environmentId: thread.environmentId,
+        });
+      }
       return context.json({ ok: true });
-    }
-    const shouldRequestCleanup = wouldCleanupEnvironment(deps, {
-      environmentId: thread.environmentId,
-      excludeThreadId: thread.id,
     });
-    const environment = resolveArchiveThreadEnvironment(deps, { thread });
-    const archiveResult = archiveThreadAndHiddenSourceForks(deps, {
-      environment,
-      thread,
-    });
-    if (!archiveResult) {
-      throw new ApiError(404, "thread_not_found", "Thread not found");
-    }
-    if (shouldRequestCleanup) {
-      requestEnvironmentCleanup(deps, {
-        environmentId: thread.environmentId,
-      });
-      requestEnvironmentCleanupAdvance(deps, {
-        environmentId: thread.environmentId,
-      });
-    }
-    return context.json({ ok: true });
   });
 
-  post(routes.archiveAll, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const archivedThreadIds = archiveThreadAndChildren(deps, {
-      parentThread: thread,
-    });
-    return context.json({
-      ok: true,
-      archivedThreadIds,
+  post(routes.archiveAll, async (context) => {
+    const threadId = context.req.param("id");
+    return withThreadArchiveMutation(threadId, async () => {
+      const thread = requirePublicThread(deps.db, threadId);
+      const archivedThreadIds = archiveThreadAndChildren(deps, {
+        parentThread: thread,
+      });
+      return context.json({
+        ok: true,
+        archivedThreadIds,
+      });
     });
   });
 
@@ -571,27 +578,30 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   // and the environment was destroyed, `retire.cancelled` is a no-op (illegal
   // from destroying/destroyed) and the thread remains read-only. The user can
   // hand its context and surviving branch off to a new thread instead.
-  post(routes.unarchive, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const providerThreadId = getLastProviderThreadId(deps, thread.id);
-    unarchiveThread(deps.db, deps.hub, thread.id);
-    const environment = thread.environmentId
-      ? getEnvironment(deps.db, thread.environmentId)
-      : null;
-    if (environment?.status === "retiring") {
-      applyLoggedEnvironmentLifecycleEvent(deps, {
-        environmentId: environment.id,
-        event: { type: "retire.cancelled" },
-      });
-    }
-    if (providerThreadId && environment) {
-      dispatchThreadUnarchiveCommand(deps, {
-        environment,
-        providerThreadId,
-        thread,
-      });
-    }
-    return context.json({ ok: true });
+  post(routes.unarchive, async (context) => {
+    const threadId = context.req.param("id");
+    return withThreadArchiveMutation(threadId, async () => {
+      const thread = requirePublicThread(deps.db, threadId);
+      const providerThreadId = getLastProviderThreadId(deps, thread.id);
+      unarchiveThread(deps.db, deps.hub, thread.id);
+      const environment = thread.environmentId
+        ? getEnvironment(deps.db, thread.environmentId)
+        : null;
+      if (environment?.status === "retiring") {
+        applyLoggedEnvironmentLifecycleEvent(deps, {
+          environmentId: environment.id,
+          event: { type: "retire.cancelled" },
+        });
+      }
+      if (providerThreadId && environment) {
+        dispatchThreadUnarchiveCommand(deps, {
+          environment,
+          providerThreadId,
+          thread,
+        });
+      }
+      return context.json({ ok: true });
+    });
   });
 
   post(routes.read, (context) => {

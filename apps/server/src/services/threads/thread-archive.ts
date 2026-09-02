@@ -59,6 +59,33 @@ export interface PreparedThreadAndChildrenArchive {
   threads: PreparedArchiveThread[];
 }
 
+const threadArchiveMutationChains = new Map<string, Promise<void>>();
+
+/**
+ * Serialize archive, unarchive, and fork mutations that share a source thread.
+ * Native archive waits on a provider RPC, so the lock keeps a concurrent local
+ * unarchive or hidden-fork creation from invalidating its preflight snapshot.
+ */
+export function withThreadArchiveMutation<T>(
+  threadId: string,
+  mutate: () => Promise<T>,
+): Promise<T> {
+  const previous =
+    threadArchiveMutationChains.get(threadId) ?? Promise.resolve();
+  const result = previous.then(mutate);
+  const tail = result.then(
+    () => {},
+    () => {},
+  );
+  threadArchiveMutationChains.set(threadId, tail);
+  void tail.then(() => {
+    if (threadArchiveMutationChains.get(threadId) === tail) {
+      threadArchiveMutationChains.delete(threadId);
+    }
+  });
+  return result;
+}
+
 /**
  * Resolve the environment archive needs to stop the thread's live work, or
  * null when there is nothing to stop. A thread loses its environment pointer
@@ -137,19 +164,45 @@ export function archiveThreadAndHiddenSourceForks(
   deps: AppDeps,
   args: ArchiveThreadWithLifecycleEffectsArgs,
 ): Thread | null {
-  const archivedThread = archiveThreadWithLifecycleEffects(deps, args);
-  if (!archivedThread) {
-    return null;
-  }
-  for (const fork of listUnarchivedHiddenSourceThreads(deps.db, {
-    sourceThreadId: archivedThread.id,
-  })) {
-    archiveThreadWithLifecycleEffects(deps, {
-      environment: resolveArchiveThreadEnvironment(deps, { thread: fork }),
-      thread: fork,
+  return archivePreparedThreadAndHiddenSourceForks(
+    deps,
+    prepareThreadAndHiddenSourceForksArchive(deps, args),
+  );
+}
+
+export function prepareThreadAndHiddenSourceForksArchive(
+  deps: AppDeps,
+  args: ArchiveThreadWithLifecycleEffectsArgs,
+): PreparedThreadAndChildrenArchive {
+  const hiddenSourceThreads = listUnarchivedHiddenSourceThreads(deps.db, {
+    sourceThreadId: args.thread.id,
+  });
+  return {
+    threads: [args.thread, ...hiddenSourceThreads].map((thread, index) => ({
+      environment:
+        index === 0
+          ? args.environment
+          : resolveArchiveThreadEnvironment(deps, { thread }),
+      thread,
+    })),
+  };
+}
+
+export function archivePreparedThreadAndHiddenSourceForks(
+  deps: AppDeps,
+  prepared: PreparedThreadAndChildrenArchive,
+): Thread | null {
+  let archivedSourceThread: Thread | null = null;
+  for (const [index, { environment, thread }] of prepared.threads.entries()) {
+    const archivedThread = archiveThreadWithLifecycleEffects(deps, {
+      environment,
+      thread,
     });
+    if (index === 0) {
+      archivedSourceThread = archivedThread;
+    }
   }
-  return archivedThread;
+  return archivedSourceThread;
 }
 
 export function archiveEnvironmentThreads(

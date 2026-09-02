@@ -116,6 +116,125 @@ describe("public native thread archive", () => {
     });
   });
 
+  it("preflights hidden forks before archiving the provider or source thread", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project, environment, thread } = seedThreadFixture(
+        harness,
+        {
+          session: { id: "host-native-archive-hidden-preflight" },
+        },
+      );
+      const providerThreadId = "native-thread-hidden-preflight";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+      const hiddenFork = seedThread(harness.deps, {
+        environmentId: null,
+        originKind: "fork",
+        originPluginId: "side-chat",
+        projectId: project.id,
+        sourceThreadId: thread.id,
+        status: "starting",
+        visibility: "hidden",
+      });
+
+      const response = await harness.app.request(
+        "/api/v1/threads/archive-native",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            hostId: host.id,
+            providerId: "codex",
+            providerThreadId,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(409);
+      expect(getThread(harness.db, thread.id)?.archivedAt).toBeNull();
+      expect(getThread(harness.db, hiddenFork.id)?.archivedAt).toBeNull();
+      expect(
+        listQueuedCommands(harness, "provider.native_sessions.archive"),
+      ).toEqual([]);
+    });
+  });
+
+  it("serializes a concurrent unarchive behind the provider archive", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, environment, thread } = seedThreadFixture(harness, {
+        session: { id: "host-native-archive-concurrent-unarchive" },
+      });
+      const providerThreadId = "native-thread-concurrent-unarchive";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+      archiveThread(harness.db, harness.deps.hub, thread.id);
+
+      const archiveResponsePromise = harness.app.request(
+        "/api/v1/threads/archive-native",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            hostId: host.id,
+            providerId: "codex",
+            providerThreadId,
+          }),
+        },
+      );
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.archive" &&
+          command.providerThreadId === providerThreadId,
+      );
+
+      let unarchiveSettled = false;
+      const unarchiveResponsePromise = Promise.resolve(
+        harness.app.request(`/api/v1/threads/${thread.id}/unarchive`, {
+          method: "POST",
+        }),
+      ).then((response) => {
+        unarchiveSettled = true;
+        return response;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(unarchiveSettled).toBe(false);
+      expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
+
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+      expect((await archiveResponsePromise).status).toBe(200);
+      expect((await unarchiveResponsePromise).status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.archivedAt).toBeNull();
+      expect(
+        hasNativeSessionArchiveConfirmation(harness.db, {
+          providerThreadId,
+          threadId: thread.id,
+        }),
+      ).toBe(false);
+      const providerUnarchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.unarchive" && command.threadId === thread.id,
+      );
+      await reportQueuedCommandSuccess(
+        harness,
+        providerUnarchive as never,
+        {} as never,
+      );
+    });
+  });
+
   it("releases assigned child threads instead of archiving their separate sessions", async () => {
     await withTestHarness(async (harness) => {
       const { host, project, environment, thread } = seedThreadFixture(

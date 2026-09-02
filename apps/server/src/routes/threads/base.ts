@@ -7,6 +7,7 @@ import {
   findThreadByNativeIdentity,
   findOrCreateProjectByLocalPathSource,
   findProjectEnvironmentByHostPath,
+  hasNativeSessionArchiveConfirmation,
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
@@ -86,8 +87,10 @@ import {
   emitPluginThreadDeleted,
 } from "../../services/plugins/plugin-thread-events.js";
 import {
-  archiveThreadAndHiddenSourceForks,
+  archivePreparedThreadAndHiddenSourceForks,
+  prepareThreadAndHiddenSourceForksArchive,
   resolveArchiveThreadEnvironment,
+  withThreadArchiveMutation,
 } from "../../services/threads/thread-archive.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
@@ -524,28 +527,48 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   post(routes.archiveNative, async (context, payload) => {
     requireNonDestroyedHostWithStatus(deps, payload.hostId);
     const existing = findThreadByNativeIdentity(deps.db, payload);
-    const environment =
-      existing !== null && existing.archivedAt === null
-        ? resolveArchiveThreadEnvironment(deps, { thread: existing })
-        : null;
-    await archiveProviderNativeSession(deps, payload);
-    if (existing !== null) {
-      confirmNativeSessionArchive(deps.db, {
-        providerThreadId: payload.providerThreadId,
-        threadId: existing.id,
-      });
-      if (existing.archivedAt === null) {
-        archiveThreadAndHiddenSourceForks(deps, {
-          environment,
-          thread: existing,
-        });
-      }
+    if (existing === null) {
+      await archiveProviderNativeSession(deps, payload);
+      return context.json({ ok: true as const });
     }
+
+    await withThreadArchiveMutation(existing.id, async () => {
+      const current = findThreadByNativeIdentity(deps.db, payload);
+      const prepared =
+        current !== null && current.archivedAt === null
+          ? prepareThreadAndHiddenSourceForksArchive(deps, {
+              environment: resolveArchiveThreadEnvironment(deps, {
+                thread: current,
+              }),
+              thread: current,
+            })
+          : null;
+      const providerAlreadyArchived =
+        current !== null &&
+        hasNativeSessionArchiveConfirmation(deps.db, {
+          providerThreadId: payload.providerThreadId,
+          threadId: current.id,
+        });
+      if (!providerAlreadyArchived) {
+        await archiveProviderNativeSession(deps, payload);
+      }
+      if (current !== null) {
+        confirmNativeSessionArchive(deps.db, {
+          providerThreadId: payload.providerThreadId,
+          threadId: current.id,
+        });
+        if (prepared !== null) {
+          archivePreparedThreadAndHiddenSourceForks(deps, prepared);
+        }
+      }
+    });
     return context.json({ ok: true as const });
   });
 
   post(routes.fork, async (context, payload) => {
-    const thread = await createThreadForkFromRequest(deps, payload);
+    const thread = await withThreadArchiveMutation(payload.sourceThreadId, () =>
+      createThreadForkFromRequest(deps, payload),
+    );
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });
 
