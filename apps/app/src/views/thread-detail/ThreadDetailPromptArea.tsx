@@ -689,9 +689,11 @@ export function ThreadDetailPromptArea({
     isLoadingModels,
     modelLoadFailed,
     modelLoadError,
+    modelCatalogIsVerified,
     reasoningOptions,
     permissionModeOptions,
     supportsPermissionModeSelection,
+    permissionModeIsVerified,
     supportsServiceTier,
     serviceTierSupportByProvider,
     serviceTierFastLabel,
@@ -725,6 +727,8 @@ export function ThreadDetailPromptArea({
     !defaultExecutionOptionsQuery.isError &&
     (hasConcreteDefaultExecutionOptions ||
       (verifiedDefaultExecutionOptions === null &&
+        modelCatalogIsVerified &&
+        permissionModeIsVerified &&
         effectiveSelectedModel.length > 0));
   const handleModelChange = useCallback(
     (model: string) => {

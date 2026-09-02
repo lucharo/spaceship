@@ -102,8 +102,119 @@ describe("public native thread adoption", () => {
         await readJson(adoptionResponse),
       );
 
+      const nativeHistory = {
+        session: {
+          providerThreadId,
+          title: "Recovered session",
+          cwd: "/tmp/native-adoption",
+          projectId: null,
+          workspaceRoot: "/tmp/native-adoption",
+          status: "idle",
+          createdAt: 1_777_000_000,
+          updatedAt: 1_777_000_100,
+          archived: false,
+          source: "cli",
+        },
+        events: [
+          {
+            createdAt: 1_777_000_010_000,
+            event: {
+              type: "turn/started",
+              threadId: adopted.thread.id,
+              providerThreadId,
+              scope: turnScope("native-turn-1"),
+            },
+          },
+          {
+            createdAt: 1_777_000_011_000,
+            event: {
+              type: "item/completed",
+              threadId: adopted.thread.id,
+              providerThreadId,
+              scope: turnScope("native-turn-1"),
+              item: {
+                type: "userMessage",
+                id: "native-user-1",
+                content: [{ type: "text", text: "Synthetic question" }],
+              },
+            },
+          },
+          {
+            createdAt: 1_777_000_012_000,
+            event: {
+              type: "item/completed",
+              threadId: adopted.thread.id,
+              providerThreadId,
+              scope: turnScope("native-turn-1"),
+              item: {
+                type: "agentMessage",
+                id: "native-agent-1",
+                text: "Synthetic answer",
+              },
+            },
+          },
+          {
+            createdAt: 1_777_000_013_000,
+            event: {
+              type: "turn/completed",
+              threadId: adopted.thread.id,
+              providerThreadId,
+              scope: turnScope("native-turn-1"),
+              status: "completed",
+            },
+          },
+          {
+            createdAt: 1_777_000_020_000,
+            event: {
+              type: "turn/started",
+              threadId: adopted.thread.id,
+              providerThreadId,
+              scope: turnScope("native-turn-2"),
+            },
+          },
+          {
+            createdAt: 1_777_000_021_000,
+            event: {
+              type: "item/completed",
+              threadId: adopted.thread.id,
+              providerThreadId,
+              scope: turnScope("native-turn-2"),
+              item: {
+                type: "userMessage",
+                id: "native-user-2",
+                content: [{ type: "text", text: "Synthetic follow-up" }],
+              },
+            },
+          },
+          {
+            createdAt: 1_777_000_022_000,
+            event: {
+              type: "item/completed",
+              threadId: adopted.thread.id,
+              providerThreadId,
+              scope: turnScope("native-turn-2"),
+              item: {
+                type: "agentMessage",
+                id: "native-agent-2",
+                text: "Synthetic follow-up answer",
+              },
+            },
+          },
+          {
+            createdAt: 1_777_000_023_000,
+            event: {
+              type: "turn/completed",
+              threadId: adopted.thread.id,
+              providerThreadId,
+              scope: turnScope("native-turn-2"),
+              status: "completed",
+            },
+          },
+        ],
+      };
+
       const timelineResponsePromise = harness.app.request(
-        `/api/v1/threads/${adopted.thread.id}/timeline`,
+        `/api/v1/threads/${adopted.thread.id}/timeline?segmentLimit=1`,
       );
       const history = await waitForQueuedCommand(
         harness,
@@ -116,69 +227,7 @@ describe("public native thread adoption", () => {
       await reportQueuedCommandSuccess(
         harness,
         history as never,
-        {
-          session: {
-            providerThreadId,
-            title: "Recovered session",
-            cwd: "/tmp/native-adoption",
-            projectId: null,
-            workspaceRoot: "/tmp/native-adoption",
-            status: "idle",
-            createdAt: 1_777_000_000,
-            updatedAt: 1_777_000_100,
-            archived: false,
-            source: "cli",
-          },
-          events: [
-            {
-              createdAt: 1_777_000_010_000,
-              event: {
-                type: "turn/started",
-                threadId: adopted.thread.id,
-                providerThreadId,
-                scope: turnScope("native-turn-1"),
-              },
-            },
-            {
-              createdAt: 1_777_000_011_000,
-              event: {
-                type: "item/completed",
-                threadId: adopted.thread.id,
-                providerThreadId,
-                scope: turnScope("native-turn-1"),
-                item: {
-                  type: "userMessage",
-                  id: "native-user-1",
-                  content: [{ type: "text", text: "Synthetic question" }],
-                },
-              },
-            },
-            {
-              createdAt: 1_777_000_012_000,
-              event: {
-                type: "item/completed",
-                threadId: adopted.thread.id,
-                providerThreadId,
-                scope: turnScope("native-turn-1"),
-                item: {
-                  type: "agentMessage",
-                  id: "native-agent-1",
-                  text: "Synthetic answer",
-                },
-              },
-            },
-            {
-              createdAt: 1_777_000_013_000,
-              event: {
-                type: "turn/completed",
-                threadId: adopted.thread.id,
-                providerThreadId,
-                scope: turnScope("native-turn-1"),
-                status: "completed",
-              },
-            },
-          ],
-        } as never,
+        nativeHistory as never,
       );
 
       const timelineResponse = await timelineResponsePromise;
@@ -187,11 +236,48 @@ describe("public native thread adoption", () => {
         await readJson(timelineResponse),
       );
       expect(timeline.nativeHistoryProjection).toBe(true);
-      expect(timeline.rows).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ kind: "turn", turnId: "native-turn-1" }),
-        ]),
+      expect(
+        timeline.rows
+          .filter((row) => row.kind === "turn")
+          .map((row) => row.turnId),
+      ).toEqual(["native-turn-2"]);
+      expect(timeline.timelinePage).toMatchObject({
+        returnedSegmentCount: 1,
+        hasOlderRows: true,
+      });
+      expect(timeline.timelinePage.olderCursor).not.toBeNull();
+
+      const olderCursor = timeline.timelinePage.olderCursor;
+      if (olderCursor === null) throw new Error("Expected an older cursor");
+      const olderTimelineResponsePromise = harness.app.request(
+        `/api/v1/threads/${adopted.thread.id}/timeline?segmentLimit=1&beforeAnchorSeq=${olderCursor.anchorSeq}&beforeAnchorId=${encodeURIComponent(olderCursor.anchorId)}`,
       );
+      const olderHistory = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.history" &&
+          command.providerThreadId === providerThreadId,
+      );
+      await reportQueuedCommandSuccess(
+        harness,
+        olderHistory as never,
+        nativeHistory as never,
+      );
+      const olderTimelineResponse = await olderTimelineResponsePromise;
+      expect(olderTimelineResponse.status).toBe(200);
+      const olderTimeline = threadTimelineResponseSchema.parse(
+        await readJson(olderTimelineResponse),
+      );
+      expect(
+        olderTimeline.rows
+          .filter((row) => row.kind === "turn")
+          .map((row) => row.turnId),
+      ).toEqual(["native-turn-1"]);
+      expect(olderTimeline.timelinePage).toMatchObject({
+        returnedSegmentCount: 1,
+        hasOlderRows: false,
+        olderCursor: null,
+      });
 
       const storedEventsResponse = await harness.app.request(
         `/api/v1/threads/${adopted.thread.id}/events?limit=100&order=asc`,
@@ -200,6 +286,56 @@ describe("public native thread adoption", () => {
       expect(await readJson(storedEventsResponse)).toEqual([
         expect.objectContaining({ type: "thread/identity" }),
       ]);
+    });
+  });
+
+  it("rejects native history returned for a different provider session", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-history-mismatch",
+      });
+      const providerThreadId = "native-thread-history-requested";
+      const adoptionResponse = await postAdoptNativeThread(harness, {
+        hostId: host.id,
+        providerId: "codex",
+        providerThreadId,
+      });
+      const adopted = adoptNativeThreadResponseSchema.parse(
+        await readJson(adoptionResponse),
+      );
+
+      const timelineResponsePromise = harness.app.request(
+        `/api/v1/threads/${adopted.thread.id}/timeline`,
+      );
+      const history = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "provider.native_sessions.history",
+      );
+      await reportQueuedCommandSuccess(
+        harness,
+        history as never,
+        {
+          session: {
+            providerThreadId: "native-thread-history-other",
+            title: "Wrong session",
+            cwd: "/tmp/native-adoption",
+            projectId: null,
+            workspaceRoot: "/tmp/native-adoption",
+            status: "idle",
+            createdAt: 1,
+            updatedAt: 2,
+            archived: false,
+            source: "cli",
+          },
+          events: [],
+        } as never,
+      );
+
+      const timelineResponse = await timelineResponsePromise;
+      expect(timelineResponse.status).toBe(409);
+      await expect(readJson(timelineResponse)).resolves.toMatchObject({
+        code: "native_session_identity_mismatch",
+      });
     });
   });
 

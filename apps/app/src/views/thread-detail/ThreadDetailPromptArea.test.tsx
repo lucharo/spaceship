@@ -43,6 +43,8 @@ const mocks = vi.hoisted(() => ({
   createQueuedMessageMutateAsync: vi.fn(),
   defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
   defaultExecutionOptionsError: false,
+  modelCatalogIsVerified: true,
+  permissionModeIsVerified: true,
   deleteQueuedMessageMutateAsync: vi.fn(),
   navigate: vi.fn(),
   pluginComposerHost: null as PluginComposerHost | null,
@@ -457,10 +459,12 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
       isLoadingModels: false,
       modelLoadError: null,
       modelLoadFailed: false,
+      modelCatalogIsVerified: mocks.modelCatalogIsVerified,
       modelOptions: [],
       moreModelOptions: [],
       permissionMode: "auto",
       permissionModeOptions: [],
+      permissionModeIsVerified: mocks.permissionModeIsVerified,
       providerOptions: [],
       reasoningLevel: "medium",
       reasoningOptions: [],
@@ -733,6 +737,8 @@ function renderPromptArea(options: RenderPromptAreaOptions = {}) {
 beforeEach(() => {
   mocks.defaultExecutionOptions = null;
   mocks.defaultExecutionOptionsError = false;
+  mocks.modelCatalogIsVerified = true;
+  mocks.permissionModeIsVerified = true;
   mocks.pluginComposerHost = null;
   mocks.promptDraft.text = "";
   mocks.promptDraft.getCurrent.mockImplementation(() => ({
@@ -805,6 +811,27 @@ describe("ThreadDetailPromptArea", () => {
         {
           mentions: [],
           text: "Do not guess the execution model",
+          type: "text",
+        },
+      ],
+      mode: "queue-if-active",
+    });
+  });
+
+  it("does not submit provisional picker values before their catalogs are verified", () => {
+    mocks.modelCatalogIsVerified = false;
+    mocks.permissionModeIsVerified = false;
+    mocks.promptDraft.text = "Keep the native defaults";
+
+    renderPromptArea();
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith({
+      id: "thr_1",
+      input: [
+        {
+          mentions: [],
+          text: "Keep the native defaults",
           type: "text",
         },
       ],

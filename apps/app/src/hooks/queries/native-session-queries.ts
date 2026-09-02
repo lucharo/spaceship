@@ -89,7 +89,9 @@ export function useProviderNativeSessions({
         ? undefined
         : { pages: [placeholder], pageParams: [null] },
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    retry: false,
     refetchInterval: (activeQuery) => {
+      if (activeQuery.state.status === "error") return false;
       const pages = activeQuery.state.data?.pages ?? [];
       return pages.some((page) =>
         page.sessions.some((session) => session.status === "active"),

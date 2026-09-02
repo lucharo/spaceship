@@ -371,6 +371,34 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
     });
   });
 
+  it("uses the target directory as the canonical root for a linked skill file", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const targetDirectory = path.join(tempRoot, "linked-skill-target");
+    const targetFile = path.join(targetDirectory, "SKILL.md");
+    await writeSkill(targetFile, "linked-file");
+    const logicalDirectory = path.join(
+      fixture.homeDir,
+      ".agents",
+      "skills",
+      "linked-file",
+    );
+    await mkdir(logicalDirectory, { recursive: true });
+    await symlink(targetFile, path.join(logicalDirectory, "SKILL.md"));
+
+    const skills = await listSkills(
+      fixture,
+      fixture.cwd,
+      skillRoots({ user: [declared(".agents/skills")] }),
+      "bb-shared",
+    );
+
+    expect(byName(skills, "linked-file")).toMatchObject({
+      canonicalFilePath: await realpath(targetFile),
+      canonicalRootPath: await realpath(targetDirectory),
+      linked: true,
+    });
+  });
+
   it("calculates each skill path independently when repository lookup is cached", async () => {
     const fixture = await makeWorkspaceFixture();
     const repositoryRoot = path.join(tempRoot, "repositories", "skills");

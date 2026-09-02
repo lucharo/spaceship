@@ -849,9 +849,9 @@ export async function discoverSkills(
         .realpath(match.filePath)
         .catch(() => match.filePath);
       const logicalRootPath = path.dirname(match.filePath);
-      const canonicalRootPath = await fs
-        .realpath(logicalRootPath)
-        .catch(() => logicalRootPath);
+      const canonicalRootPath = (await isSymbolicLinkPath(match.filePath))
+        ? path.dirname(canonicalFilePath)
+        : await fs.realpath(logicalRootPath).catch(() => logicalRootPath);
       const provenance = await resolveSkillSourceProvenance(
         root,
         match,

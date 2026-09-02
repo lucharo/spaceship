@@ -251,7 +251,7 @@ export function buildPluginProviderRegistration(args: {
     fork: capabilities.fork,
     supportsManualCompaction: capabilities.supportsManualCompaction,
     supportsNativeSessionHistory:
-      capabilities.supportsNativeSessionHistory ?? false,
+      capabilities.experimental_supportsNativeSessionHistory ?? false,
   };
 
   return {

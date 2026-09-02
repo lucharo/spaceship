@@ -19,6 +19,7 @@ import {
   type PublicApiSchema,
   type ThreadConversationOutlineResponse,
   type ThreadTimelineQuery,
+  type TimelineRow,
 } from "@bb/server-contract";
 import type {
   AppDeps,
@@ -188,6 +189,42 @@ function parseThreadTimelinePage(
     },
     kind,
     segmentLimit,
+  };
+}
+
+function paginateNativeHistoryRows(
+  rows: readonly TimelineRow[],
+  page: ThreadTimelinePageRequest,
+) {
+  const eligibleRows =
+    page.kind === "latest"
+      ? rows
+      : rows.filter((row) => row.sourceSeqStart < page.beforeCursor.anchorSeq);
+  const segments: TimelineRow[][] = [];
+  let current: TimelineRow[] = [];
+  for (const row of eligibleRows) {
+    if (row.kind === "turn" && current.length > 0) {
+      segments.push(current);
+      current = [];
+    }
+    current.push(row);
+  }
+  if (current.length > 0) segments.push(current);
+
+  const selected = segments.slice(-page.segmentLimit);
+  const hasOlderRows = segments.length > selected.length;
+  const oldestRow = selected[0]?.[0];
+  return {
+    rows: selected.flat(),
+    returnedSegmentCount: selected.length,
+    hasOlderRows,
+    olderCursor:
+      hasOlderRows && oldestRow
+        ? {
+            anchorSeq: oldestRow.sourceSeqStart,
+            anchorId: oldestRow.id,
+          }
+        : null,
   };
 }
 
@@ -361,6 +398,13 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         providerThreadId,
         threadId: thread.id,
       });
+      if (history.session.providerThreadId !== providerThreadId) {
+        throw new ApiError(
+          409,
+          "native_session_identity_mismatch",
+          "The provider returned a different native session",
+        );
+      }
       const events = history.events.map(({ createdAt, event }, index) => ({
         event,
         meta: {
@@ -393,19 +437,18 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           workspaceRoot: environment.path,
         },
       });
-      const rows = page.kind === "latest" ? timeline.rows : [];
+      const paginated = paginateNativeHistoryRows(timeline.rows, page);
       const response = {
         ...timeline,
         nativeHistoryProjection: true,
         contextWindowUsage: timeline.contextWindowUsage ?? undefined,
-        rows: summaryOnly ? [] : rows,
+        rows: summaryOnly ? [] : paginated.rows,
         timelinePage: {
           kind: page.kind,
           segmentLimit: page.segmentLimit,
-          returnedSegmentCount: rows.filter((row) => row.kind === "turn")
-            .length,
-          hasOlderRows: false,
-          olderCursor: null,
+          returnedSegmentCount: paginated.returnedSegmentCount,
+          hasOlderRows: paginated.hasOlderRows,
+          olderCursor: paginated.olderCursor,
         },
         maxSeq: Math.max(maxSeq, history.session.updatedAt),
       };

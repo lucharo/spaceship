@@ -336,6 +336,16 @@ describe("NativeSessionThreadList", () => {
     expect(await screen.findByText("Original thread list")).toBeTruthy();
   });
 
+  it("falls back to the original sidebar when no primary host is available", () => {
+    systemConfigResult.data = undefined;
+    const Fallback = () => <div>Original thread list</div>;
+
+    renderSidebar({ fallback: Fallback });
+
+    expect(screen.getByText("Original thread list")).toBeTruthy();
+    expect(sdk.providers.nativeSessions).not.toHaveBeenCalled();
+  });
+
   it("shows native activity with the provider mark", async () => {
     vi.mocked(sdk.providers.nativeSessions).mockResolvedValue(nativeSessions);
 

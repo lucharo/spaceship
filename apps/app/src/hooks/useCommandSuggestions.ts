@@ -271,7 +271,7 @@ export function useCommandSuggestions(
 
   return {
     trigger,
-    aliases: trigger === "/" ? ["$"] : [],
+    aliases: trigger === "/" && args.providerId === "codex" ? ["$"] : [],
     suggestions,
     isLoading,
     isError,

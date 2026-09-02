@@ -621,6 +621,8 @@ export function NativeSessionThreadList({
         <p className="px-2 py-1 text-xs text-muted-foreground">
           Loading Codex threads…
         </p>
+      ) : sessions.hostId === null && !sessions.hostIsPending && Fallback ? (
+        <Fallback />
       ) : sessions.hostId === null && !sessions.hostIsPending ? (
         <p className="px-2 py-1 text-xs text-muted-foreground">
           Connect this machine to list Codex threads.

@@ -232,6 +232,16 @@ content-block vocabulary; decide whether legacy aggregate fields still need to
 be accepted; and define any image MIME validation, decoding, or payload-size
 policy at the server boundary before making the helper stable.
 
+## `PluginProviderCapabilities.experimental_supportsNativeSessionHistory`
+
+**Kept experimental (2026-09-02).** Declares that a provider can project an
+existing native session's history without importing it into BB's event store.
+
+**Audit before stabilizing.** Confirm the history response identity and
+pagination contract across at least two provider implementations, and decide
+whether native history support remains one capability or splits into read,
+resume, and mutation capabilities.
+
 ## The ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp`)
 
 **Kept experimental (2026-08-22).** Four members remain, each with an open

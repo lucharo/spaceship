@@ -54,6 +54,7 @@ export {
 export {
   adoptNativeThread,
   findThreadByNativeIdentity,
+  findThreadsByNativeIdentities,
   createThread,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,

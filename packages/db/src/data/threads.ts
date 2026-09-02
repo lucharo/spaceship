@@ -292,6 +292,12 @@ export interface NativeThreadIdentity {
   providerThreadId: string;
 }
 
+export interface NativeThreadIdentities {
+  hostId: string;
+  providerId: string;
+  providerThreadIds: readonly string[];
+}
+
 function insertThread(
   db: ThreadWriteConnection,
   input: CreateThreadInput,
@@ -412,6 +418,22 @@ export function findThreadByNativeIdentity(
   db: ThreadWriteConnection,
   identity: NativeThreadIdentity,
 ): ThreadRow | null {
+  return (
+    findThreadsByNativeIdentities(db, {
+      hostId: identity.hostId,
+      providerId: identity.providerId,
+      providerThreadIds: [identity.providerThreadId],
+    }).get(identity.providerThreadId) ?? null
+  );
+}
+
+export function findThreadsByNativeIdentities(
+  db: ThreadWriteConnection,
+  identities: NativeThreadIdentities,
+): ReadonlyMap<string, ThreadRow> {
+  if (identities.providerThreadIds.length === 0) {
+    return new Map();
+  }
   const latestProviderIdentities = db
     .select({
       threadId: events.threadId,
@@ -422,9 +444,11 @@ export function findThreadByNativeIdentity(
     .groupBy(events.threadId)
     .as("latest_provider_identities");
 
-  return (
-    db
-      .select({ thread: getTableColumns(threads) })
+  const matches = db
+      .select({
+        providerThreadId: events.providerThreadId,
+        thread: getTableColumns(threads),
+      })
       .from(threads)
       .innerJoin(environments, eq(environments.id, threads.environmentId))
       .innerJoin(events, eq(events.threadId, threads.id))
@@ -437,16 +461,25 @@ export function findThreadByNativeIdentity(
       )
       .where(
         and(
-          eq(environments.hostId, identity.hostId),
-          eq(threads.providerId, identity.providerId),
-          eq(events.providerThreadId, identity.providerThreadId),
+          eq(environments.hostId, identities.hostId),
+          eq(threads.providerId, identities.providerId),
+          inArray(events.providerThreadId, [...identities.providerThreadIds]),
           isNull(threads.deletedAt),
         ),
       )
       .orderBy(desc(threads.updatedAt))
-      .limit(1)
-      .get()?.thread ?? null
-  );
+      .all();
+
+  const byProviderThreadId = new Map<string, ThreadRow>();
+  for (const match of matches) {
+    if (
+      match.providerThreadId !== null &&
+      !byProviderThreadId.has(match.providerThreadId)
+    ) {
+      byProviderThreadId.set(match.providerThreadId, match.thread);
+    }
+  }
+  return byProviderThreadId;
 }
 
 export function getThread(db: ThreadWriteConnection, id: string) {

@@ -102,4 +102,23 @@ describe("useCommandSuggestions catalog prefetch", () => {
       expect(sdk.projects.commands).toHaveBeenCalledTimes(1);
     });
   });
+
+  it("offers the dollar alias only for Codex", () => {
+    mockPointer(false);
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result, rerender } = renderHook(
+      (props: { providerId: string }) =>
+        useCommandSuggestions({
+          ...BASE_ARGS,
+          providerId: props.providerId,
+          query: "",
+        }),
+      { wrapper, initialProps: { providerId: "codex" } },
+    );
+
+    expect(result.current.aliases).toEqual(["$"]);
+    rerender({ providerId: "claude-code" });
+    expect(result.current.aliases).toEqual([]);
+  });
 });

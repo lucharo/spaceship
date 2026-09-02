@@ -1137,6 +1137,9 @@ const READ_EXPERIMENTAL_PROVIDER_DECLARATION_FIELDS: ReadonlySet<string> =
     "experimental_resolvesNativeRoots",
   ]);
 
+const READ_EXPERIMENTAL_PROVIDER_CAPABILITY_FIELDS: ReadonlySet<string> =
+  new Set(["experimental_supportsNativeSessionHistory"]);
+
 const RENAMED_PROVIDER_FIELDS_SDK_VERSION = "0.4.16";
 
 /**
@@ -1254,7 +1257,7 @@ export function validatePluginProviderDeclaration(
     providerId: id,
     value: capabilities,
     scope: "capabilities.",
-    read: new Set(),
+    read: READ_EXPERIMENTAL_PROVIDER_CAPABILITY_FIELDS,
     renamed: MOVED_PROVIDER_CAPABILITY_FIELDS,
     verb: "moved",
   });
@@ -1298,8 +1301,8 @@ export function validatePluginProviderDeclaration(
     );
   }
   const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
-    supportsNativeSessionHistory:
-      capabilities.supportsNativeSessionHistory ?? false,
+    experimental_supportsNativeSessionHistory:
+      capabilities.experimental_supportsNativeSessionHistory ?? false,
     supportsServiceTier: capabilities.supportsServiceTier,
     supportsNativeUserQuestion: capabilities.supportsNativeUserQuestion,
     fork: capabilities.fork,

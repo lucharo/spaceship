@@ -8,6 +8,7 @@ import {
   createThread,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
+  findThreadsByNativeIdentities,
   getThread,
   getThreadExecutionOverride,
   hasActiveThreadAttention,
@@ -222,6 +223,46 @@ describe("threads", () => {
     expect(reopenedOld.created).toBe(true);
     expect(reopenedOld.thread.id).not.toBe(original.thread.id);
     expect(reopenedCurrent).toEqual({ created: false, thread: original.thread });
+  });
+
+  it("resolves a page of native identities in one lookup", () => {
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "unmanaged",
+      path: "/tmp/test",
+      status: "ready",
+    });
+    const first = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      hostId: host.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-first",
+    });
+    const second = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      hostId: host.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-second",
+    });
+
+    const matches = findThreadsByNativeIdentities(db, {
+      hostId: host.id,
+      providerId: "codex",
+      providerThreadIds: [
+        "native-thread-first",
+        "native-thread-second",
+        "native-thread-missing",
+      ],
+    });
+
+    expect(matches.size).toBe(2);
+    expect(matches.get("native-thread-first")).toEqual(first.thread);
+    expect(matches.get("native-thread-second")).toEqual(second.thread);
+    expect(matches.has("native-thread-missing")).toBe(false);
   });
 
   it("resolves only exact non-deleted mention thread rows", () => {
