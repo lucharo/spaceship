@@ -71,7 +71,7 @@ _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02 · Scope/ver
 
 Archiving a native row does not adopt it, create a Spaceship thread, or require a working directory. When a lightweight local projection already exists, Spaceship archives Codex once and then reconciles that projection without sending a duplicate provider command. Existing local projections can recover through native unarchive. A direct unarchive action in the archived catalogue, plus rename and fork parity, remains tracked rather than being emulated in Spaceship.
 
-Before asking Codex to archive, Spaceship verifies that the matching local projection can be reconciled. BB-assigned child threads represent separate sessions, so they are released rather than archived with the parent. A durable confirmation prevents a later stop settlement or process restart from sending the same provider archive command twice; unarchiving clears that confirmation.
+Before asking Codex to archive, Spaceship verifies that the matching local projection and every hidden source fork can be reconciled. Archive, unarchive, and source-thread fork creation are serialized while the provider request is in flight, so a concurrent local action cannot leave Codex archived while Spaceship appears active. BB-assigned child threads represent separate sessions, so they are released rather than archived with the parent. A durable confirmation prevents retries, later stop settlement, or process restart from sending the same provider archive command twice; unarchiving clears that confirmation.
 
 ### Sources
 

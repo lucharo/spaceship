@@ -29,6 +29,8 @@ The exact-head review then caught two small but important violations of that sam
 
 The final convergence pass found three deeper native-boundary defects. Archive still adopted an unprojected session first, which could fail for sessions without a current working directory and created state merely to perform provider maintenance. Native history correctly owned the transcript but accidentally displaced local goals, context usage, and pending user requests. Finally, an item whose semantic phase became known only at completion could leave buffered output stranded at turn or process shutdown, and failed historical turns could lose their native error. The fixes make archive a direct provider RPC, reconcile only the matching native projection while releasing BB-assigned child sessions, persist provider confirmation so stop settlement or restart cannot duplicate the command, expose the same action through the CLI, overlay local control state without duplicating transcript rows, key pending items by native thread and turn identity, preserve interrupted status during timeout cleanup, and flush or clear deferred output at every terminal boundary.
 
+The exact-head archive review found two final consistency hazards. A local unarchive could race the awaited provider archive, and hidden forks were validated only after their source had already changed state. Spaceship now serializes archive, unarchive, and source-thread fork creation per source thread, preflights every hidden fork before contacting the provider, and keeps the durable provider confirmation compatible across the migration's earlier published hash. The associated tests also had to model native history faithfully: turn-scoped events require a turn start, and conversation rows inside a native turn must be inspected recursively rather than treated as top-level rows.
+
 It also exposed two existing macOS test assumptions: Linux process supervision expected `/proc`, and temporary paths could compare as `/tmp` versus `/private/tmp`. Those checks now use portable behaviour. The Electron window smoke itself cannot be torn down by this agent host because macOS denies signalling the spawned process; that test remains a runtime-environment exception rather than a product assertion.
 
 ## Lessons worth keeping
@@ -37,6 +39,8 @@ It also exposed two existing macOS test assumptions: Linux process supervision e
 - Provider-owned history and local UI state can coexist, but the merge must be explicit and deterministic. Replacing either side wholesale loses information.
 - Streaming translators need a distinct “seen but not yet classifiable” state. Empty buffered text is still state, and terminal events must flush or clear it.
 - A wire change is incomplete until command registration, response unions, fixtures, dispatch, SDK exposure, and protocol version all move together.
+- Any migration changed after a branch build may already exist in a real database. Make the SQL replay-safe and register the previous content hash before landing it.
+- An awaited provider mutation creates a concurrency boundary. Preflight the complete local cascade first, then serialize conflicting local actions until reconciliation finishes.
 - Exact provider and app tests caught semantic failures that typechecking could not; the live visual pass remained necessary for interaction and presentation confidence.
 
 ## What remains intentionally open
