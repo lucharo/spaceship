@@ -350,7 +350,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     if (
       firstStoredEvent?.type === "thread/identity" &&
       providerThreadId !== null &&
-      thread.environmentId !== null
+      thread.environmentId !== null &&
+      deps.providerRegistry.getServerCapabilities(thread.providerId)
+        ?.supportsNativeSessionHistory === true
     ) {
       const environment = requireEnvironment(deps.db, thread.environmentId);
       const history = await readProviderNativeSessionHistory(deps, {
@@ -376,7 +378,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         events,
         options: {
           contextOnlyToolCallIds: new Set(),
-          includeNestedRows,
+          includeNestedRows: true,
           includeProviderUnhandledOperations,
           isLatestPage: page.kind === "latest",
           planCommand: resolveProviderPlanCommand(
@@ -394,6 +396,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       const rows = page.kind === "latest" ? timeline.rows : [];
       const response = {
         ...timeline,
+        nativeHistoryProjection: true,
         contextWindowUsage: timeline.contextWindowUsage ?? undefined,
         rows: summaryOnly ? [] : rows,
         timelinePage: {
@@ -410,11 +413,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         response,
         DEFAULT_MAX_INLINE_OUTPUT_CHARS,
       );
-      return context.json(
-        includeNestedRows
-          ? truncated
-          : previewTimelineResponseOutputs(truncated),
-      );
+      return context.json(truncated);
     }
     const keyArgs = {
       threadId: thread.id,

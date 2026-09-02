@@ -101,11 +101,15 @@ const FIXED_TOKEN_USAGE = {
   modelContextWindow: 258400,
 };
 
-function runScriptedTurn(threadId) {
+function runScriptedTurn(threadId, promptText = "Synthetic follow-up") {
   turnCounter += 1;
-  const turnId = `turn-fx-${turnCounter}`;
-  const itemId = `item-fx-${turnCounter}`;
-  const text = `hello from codex turn ${turnCounter}`;
+  const ordinal =
+    historyStatePath === null
+      ? turnCounter
+      : readPersistedTurns(threadId).length + 1;
+  const turnId = `turn-fx-${ordinal}`;
+  const itemId = `item-fx-${ordinal}`;
+  const text = `hello from codex turn ${ordinal}`;
   openTurnIdsByThreadId.set(threadId, turnId);
 
   notify("turn/started", {
@@ -133,6 +137,31 @@ function runScriptedTurn(threadId) {
     threadId,
     turn: { id: turnId, status: "completed" },
   });
+  appendPersistedTurn(threadId, {
+    id: turnId,
+    status: "completed",
+    error: null,
+    startedAt: 1_777_000_100 + ordinal * 10,
+    completedAt: 1_777_000_105 + ordinal * 10,
+    durationMs: 5_000,
+    itemsView: { type: "all" },
+    items: [
+      {
+        type: "userMessage",
+        id: `user-fx-${ordinal}`,
+        clientId: null,
+        content: [{ type: "text", text: promptText, text_elements: [] }],
+      },
+      {
+        type: "agentMessage",
+        id: itemId,
+        text,
+        phase: null,
+        memoryCitation: null,
+        delivery: null,
+      },
+    ],
+  });
   openTurnIdsByThreadId.delete(threadId);
 }
 
@@ -141,6 +170,7 @@ function runScriptedTurn(threadId) {
 const scriptPath = process.argv[2];
 const script = scriptPath ? JSON.parse(readFileSync(scriptPath, "utf8")) : null;
 const scriptedTurns = script?.turns ?? null;
+const nativeSessionCwd = script?.nativeSessionCwd ?? "/workspace";
 const modelListFailOnceMarkerPath = script?.modelListFailOnceMarkerPath ?? null;
 /**
  * `archiveStatePath`: a JSON file of archived thread ids shared by every fake
@@ -150,6 +180,12 @@ const modelListFailOnceMarkerPath = script?.modelListFailOnceMarkerPath ?? null;
  * child on archive and resumes on a fresh one.
  */
 const archiveStatePath = script?.archiveStatePath ?? null;
+/**
+ * `historyStatePath`: newline-delimited completed turns shared by fake
+ * app-server children. Native history is read through a fresh child, so this
+ * mirrors Codex's on-disk rollout closely enough for end-to-end resume QA.
+ */
+const historyStatePath = script?.historyStatePath ?? null;
 /**
  * `renameEmptyRolloutFailures`: how many `thread/name/set` calls fail with the
  * real app-server's "rollout … is empty" error before one succeeds — the
@@ -206,6 +242,29 @@ function setThreadArchived(threadId, archived) {
 
 function isThreadArchived(threadId) {
   return readArchivedThreadIds().has(threadId);
+}
+
+function readPersistedTurns(threadId) {
+  if (historyStatePath === null || !existsSync(historyStatePath)) {
+    return [];
+  }
+  return readFileSync(historyStatePath, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .filter((entry) => entry.threadId === threadId)
+    .map((entry) => entry.turn);
+}
+
+function appendPersistedTurn(threadId, turn) {
+  if (historyStatePath === null) {
+    return;
+  }
+  appendFileSync(historyStatePath, `${JSON.stringify({ threadId, turn })}\n`);
+}
+
+function nativeSessionUpdatedAt(threadId) {
+  return readPersistedTurns(threadId).at(-1)?.completedAt ?? 1_777_000_100;
 }
 
 function shouldFailThisModelList() {
@@ -377,11 +436,21 @@ async function handleRequest(message) {
             projectId: "project-spaceship",
             modelProvider: "openai",
             createdAt: 1_777_000_000,
-            updatedAt: 1_777_000_100,
-            recencyAt: 1_777_000_100,
+            updatedAt: nativeSessionUpdatedAt(
+              params.searchTerm === "Archived session" ||
+                (params.archived === true && params.searchTerm == null)
+                ? "codex-archived-1"
+                : "codex-native-1",
+            ),
+            recencyAt: nativeSessionUpdatedAt(
+              params.searchTerm === "Archived session" ||
+                (params.archived === true && params.searchTerm == null)
+                ? "codex-archived-1"
+                : "codex-native-1",
+            ),
             status: { type: "active", activeFlags: [] },
             path: "/private/rollout.jsonl",
-            cwd: "/workspace",
+            cwd: nativeSessionCwd,
             cliVersion: "0.150.1",
             source: "cli",
             threadSource: null,
@@ -422,11 +491,11 @@ async function handleRequest(message) {
           projectId: "project-spaceship",
           modelProvider: "openai",
           createdAt: 1_777_000_000,
-          updatedAt: 1_777_000_100,
-          recencyAt: 1_777_000_100,
+          updatedAt: nativeSessionUpdatedAt(params.threadId),
+          recencyAt: nativeSessionUpdatedAt(params.threadId),
           status: { type: "active", activeFlags: [] },
           path: "/private/rollout.jsonl",
-          cwd: "/workspace",
+          cwd: nativeSessionCwd,
           cliVersion: "0.150.1",
           source: "cli",
           threadSource: null,
@@ -470,6 +539,7 @@ async function handleRequest(message) {
                     },
                   ],
                 },
+                ...readPersistedTurns(params.threadId),
               ]
             : [],
         },
@@ -575,7 +645,11 @@ async function handleRequest(message) {
       if (firstInputText(params.input) === LATE_TURN_START_PROMPT_TEXT) {
         respond(id, {});
         setTimeout(
-          () => runScriptedTurn(params.threadId),
+          () =>
+            runScriptedTurn(
+              params.threadId,
+              firstInputText(params.input) ?? "Synthetic follow-up",
+            ),
           LATE_TURN_START_DELAY_MS,
         );
         return;
@@ -594,7 +668,10 @@ async function handleRequest(message) {
       if (scriptedTurns) {
         await runScriptFileTurn(params.threadId);
       } else {
-        runScriptedTurn(params.threadId);
+        runScriptedTurn(
+          params.threadId,
+          firstInputText(params.input) ?? "Synthetic follow-up",
+        );
       }
       respond(id, {});
       return;

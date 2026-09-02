@@ -274,6 +274,10 @@ describe("spawnLoggedProcess", () => {
       BB_DATA_DIR: "/tmp/standalone-server-data",
       BB_SERVER_PORT: "4567",
     });
+    expect(spawnMockState.invocations[0]?.args).toEqual([
+      "--use-system-ca",
+      "apps/server/dist/index.js",
+    ]);
     expect(
       spawnMockState.invocations[0]?.options.env?.OPENAI_API_KEY,
     ).toBeUndefined();

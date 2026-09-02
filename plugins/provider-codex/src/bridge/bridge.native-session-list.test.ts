@@ -9,7 +9,12 @@ import {
   setBridgeRecorderForTesting,
   type BridgeRecorder,
 } from "@bb/provider-bridge-protocol/bridge-kit";
-import { experimental_killAllChildrenForTests, handleLine } from "./bridge.js";
+import { PROVIDER_BRIDGE_PROTOCOL_VERSION } from "@bb/provider-bridge-protocol";
+import {
+  experimental_killAllChildrenForTests,
+  handleLine,
+  sanitizeRepositoryUrl,
+} from "./bridge.js";
 
 const fakeAppServerPath = fileURLToPath(
   new URL("./fake-codex-app-server.mjs", import.meta.url),
@@ -19,6 +24,24 @@ let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let recorder: BridgeRecorder;
 let recordingDir: string;
 let codexHomeDir: string;
+
+const sessionOptions = {
+  permissionMode: "full",
+  permissionScope: "full",
+  approvalReviewer: null,
+  permissionEscalation: null,
+} as const;
+
+it("removes credentials and request metadata from repository identifiers", () => {
+  expect(
+    sanitizeRepositoryUrl(
+      "https://token:secret@example.test/lucharo/spaceship.git?access=private#fragment",
+    ),
+  ).toBe("https://example.test/lucharo/spaceship.git");
+  expect(sanitizeRepositoryUrl("git@example.test:lucharo/spaceship.git")).toBe(
+    "example.test:lucharo/spaceship.git",
+  );
+});
 
 beforeEach(() => {
   recordingDir = mkdtempSync(join(tmpdir(), "spaceship-native-catalogue-"));
@@ -55,7 +78,7 @@ afterEach(() => {
 
 it("lists Codex sessions as metadata without leaking previews, paths, or turns", async () => {
   harness.sendRequest(1, "initialize", {
-    protocolVersion: 2,
+    protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
     client: { name: "test", version: "1" },
     grammarVersions: [3, 3],
   });
@@ -103,7 +126,7 @@ it("lists Codex sessions as metadata without leaking previews, paths, or turns",
 
 it("reads authoritative active-session metadata without returning transcript fields", async () => {
   harness.sendRequest(1, "initialize", {
-    protocolVersion: 2,
+    protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
     client: { name: "test", version: "1" },
     grammarVersions: [3, 3],
   });
@@ -135,7 +158,7 @@ it("reads authoritative active-session metadata without returning transcript fie
 
 it("reads native history only when explicitly requested", async () => {
   harness.sendRequest(1, "initialize", {
-    protocolVersion: 2,
+    protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
     client: { name: "test", version: "1" },
     grammarVersions: [3, 3],
   });
@@ -174,9 +197,75 @@ it("reads native history only when explicitly requested", async () => {
   expect(readdirSync(recordingDir)).toEqual([]);
 });
 
+it("reads a resumed turn from a fresh app-server process", async () => {
+  const historyStatePath = join(codexHomeDir, "native-history.ndjson");
+  const scriptPath = join(codexHomeDir, "native-history-script.json");
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({ historyStatePath, nativeSessionCwd: "/workspace" }),
+  );
+  vi.stubEnv(
+    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
+    JSON.stringify([fakeAppServerPath, scriptPath]),
+  );
+
+  harness.sendRequest(1, "initialize", {
+    protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+    client: { name: "test", version: "1" },
+    grammarVersions: [3, 3],
+  });
+  await harness.waitForResponse(1);
+
+  harness.sendRequest(2, "thread/resume", {
+    threadId: "thr_native_history_persist",
+    providerThreadId: "codex-native-1",
+    cwd: "/workspace",
+    instructionMode: "append",
+    options: sessionOptions,
+  });
+  await expect(harness.waitForResponse(2)).resolves.toMatchObject({
+    result: { providerThreadId: "codex-native-1" },
+  });
+
+  harness.sendRequest(3, "turn/start", {
+    threadId: "thr_native_history_persist",
+    providerThreadId: "codex-native-1",
+    clientRequestId: "creq_23456789ab",
+    input: [{ type: "text", text: "Continue the checklist", mentions: [] }],
+    options: sessionOptions,
+  });
+  await expect(harness.waitForResponse(3)).resolves.toMatchObject({
+    result: { threadId: "thr_native_history_persist" },
+  });
+
+  harness.sendRequest(4, "native/session/history", {
+    providerThreadId: "codex-native-1",
+  });
+  const response = await harness.waitForResponse(4);
+  expect(response).toMatchObject({
+    result: {
+      session: { updatedAt: 1_777_000_115 },
+      turns: [
+        { providerTurnId: "private-turn" },
+        {
+          deltas: [
+            { kind: "turn.open" },
+            { kind: "input.provider" },
+            {
+              kind: "item.close",
+              item: { type: "agentMessage", text: "hello from codex turn 1" },
+            },
+            { kind: "turn.boundary", status: "completed" },
+          ],
+        },
+      ],
+    },
+  });
+});
+
 it("reports archived state from the native Codex catalogue", async () => {
   harness.sendRequest(1, "initialize", {
-    protocolVersion: 2,
+    protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
     client: { name: "test", version: "1" },
     grammarVersions: [3, 3],
   });
@@ -197,7 +286,7 @@ it("reports archived state from the native Codex catalogue", async () => {
 
 it("does not expose app-server error details while reading native metadata", async () => {
   harness.sendRequest(1, "initialize", {
-    protocolVersion: 2,
+    protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
     client: { name: "test", version: "1" },
     grammarVersions: [3, 3],
   });

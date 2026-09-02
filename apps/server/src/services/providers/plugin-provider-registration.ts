@@ -184,9 +184,7 @@ export function buildPluginProviderRegistration(args: {
     id: declaration.id,
     pluginId: args.pluginId,
     displayName: declaration.displayName,
-    ...(declaration.family === undefined
-      ? {}
-      : { family: declaration.family }),
+    ...(declaration.family === undefined ? {} : { family: declaration.family }),
     available: args.available,
     maintenance: { ...declaration.maintenance },
     // Served by the provider-logo route from the icon byte snapshot on the
@@ -252,6 +250,8 @@ export function buildPluginProviderRegistration(args: {
     reasoningLevels: [...capabilities.reasoningLevels],
     fork: capabilities.fork,
     supportsManualCompaction: capabilities.supportsManualCompaction,
+    supportsNativeSessionHistory:
+      capabilities.supportsNativeSessionHistory ?? false,
   };
 
   return {

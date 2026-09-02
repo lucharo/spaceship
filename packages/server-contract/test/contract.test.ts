@@ -284,6 +284,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "Native-history projections are marked only when a provider supplied the timeline directly instead of BB event storage.",
+    fields: ["threadTimelineResponseSchema.nativeHistoryProjection"],
+  },
+  {
+    reason:
       "Uploaded attachments may omit mime type when the client could not determine one.",
     fields: ["uploadedPromptAttachmentSchema.mimeType"],
   },

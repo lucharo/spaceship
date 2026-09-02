@@ -860,6 +860,10 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
 
 export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
+  /** True when rows are a live projection of provider-native history rather
+   * than persisted BB events. Sequence-addressed mutation actions are unsafe
+   * for these rows and clients must keep them read-only. */
+  nativeHistoryProjection: z.boolean().optional(),
   activePromptMode: threadTimelineActivePromptModeSchema.nullable(),
   activeThinking: activeThinkingSchema.nullable(),
   /** Running workflows, most recently started first. */

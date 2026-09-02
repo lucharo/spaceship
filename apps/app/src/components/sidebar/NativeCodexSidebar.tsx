@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import {
   useMutation,
   useQueryClient,
@@ -145,7 +145,7 @@ function groupSessions({
     const descriptor =
       organization === "project"
         ? {
-            key: `project:${session.repositoryUrl ?? session.workspaceRoot ?? session.projectId ?? session.cwd ?? "unavailable"}`,
+            key: `project:${session.repositoryUrl ?? session.projectId ?? session.workspaceRoot ?? session.cwd ?? "unavailable"}`,
             label:
               session.repositoryUrl === undefined ||
               session.repositoryUrl === null
@@ -213,6 +213,10 @@ function NativeSessionRow({
         <ContextMenuTrigger asChild>
           <SidebarMenuButton
             type="button"
+            data-sidebar-thread-shortcut-target=""
+            data-sidebar-thread-id={
+              session.localThreadId ?? `native:${session.providerThreadId}`
+            }
             disabled={disabled || isArchiving}
             aria-label={`${title}${session.cwd ? `, ${session.cwd}` : ", working directory unavailable"}`}
             className={cn(
@@ -369,10 +373,12 @@ function NativeSessionSection({
 }
 
 export function NativeSessionThreadList({
+  fallback: Fallback,
   providerId,
   providerLabel,
   onNavigate,
 }: {
+  fallback?: ComponentType;
   providerId: string;
   providerLabel: string;
   onNavigate?: () => void;
@@ -394,7 +400,11 @@ export function NativeSessionThreadList({
     () =>
       new Set(readStoredStringArray(storageKey(providerId, "collapsedGroups"))),
   );
-  const [now] = useState(Date.now);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
   const [debouncedSearchTerm] = useDebounceValue(
     searchTerm,
     SEARCH_DEBOUNCE_MS,
@@ -418,6 +428,10 @@ export function NativeSessionThreadList({
       });
     },
     onSuccess: ({ thread }) => {
+      void invalidateProviderNativeSessions(queryClient, {
+        providerId,
+        hostId: sessions.hostId,
+      });
       onNavigate?.();
       void navigate(
         getThreadRoutePath({
@@ -615,6 +629,8 @@ export function NativeSessionThreadList({
         <p className="px-2 py-1 text-xs text-muted-foreground">
           Loading Codex threads…
         </p>
+      ) : sessions.isError && Fallback ? (
+        <Fallback />
       ) : sessions.isError ? (
         <p className="px-2 py-1 text-xs text-destructive">
           Could not load Codex threads.

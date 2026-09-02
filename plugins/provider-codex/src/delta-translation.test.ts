@@ -215,7 +215,7 @@ describe("codex turn lifecycle translation", () => {
     }
   });
 
-  it("suppresses Codex hook lifecycle notifications", () => {
+  it("suppresses successful Codex hook lifecycle notifications", () => {
     const harness = createHarness();
 
     for (const method of ["hook/started", "hook/completed"] as const) {
@@ -226,11 +226,41 @@ describe("codex turn lifecycle translation", () => {
           params: {
             threadId: "t1",
             turnId: "turn-1",
-            run: { id: "hook-1" },
+            run:
+              method === "hook/completed"
+                ? { id: "hook-1", status: "completed" }
+                : { id: "hook-1" },
           },
         }),
       ).toEqual([]);
     }
+  });
+
+  it("surfaces unsuccessful Codex hook output as a warning", () => {
+    const harness = createHarness();
+    expect(
+      harness.translate({
+        jsonrpc: "2.0",
+        method: "hook/completed",
+        params: {
+          threadId: "t1",
+          turnId: "turn-1",
+          run: {
+            id: "hook-1",
+            status: "failed",
+            statusMessage: "Hook failed",
+            entries: [{ kind: "stderr", text: "Action required" }],
+          },
+        },
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/warning",
+        category: "general",
+        summary: "Codex hook failed",
+        details: "Hook failed\nAction required",
+      }),
+    );
   });
 
   it("translates a failed turn/completed without claiming a fork checkpoint", () => {
@@ -1614,33 +1644,47 @@ describe("codex delta and usage translation", () => {
     ]);
   });
 
-  it("synthesizes item/started for a delta-first agent message and keeps the id", () => {
+  it("buffers a delta-first agent message until its phase is known", () => {
     const harness = createHarness();
+    expect(
+      harness.translate(
+        codexEvent("item/agentMessage/delta", {
+          threadId: "t1",
+          turnId: "turn-1",
+          itemId: "item-1",
+          delta: "hello ",
+        }),
+      ),
+    ).toEqual([]);
+
     const events = harness.translate(
-      codexEvent("item/agentMessage/delta", {
+      codexEvent("item/started", {
         threadId: "t1",
         turnId: "turn-1",
-        itemId: "item-1",
-        delta: "hello ",
+        startedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "item-1",
+          text: "",
+          phase: "commentary",
+          memoryCitation: null,
+          delivery: null,
+        },
       }),
     );
     const itemId = harness.itemId("item-1");
-    expect(itemId).toMatch(ITEM_ID_PATTERN);
     expect(events).toEqual([
       expect.objectContaining({
         type: "item/started",
-        scope: turnScope(harness.turnId("turn-1")),
-        item: { type: "agentMessage", id: itemId, text: "" },
+        item: expect.objectContaining({ type: "reasoning", id: itemId }),
       }),
       expect.objectContaining({
-        type: "item/agentMessage/delta",
-        scope: turnScope(harness.turnId("turn-1")),
+        type: "item/reasoning/summaryTextDelta",
         itemId,
         delta: "hello ",
       }),
     ]);
 
-    // A second delta streams into the already-open item.
     expect(
       harness.translate(
         codexEvent("item/agentMessage/delta", {
@@ -1652,7 +1696,7 @@ describe("codex delta and usage translation", () => {
       ),
     ).toEqual([
       expect.objectContaining({
-        type: "item/agentMessage/delta",
+        type: "item/reasoning/summaryTextDelta",
         itemId,
         delta: "world",
       }),
@@ -1669,13 +1713,7 @@ describe("codex delta and usage translation", () => {
         delta: "Answer. \uE200cite\uE202turn0",
       }),
     );
-    expect(first).toEqual([
-      expect.objectContaining({ type: "item/started" }),
-      expect.objectContaining({
-        type: "item/agentMessage/delta",
-        delta: "Answer. ",
-      }),
-    ]);
+    expect(first).toEqual([]);
 
     expect(
       harness.translate(
@@ -1686,7 +1724,30 @@ describe("codex delta and usage translation", () => {
           delta: "search1\uE202turn0search2\uE201 Done.",
         }),
       ),
+    ).toEqual([]);
+
+    expect(
+      harness.translate(
+        codexEvent("item/started", {
+          threadId: "t1",
+          turnId: "turn-1",
+          startedAtMs: 0,
+          item: {
+            type: "agentMessage",
+            id: "item-citations",
+            text: "",
+            phase: "final_answer",
+            memoryCitation: null,
+            delivery: null,
+          },
+        }),
+      ),
     ).toEqual([
+      expect.objectContaining({ type: "item/started" }),
+      expect.objectContaining({
+        type: "item/agentMessage/delta",
+        delta: "Answer. ",
+      }),
       expect.objectContaining({
         type: "item/agentMessage/delta",
         delta: "[Sources: 1, 2] Done.",

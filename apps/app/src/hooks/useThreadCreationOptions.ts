@@ -188,6 +188,11 @@ type InitialReadyProviderResolution =
   | { status: "unresolved" }
   | { status: "resolved"; providerId: string | null };
 
+interface ProviderProbeFallback {
+  requestedProviderId: string;
+  providerId: string;
+}
+
 function sanitizeStoredEnvironmentValue(stored: string): string {
   // Legacy guard: earlier iterations briefly persisted `reuse:<envId>` to
   // localStorage. Treat any persisted reuse value as absent so the picker
@@ -257,6 +262,8 @@ export function useThreadCreationOptions(
     );
   const [initialReadyProvider, setInitialReadyProvider] =
     useState<InitialReadyProviderResolution>({ status: "unresolved" });
+  const [providerProbeFallback, setProviderProbeFallback] =
+    useState<ProviderProbeFallback | null>(null);
   const localProviderSelectionsRef = useRef<
     Map<string, ModelReasoningSelection>
   >(new Map());
@@ -402,10 +409,14 @@ export function useThreadCreationOptions(
   ]);
   const rawSelectedProviderId =
     selectedProviderIdBeforeReadyFallback || readyProviderId || "";
+  const fallbackProbeProviderId =
+    providerProbeFallback?.requestedProviderId === rawSelectedProviderId
+      ? providerProbeFallback.providerId
+      : null;
   // Omission delegates the no-selection fallback to the server, whose product
   // default comes from the same provider catalog that orders the picker.
   const executionOptionsProviderId = executionOptionsQueryEnabled
-    ? rawSelectedProviderId || undefined
+    ? fallbackProbeProviderId || rawSelectedProviderId || undefined
     : undefined;
   const executionOptionsQuery = useSystemExecutionOptions({
     enabled: executionOptionsQueryEnabled,
@@ -447,6 +458,51 @@ export function useThreadCreationOptions(
     !executionOptionsQuery.isPlaceholderData &&
     !executionOptionsQuery.isError;
   const hasMultipleProviders = providers.length >= 2;
+
+  // A selected provider can disappear between the cached picker roster and the
+  // live routed probe. The first response tells us which provider is actually
+  // available, but its model payload still belongs to the unavailable request.
+  // Re-probe the fallback provider before treating that model catalog as live.
+  useEffect(() => {
+    if (
+      executionOptionsQuery.data === undefined ||
+      executionOptionsQuery.isPlaceholderData ||
+      executionOptionsQuery.isError ||
+      rawSelectedProviderId.length === 0
+    ) {
+      return;
+    }
+    const rawProviderIsAvailable = providers.some(
+      (provider) => provider.id === rawSelectedProviderId,
+    );
+    if (rawProviderIsAvailable) {
+      if (
+        providerProbeFallback?.requestedProviderId === rawSelectedProviderId
+      ) {
+        setProviderProbeFallback(null);
+      }
+      return;
+    }
+    const providerId = providers[0]?.id;
+    if (
+      providerId !== undefined &&
+      executionOptionsProviderId === rawSelectedProviderId &&
+      providerProbeFallback?.providerId !== providerId
+    ) {
+      setProviderProbeFallback({
+        requestedProviderId: rawSelectedProviderId,
+        providerId,
+      });
+    }
+  }, [
+    executionOptionsProviderId,
+    executionOptionsQuery.data,
+    executionOptionsQuery.isError,
+    executionOptionsQuery.isPlaceholderData,
+    providerProbeFallback,
+    providers,
+    rawSelectedProviderId,
+  ]);
 
   // Resolve the effective provider: use selectedProviderId if it matches a known
   // provider, otherwise fall back to the first provider in the list.

@@ -43,7 +43,7 @@ const EXPECTED_RUNNING_BUILTIN_PLUGINS = [
 // PROVIDER_BRIDGE_PROTOCOL_VERSION (packages/provider-bridge-protocol/src/
 // version.ts); this script imports nothing from the workspace so it can run
 // against a packed tarball.
-const PROVIDER_BRIDGE_PROTOCOL_VERSION = 2;
+const PROVIDER_BRIDGE_PROTOCOL_VERSION = 3;
 // A canonical turn/start carries a client request id (`creq_` + ten
 // Crockford-ish characters, @bb/domain's clientTurnRequestIdSchema).
 const SMOKE_CLIENT_REQUEST_ID = "creq_smkptest23";

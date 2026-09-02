@@ -557,6 +557,9 @@ export type PluginProviderComposerAction = "plan" | "goal";
  * starting the bridge first.
  */
 export interface PluginProviderCapabilities {
+  /** The provider can read an existing native session's event history without
+   * importing it into BB's event store. Defaults to false when omitted. */
+  supportsNativeSessionHistory?: boolean;
   /** The provider accepts a fast/priority service-tier choice — shows the
    * service-tier toggle in the picker. */
   supportsServiceTier: boolean;

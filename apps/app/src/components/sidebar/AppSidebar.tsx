@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
+import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { useThreadListReplacement } from "./threadListProvider";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
@@ -330,6 +331,7 @@ export function AppSidebar({
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          <PluginSidebarFooterActions onNavigate={closeOnMobile} />
           <SidebarMenuItem className="min-w-0">
             <SidebarMenuButton
               className={SIDEBAR_FOOTER_ACTION_CLASS}

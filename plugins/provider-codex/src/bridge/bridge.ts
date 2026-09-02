@@ -1567,6 +1567,24 @@ function codexSessionSourceLabel(source: unknown): string | null {
   return null;
 }
 
+export function sanitizeRepositoryUrl(
+  repositoryUrl: string | null | undefined,
+): string | null {
+  const trimmed = repositoryUrl?.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = new URL(trimmed);
+    parsed.username = "";
+    parsed.password = "";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/$/u, "");
+  } catch {
+    return trimmed.replace(/[?#].*$/u, "").replace(/^[^@/]+@(?=[^:]+:)/u, "");
+  }
+}
+
 async function handleNativeSessionList(
   id: string | number,
   params: z.infer<typeof nativeSessionListParamsSchema>,
@@ -1623,7 +1641,7 @@ function toNativeSessionSummary(
     cwd: thread.cwd,
     projectId: thread.projectId,
     workspaceRoot: workspaceRootHints.get(thread.id) ?? thread.cwd,
-    repositoryUrl: thread.gitInfo?.originUrl ?? null,
+    repositoryUrl: sanitizeRepositoryUrl(thread.gitInfo?.originUrl),
     status: thread.status.type === "systemError" ? "error" : thread.status.type,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,

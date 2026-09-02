@@ -1,5 +1,6 @@
 import type { ThreadEvent } from "@bb/domain";
 import { describe, expect, it } from "vitest";
+import { PROVIDER_BRIDGE_PROTOCOL_VERSION } from "@bb/provider-bridge-protocol";
 import { createBridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type { ProviderExecutionContext } from "./provider-adapter.js";
 
@@ -26,7 +27,7 @@ function completeHandshake(
   const requests = adapter.buildPostInitializeRequests();
   expect(requests).toHaveLength(1);
   requests[0]?.onResult({
-    protocolVersion: 2,
+    protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
     capabilities: { grammarVersions: [3, 3], ...capabilities },
   });
 }
@@ -40,8 +41,8 @@ const fullModeOptions: ProviderExecutionContext = {
 };
 
 describe("handshake version gate", () => {
-  // The bump to version 2 removed thread/event; a version-1 bridge would
-  // connect and then produce a silently empty timeline. The required
+  // A bridge on an older protocol can connect and then produce a silently
+  // incomplete timeline. The required
   // post-initialize request throws instead, which aborts the spawn with a
   // legible startup error naming both versions and the plugin to update.
   it("rejects a bridge on another protocol version with a legible error", () => {
@@ -52,7 +53,7 @@ describe("handshake version gate", () => {
     expect(() =>
       requests[0]?.onResult({ protocolVersion: 1, capabilities: {} }),
     ).toThrowError(
-      /speaks Provider Bridge Protocol version 1.*requires version 2.*fake-bridge/s,
+      /speaks Provider Bridge Protocol version 1.*requires version 3.*fake-bridge/s,
     );
   });
 
@@ -78,11 +79,11 @@ describe("handshake version gate", () => {
     // A bridge whose range misses the assembler's would connect and then
     // have every thread/delta refused — the same silent-timeline failure as
     // a wrong protocol version, so it fails startup the same legible way:
-    // a future grammar, the deleted v2 grammar, and an older bridge that
-    // omits the field (which reads as v2) alike.
+    // a future grammar and the deleted v2 grammar alike. A current-protocol
+    // bridge that omits the range defaults to its protocol's grammar.
     expect(() =>
       requests[0]?.onResult({
-        protocolVersion: 2,
+        protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         capabilities: { grammarVersions: [4, 5] },
       }),
     ).toThrowError(
@@ -90,23 +91,26 @@ describe("handshake version gate", () => {
     );
     expect(() =>
       requests[0]?.onResult({
-        protocolVersion: 2,
+        protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         capabilities: { grammarVersions: [2, 2] },
       }),
     ).toThrowError(/grammar versions 2-2.*assembles versions 3-3/s);
     expect(() =>
-      requests[0]?.onResult({ protocolVersion: 2, capabilities: {} }),
-    ).toThrowError(/grammar versions 2-2.*assembles versions 3-3/s);
+      requests[0]?.onResult({
+        protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+        capabilities: {},
+      }),
+    ).not.toThrow();
     // Any range containing 3 negotiates.
     expect(() =>
       requests[0]?.onResult({
-        protocolVersion: 2,
+        protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         capabilities: { grammarVersions: [3, 3] },
       }),
     ).not.toThrow();
     expect(() =>
       requests[0]?.onResult({
-        protocolVersion: 2,
+        protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         capabilities: { grammarVersions: [2, 4] },
       }),
     ).not.toThrow();

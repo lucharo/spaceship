@@ -15,7 +15,7 @@ import {
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
 import {
   nativeSessionListResultSchema,
-  type NativeSessionListResult,
+  nativeSessionSummarySchema,
 } from "@bb/provider-bridge-protocol";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 
@@ -119,8 +119,18 @@ export type SystemNativeSessionsQuery = z.infer<
   typeof systemNativeSessionsQuerySchema
 >;
 
-export const systemNativeSessionsResponseSchema = nativeSessionListResultSchema;
-export type SystemNativeSessionsResponse = NativeSessionListResult;
+export const systemNativeSessionsResponseSchema =
+  nativeSessionListResultSchema.extend({
+    sessions: z.array(
+      nativeSessionSummarySchema.extend({
+        /** Existing Spaceship projection, when this native session was adopted. */
+        localThreadId: z.string().min(1).nullable().optional(),
+      }),
+    ),
+  });
+export type SystemNativeSessionsResponse = z.infer<
+  typeof systemNativeSessionsResponseSchema
+>;
 
 export const systemExecutionOptionsQuerySchema = z
   .object({

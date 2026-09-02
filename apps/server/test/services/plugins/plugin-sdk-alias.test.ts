@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { pluginSdkAliasFor } from "../../../src/services/plugins/plugin-runtime.js";
 
 describe("pluginSdkAliasFor", () => {
@@ -10,5 +10,22 @@ describe("pluginSdkAliasFor", () => {
 
     expect(alias["@get-bb/plugin-sdk"]).toBe("/srv/plugin-sdk-runtime.js");
     expect(alias["@bb/plugin-sdk"]).toBe("/srv/plugin-sdk-runtime.js");
+  });
+
+  it("resolves exported SDK subpaths before the bare runtime alias", () => {
+    const resolveSpecifier = vi.fn(
+      (specifier: string) => `/workspace/sdk/${specifier.split("/").at(-1)}.js`,
+    );
+
+    const alias = pluginSdkAliasFor(
+      "/srv/plugin-sdk-runtime.js",
+      resolveSpecifier,
+    );
+
+    expect(alias["@get-bb/plugin-sdk/host"]).toBe("/workspace/sdk/host.js");
+    expect(alias["@get-bb/plugin-sdk/provider-bridge/acp"]).toBe(
+      "/workspace/sdk/acp.js",
+    );
+    expect(resolveSpecifier).toHaveBeenCalledWith("@get-bb/plugin-sdk/host");
   });
 });

@@ -135,7 +135,23 @@ async function runAppImageBridgeSupervisor(
     }
   };
   const bridgeGroupHasLiveDescendants = (): boolean => {
-    for (const entry of readdirSync("/proc", { withFileTypes: true })) {
+    const processEntries = (() => {
+      try {
+        return readdirSync("/proc", { withFileTypes: true });
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "ENOENT"
+        ) {
+          return [];
+        }
+        throw error;
+      }
+    })();
+
+    for (const entry of processEntries) {
       if (!entry.isDirectory() || !/^\d+$/u.test(entry.name)) {
         continue;
       }

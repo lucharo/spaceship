@@ -146,6 +146,7 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
       description: "proj-bb skill",
       filePath: files["proj-bb"],
       canonicalFilePath: await realpath(files["proj-bb"]),
+      canonicalRootPath: await realpath(path.dirname(files["proj-bb"])),
       sourceRepository: null,
       sourceRelativePath: null,
       rootKind: "bb-project",
@@ -368,6 +369,51 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
       sourceRepository: "lucharo/skills",
       sourceRelativePath: "skills/engineering/wrapup/SKILL.md",
     });
+  });
+
+  it("calculates each skill path independently when repository lookup is cached", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const repositoryRoot = path.join(tempRoot, "repositories", "skills");
+    await writeSkill(
+      path.join(repositoryRoot, "skills", "engineering", "wrapup", "SKILL.md"),
+      "wrapup",
+    );
+    await writeSkill(
+      path.join(repositoryRoot, "skills", "meta", "retrospect", "SKILL.md"),
+      "retrospect",
+    );
+    await mkdir(path.join(repositoryRoot, ".git"), { recursive: true });
+    await writeFile(
+      path.join(repositoryRoot, ".git", "config"),
+      '[remote "origin"]\n\turl = git@github.com:lucharo/skills.git\n',
+      "utf8",
+    );
+    const skillsRoot = path.join(fixture.homeDir, ".agents", "skills");
+    await mkdir(skillsRoot, { recursive: true });
+    await symlink(
+      path.join(repositoryRoot, "skills", "engineering", "wrapup"),
+      path.join(skillsRoot, "wrapup"),
+      "dir",
+    );
+    await symlink(
+      path.join(repositoryRoot, "skills", "meta", "retrospect"),
+      path.join(skillsRoot, "retrospect"),
+      "dir",
+    );
+
+    const skills = await listSkills(
+      fixture,
+      fixture.cwd,
+      skillRoots({ user: [declared(".agents/skills")] }),
+      "bb-shared",
+    );
+
+    expect(byName(skills, "wrapup")?.sourceRelativePath).toBe(
+      "skills/engineering/wrapup/SKILL.md",
+    );
+    expect(byName(skills, "retrospect")?.sourceRelativePath).toBe(
+      "skills/meta/retrospect/SKILL.md",
+    );
   });
 
   it("reads skill provenance from a Git worktree marker", async () => {

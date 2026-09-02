@@ -851,7 +851,24 @@ export const codexHandledEventSchema = z.discriminatedUnion("method", [
       .object({
         threadId: z.string(),
         turnId: z.string().nullable(),
-        run: z.object({ id: z.string() }).passthrough(),
+        run: z
+          .object({
+            id: z.string(),
+            status: z.enum([
+              "running",
+              "completed",
+              "failed",
+              "blocked",
+              "stopped",
+            ]),
+            statusMessage: z.string().nullable().optional(),
+            entries: z
+              .array(
+                z.object({ kind: z.string(), text: z.string() }).passthrough(),
+              )
+              .optional(),
+          })
+          .passthrough(),
       })
       .passthrough(),
   ),

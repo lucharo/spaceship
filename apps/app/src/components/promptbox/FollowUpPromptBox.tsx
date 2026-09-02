@@ -341,6 +341,8 @@ function FollowUpPromptBoxWithComposer({
   const canStopRuntime = onStopRuntime !== undefined;
   const attachmentCount = attachments.items?.length ?? 0;
   const hasDraftContent = composer.message.length > 0 || attachmentCount > 0;
+  const hasDraftContentRef = useRef(hasDraftContent);
+  hasDraftContentRef.current = hasDraftContent;
   const composerScope =
     pluginComposerScope ?? pluginComposerHost?.scope ?? null;
   const [composerLayout, setComposerLayout] =
@@ -515,13 +517,16 @@ function FollowUpPromptBoxWithComposer({
         // A blur should never hide work the user has already put in the
         // composer. Keep text and attachments visible until they submit,
         // clear, or explicitly collapse the wide composer themselves.
-        if (hasDraftContent) {
+        if (hasDraftContentRef.current) {
           return;
         }
 
         const collapse = () => {
           cancelPendingFocusExpansion();
           setInteractionExpanded(false);
+          if (!isCompactViewport) {
+            setWidePromptBoxCollapsedFor(collapseResetKey);
+          }
         };
         const focusSettledOnDocument =
           document.activeElement === document.body ||
@@ -583,9 +588,9 @@ function FollowUpPromptBoxWithComposer({
     [
       cancelPendingFocusExpansion,
       cancelPendingFocusLoss,
-      hasDraftContent,
       isCompactViewport,
       isPointerCoarse,
+      collapseResetKey,
       setInteractionExpanded,
     ],
   );
@@ -596,6 +601,30 @@ function FollowUpPromptBoxWithComposer({
     setIsInteractionExpanded(false);
     setWidePromptBoxCollapsedFor(collapseResetKey);
   }, [cancelPendingFocusExpansion, cancelPendingFocusLoss, collapseResetKey]);
+  useEffect(() => {
+    if (hasDraftContent || !interactionExpandedRef.current) return;
+    const composerElement = composerInteractionRef.current;
+    if (
+      !composerElement ||
+      composerElement.contains(document.activeElement) ||
+      composerElement.querySelector(OPEN_COMPOSER_OVERLAY_TRIGGER_SELECTOR)
+    ) {
+      return;
+    }
+    cancelPendingFocusExpansion();
+    cancelPendingFocusLoss();
+    interactionExpandedRef.current = false;
+    setIsInteractionExpanded(false);
+    if (!isCompactViewport) {
+      setWidePromptBoxCollapsedFor(collapseResetKey);
+    }
+  }, [
+    cancelPendingFocusExpansion,
+    cancelPendingFocusLoss,
+    collapseResetKey,
+    hasDraftContent,
+    isCompactViewport,
+  ]);
   useEffect(
     () => () => {
       cancelPendingFocusExpansion();

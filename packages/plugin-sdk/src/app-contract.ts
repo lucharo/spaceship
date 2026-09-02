@@ -144,6 +144,8 @@ export interface PluginThreadListProps {
  * plugin supplies only its identity and display label.
  */
 export interface ExperimentalNativeSessionThreadListProps {
+  /** Host-owned thread list rendered when native discovery is unavailable. */
+  fallback?: ComponentType;
   providerId: string;
   providerLabel: string;
   onNavigate?: () => void;

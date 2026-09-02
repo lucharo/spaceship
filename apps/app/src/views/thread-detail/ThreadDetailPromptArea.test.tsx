@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => ({
   clearThreadGoalMutate: vi.fn(),
   createQueuedMessageMutateAsync: vi.fn(),
   defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
+  defaultExecutionOptionsError: false,
   deleteQueuedMessageMutateAsync: vi.fn(),
   navigate: vi.fn(),
   pluginComposerHost: null as PluginComposerHost | null,
@@ -543,7 +544,7 @@ vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
     mocks.useThreadDefaultExecutionOptions(threadId, options);
     return {
       data: mocks.defaultExecutionOptions,
-      isError: false,
+      isError: mocks.defaultExecutionOptionsError,
     };
   },
 }));
@@ -731,6 +732,7 @@ function renderPromptArea(options: RenderPromptAreaOptions = {}) {
 
 beforeEach(() => {
   mocks.defaultExecutionOptions = null;
+  mocks.defaultExecutionOptionsError = false;
   mocks.pluginComposerHost = null;
   mocks.promptDraft.text = "";
   mocks.promptDraft.getCurrent.mockImplementation(() => ({
@@ -785,6 +787,28 @@ describe("ThreadDetailPromptArea", () => {
           reasoningLevel: "explicit",
         },
       });
+    });
+  });
+
+  it("does not submit a fallback picker model when execution defaults failed to load", () => {
+    mocks.defaultExecutionOptionsError = true;
+    mocks.promptDraft.text = "Do not guess the execution model";
+
+    renderPromptArea();
+
+    expect(screen.getByTestId("selected-model").textContent).toBe("gpt-5");
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith({
+      id: "thr_1",
+      input: [
+        {
+          mentions: [],
+          text: "Do not guess the execution model",
+          type: "text",
+        },
+      ],
+      mode: "queue-if-active",
     });
   });
 

@@ -1352,7 +1352,7 @@ plugin could not resolve them.
 The bridge speaks the canonical Provider Bridge Protocol — line-delimited
 JSON-RPC 2.0 over stdio, documented in `docs/provider-bridge-protocol.md`.
 Minimum correct surface: the `initialize` handshake
-(`{protocolVersion, capabilities}`, protocol version 2 — the runtime rejects
+(`{protocolVersion, capabilities}`, protocol version 3 — the runtime rejects
 any other version at spawn), `thread/start` / `thread/resume` answering
 `{providerThreadId}` after a `thread/identity` notification and then a
 `session.reset` delta (every session construction is a provider id-space

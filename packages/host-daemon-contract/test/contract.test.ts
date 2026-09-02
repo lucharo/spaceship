@@ -251,6 +251,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         description: "Review the current diff",
         filePath: "/home/user/.bb/skills/review/SKILL.md",
         canonicalFilePath: "/home/user/.bb/skills/review/SKILL.md",
+        canonicalRootPath: "/home/user/.bb/skills/review",
         sourceRepository: "example/skills",
         sourceRelativePath: "skills/review/SKILL.md",
         rootKind: "bb-data-dir",
@@ -1104,7 +1105,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(177);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(178);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

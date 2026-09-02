@@ -137,6 +137,10 @@ describe("assembleSkillList", () => {
     canonicalFilePath = filePath,
     sourceRepository?: string,
     sourceRelativePath?: string,
+    canonicalRootPath = canonicalFilePath.slice(
+      0,
+      canonicalFilePath.lastIndexOf("/"),
+    ),
   ): DiscoveredSkill {
     return {
       id: `skill_${createHash("sha256").update(filePath).digest("hex")}`,
@@ -145,6 +149,7 @@ describe("assembleSkillList", () => {
       rootKind,
       filePath,
       canonicalFilePath,
+      canonicalRootPath,
       sourceRepository: sourceRepository ?? null,
       sourceRelativePath: sourceRelativePath ?? null,
       linked: false,

@@ -1,6 +1,6 @@
 /**
  * The narrow-grammar `thread/delta` notification: the protocol's one and only
- * timeline lane (protocol version 2, grammar v3).
+ * timeline lane (protocol version 3, grammar v3).
  *
  * A bridge emits parsed *semantic deltas* instead of finished `ThreadEvent`s:
  * the runtime's delta assembler owns turn/item id minting, accepted-input

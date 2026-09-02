@@ -614,6 +614,11 @@ interface SkillSourceProvenance {
   sourceRelativePath: string;
 }
 
+interface GitRepositoryProvenance {
+  repositoryRoot: string;
+  sourceRepository: string;
+}
+
 interface SkillLockEntry {
   source: string;
   skillPath: string;
@@ -724,7 +729,7 @@ async function readGitConfig(gitMarkerPath: string): Promise<string | null> {
 
 async function resolveGitSkillProvenance(
   canonicalFilePath: string,
-  cache: Map<string, SkillSourceProvenance | null>,
+  cache: Map<string, GitRepositoryProvenance | null>,
 ): Promise<SkillSourceProvenance | null> {
   let current = path.dirname(canonicalFilePath);
   const visited: string[] = [];
@@ -732,25 +737,40 @@ async function resolveGitSkillProvenance(
     const cached = cache.get(current);
     if (cached !== undefined || cache.has(current)) {
       for (const directory of visited) cache.set(directory, cached ?? null);
-      return cached ?? null;
+      return cached === null || cached === undefined
+        ? null
+        : {
+            sourceRepository: cached.sourceRepository,
+            sourceRelativePath: path
+              .relative(cached.repositoryRoot, canonicalFilePath)
+              .split(path.sep)
+              .join("/"),
+          };
     }
     visited.push(current);
     const config = await readGitConfig(path.join(current, ".git"));
     if (config !== null) {
       const remote = originRemoteFromConfig(config);
       const sourceRepository = remote && repositorySlugFromRemote(remote);
-      const provenance =
+      const repositoryProvenance =
         sourceRepository === null
           ? null
           : {
               sourceRepository,
-              sourceRelativePath: path
-                .relative(current, canonicalFilePath)
-                .split(path.sep)
-                .join("/"),
+              repositoryRoot: current,
             };
-      for (const directory of visited) cache.set(directory, provenance);
-      return provenance;
+      for (const directory of visited) {
+        cache.set(directory, repositoryProvenance);
+      }
+      return repositoryProvenance === null
+        ? null
+        : {
+            sourceRepository: repositoryProvenance.sourceRepository,
+            sourceRelativePath: path
+              .relative(repositoryProvenance.repositoryRoot, canonicalFilePath)
+              .split(path.sep)
+              .join("/"),
+          };
     }
     const parent = path.dirname(current);
     if (parent === current) {
@@ -766,7 +786,7 @@ async function resolveSkillSourceProvenance(
   match: SkillFileMatch,
   canonicalFilePath: string,
   skillLock: SkillLock,
-  gitCache: Map<string, SkillSourceProvenance | null>,
+  gitCache: Map<string, GitRepositoryProvenance | null>,
 ): Promise<SkillSourceProvenance | null> {
   const lockEntry =
     skillLock.get(match.name) ??
@@ -784,6 +804,7 @@ function buildSkillRecord(
   root: SkillScanRoot,
   match: SkillFileMatch,
   canonicalFilePath: string,
+  canonicalRootPath: string,
   provenance: SkillSourceProvenance | null,
 ): DiscoveredSkill {
   const rootPath =
@@ -800,6 +821,7 @@ function buildSkillRecord(
     description: match.frontmatter.description,
     filePath: match.filePath,
     canonicalFilePath,
+    canonicalRootPath,
     sourceRepository: provenance?.sourceRepository ?? null,
     sourceRelativePath: provenance?.sourceRelativePath ?? null,
     rootKind: root.rootKind,
@@ -819,13 +841,17 @@ export async function discoverSkills(
 ): Promise<DiscoveredSkill[]> {
   const records: DiscoveredSkill[] = [];
   const budget = { remainingEntries: MAX_SCAN_ENTRY_COUNT };
-  const gitCache = new Map<string, SkillSourceProvenance | null>();
+  const gitCache = new Map<string, GitRepositoryProvenance | null>();
   for (const root of args.roots) {
     const skillLock = await readSkillLock(root);
     for (const match of await scanSkillFiles({ budget, root })) {
       const canonicalFilePath = await fs
         .realpath(match.filePath)
         .catch(() => match.filePath);
+      const logicalRootPath = path.dirname(match.filePath);
+      const canonicalRootPath = await fs
+        .realpath(logicalRootPath)
+        .catch(() => logicalRootPath);
       const provenance = await resolveSkillSourceProvenance(
         root,
         match,
@@ -834,7 +860,13 @@ export async function discoverSkills(
         gitCache,
       );
       records.push(
-        buildSkillRecord(root, match, canonicalFilePath, provenance),
+        buildSkillRecord(
+          root,
+          match,
+          canonicalFilePath,
+          canonicalRootPath,
+          provenance,
+        ),
       );
     }
   }

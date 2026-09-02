@@ -5,7 +5,7 @@ import type {
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { setExperiments } from "@bb/db";
 import { defaultExperiments } from "@bb/domain";
 import {
@@ -179,6 +179,7 @@ function discovered(
   rootKind: DiscoveredSkill["rootKind"],
   filePath: string,
   canonicalFilePath = filePath,
+  canonicalRootPath = dirname(canonicalFilePath),
 ): DiscoveredSkill {
   return {
     id: skillId(filePath),
@@ -187,6 +188,7 @@ function discovered(
     rootKind,
     filePath,
     canonicalFilePath,
+    canonicalRootPath,
     sourceRepository: null,
     sourceRelativePath: null,
     linked: canonicalFilePath !== filePath,
@@ -300,6 +302,8 @@ describe("public project skills route", () => {
             "/tmp/shared-skill-list/.agents/skills/portable-review/SKILL.md",
           canonicalFilePath:
             "/tmp/shared-skill-list/.agents/skills/portable-review/SKILL.md",
+          canonicalRootPath:
+            "/tmp/shared-skill-list/.agents/skills/portable-review",
           sourceRepository: null,
           sourceRelativePath: null,
           manageable: false,
@@ -1177,6 +1181,7 @@ describe("public project skills route", () => {
           pluginId: null,
           filePath: "/data/skills/bb-helper/SKILL.md",
           canonicalFilePath: "/data/skills/bb-helper/SKILL.md",
+          canonicalRootPath: "/data/skills/bb-helper",
           sourceRepository: null,
           sourceRelativePath: null,
           manageable: true,
@@ -1191,6 +1196,7 @@ describe("public project skills route", () => {
           pluginId: null,
           filePath: "/cwd/.cursor/skills/impeccable/SKILL.md",
           canonicalFilePath: "/cwd/.cursor/skills/impeccable/SKILL.md",
+          canonicalRootPath: "/cwd/.cursor/skills/impeccable",
           sourceRepository: null,
           sourceRelativePath: null,
           manageable: false,
@@ -1205,6 +1211,7 @@ describe("public project skills route", () => {
           pluginId: null,
           filePath: "/cwd/.claude/skills/cp/SKILL.md",
           canonicalFilePath: "/cwd/.claude/skills/cp/SKILL.md",
+          canonicalRootPath: "/cwd/.claude/skills/cp",
           sourceRepository: null,
           sourceRelativePath: null,
           manageable: true,
@@ -1219,6 +1226,7 @@ describe("public project skills route", () => {
           pluginId: null,
           filePath: "/home/.claude/skills/cu/SKILL.md",
           canonicalFilePath: "/home/.claude/skills/cu/SKILL.md",
+          canonicalRootPath: "/home/.claude/skills/cu",
           sourceRepository: null,
           sourceRelativePath: null,
           manageable: true,
@@ -1233,6 +1241,7 @@ describe("public project skills route", () => {
           pluginId: null,
           filePath: "/home/.codex/skills/cx/SKILL.md",
           canonicalFilePath: "/home/.codex/skills/cx/SKILL.md",
+          canonicalRootPath: "/home/.codex/skills/cx",
           sourceRepository: null,
           sourceRelativePath: null,
           manageable: true,

@@ -102,6 +102,8 @@ interface CodexEventTranslationState {
   retryErrorsByTurnKey: Map<string, CodexRetryErrorContext>;
   citationBuffersByItemKey: Map<string, string>;
   commentaryAgentMessageKeys: Set<string>;
+  classifiedAgentMessageKeys: Set<string>;
+  pendingAgentMessageDeltasByItemKey: Map<string, string[]>;
 }
 
 export function createCodexEventTranslationState(): CodexEventTranslationState {
@@ -111,6 +113,8 @@ export function createCodexEventTranslationState(): CodexEventTranslationState {
     retryErrorsByTurnKey: new Map(),
     citationBuffersByItemKey: new Map(),
     commentaryAgentMessageKeys: new Set(),
+    classifiedAgentMessageKeys: new Set(),
+    pendingAgentMessageDeltasByItemKey: new Map(),
   };
 }
 
@@ -1113,8 +1117,26 @@ export function translateCodexEventToDeltas(
         { kind: "turn.open", providerTurnId: handledEvent.params.turn.id },
       ];
     case "hook/started":
-    case "hook/completed":
       return [];
+    case "hook/completed": {
+      if (handledEvent.params.run.status === "completed") return [];
+      const details = [
+        handledEvent.params.run.statusMessage,
+        ...(handledEvent.params.run.entries ?? []).map((entry) => entry.text),
+      ]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .filter((value, index, values) => values.indexOf(value) === index)
+        .join("\n");
+      return [
+        {
+          kind: "provider.warning",
+          category: "general",
+          summary: `Codex hook ${handledEvent.params.run.status}`,
+          ...(details.length > 0 ? { details } : {}),
+          ...(handledEvent.params.turnId === null ? {} : { vouchedTurn: true }),
+        },
+      ];
+    }
     case "turn/completed": {
       takeCodexRetryError(state, {
         threadId: handledEvent.params.threadId,
@@ -1208,6 +1230,9 @@ export function translateCodexEventToDeltas(
       ) {
         state.commentaryAgentMessageKeys.add(itemKey);
       }
+      if (handledEvent.params.item.type === "agentMessage") {
+        state.classifiedAgentMessageKeys.add(itemKey);
+      }
       const translation = translateCodexItemShape(
         handledEvent.params.item,
         state,
@@ -1224,6 +1249,11 @@ export function translateCodexEventToDeltas(
       }
       const key = { providerItemId: handledEvent.params.item.id };
       if (handledEvent.method === "item/started") {
+        const pendingDeltas =
+          handledEvent.params.item.type === "agentMessage"
+            ? (state.pendingAgentMessageDeltasByItemKey.get(itemKey) ?? [])
+            : [];
+        state.pendingAgentMessageDeltasByItemKey.delete(itemKey);
         return [
           {
             kind: "item.open",
@@ -1232,22 +1262,58 @@ export function translateCodexEventToDeltas(
             presentation: translation.presentation,
             providerTurnId: handledEvent.params.turnId,
           },
+          ...pendingDeltas.map((text): ThreadDelta => ({
+            kind: "item.textDelta",
+            key,
+            channel: state.commentaryAgentMessageKeys.has(itemKey)
+              ? "reasoningSummary"
+              : "agentMessage",
+            text,
+            providerTurnId: handledEvent.params.turnId,
+          })),
         ];
       }
+      const pendingDeltas =
+        handledEvent.params.item.type === "agentMessage"
+          ? (state.pendingAgentMessageDeltasByItemKey.get(itemKey) ?? [])
+          : [];
+      const pendingChannel = state.commentaryAgentMessageKeys.has(itemKey)
+        ? "reasoningSummary"
+        : "agentMessage";
       if (handledEvent.params.item.type === "agentMessage") {
         state.citationBuffersByItemKey.delete(itemKey);
         state.commentaryAgentMessageKeys.delete(itemKey);
+        state.classifiedAgentMessageKeys.delete(itemKey);
+        state.pendingAgentMessageDeltasByItemKey.delete(itemKey);
+      }
+      const closeDelta: ThreadDelta = {
+        kind: "item.close",
+        key,
+        status: translation.status,
+        ...(translation.approvalDenied ? { approvalStatus: "denied" } : {}),
+        item: translation.shape,
+        presentation: translation.presentation,
+        providerTurnId: handledEvent.params.turnId,
+      };
+      if (pendingDeltas.length === 0) {
+        return [closeDelta];
       }
       return [
         {
-          kind: "item.close",
+          kind: "item.open",
           key,
-          status: translation.status,
-          ...(translation.approvalDenied ? { approvalStatus: "denied" } : {}),
           item: translation.shape,
           presentation: translation.presentation,
           providerTurnId: handledEvent.params.turnId,
         },
+        ...pendingDeltas.map((text): ThreadDelta => ({
+          kind: "item.textDelta",
+          key,
+          channel: pendingChannel,
+          text,
+          providerTurnId: handledEvent.params.turnId,
+        })),
+        closeDelta,
       ];
     }
     case "item/agentMessage/delta": {
@@ -1258,16 +1324,22 @@ export function translateCodexEventToDeltas(
         handledEvent.params.delta,
       );
       if (text.length === 0) return [];
+      const itemKey = citationBufferKey(
+        handledEvent.params.turnId,
+        handledEvent.params.itemId,
+      );
+      if (!state.classifiedAgentMessageKeys.has(itemKey)) {
+        const pending =
+          state.pendingAgentMessageDeltasByItemKey.get(itemKey) ?? [];
+        pending.push(text);
+        state.pendingAgentMessageDeltasByItemKey.set(itemKey, pending);
+        return [];
+      }
       return [
         {
           kind: "item.textDelta",
           key: { providerItemId: handledEvent.params.itemId },
-          channel: state.commentaryAgentMessageKeys.has(
-            citationBufferKey(
-              handledEvent.params.turnId,
-              handledEvent.params.itemId,
-            ),
-          )
+          channel: state.commentaryAgentMessageKeys.has(itemKey)
             ? "reasoningSummary"
             : "agentMessage",
           text,

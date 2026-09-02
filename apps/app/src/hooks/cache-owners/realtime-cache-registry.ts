@@ -115,6 +115,7 @@ import {
   getThreadTimelineInvalidationQueryKeys,
   getThreadTimelineWindowInvalidationQueryKeys,
 } from "./cache-invalidation-groups";
+import { allNativeSessionQueryKeyPrefix } from "./native-session-cache-owner";
 
 interface CollectCachedThreadIdsForEnvironmentArgs {
   environmentId: string;
@@ -436,8 +437,10 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
   "events-appended": {
     flush: "debounced",
     dirty: [
+      dirtyNativeSessionQueriesForIdentity,
       dirtyThreadListQueriesForBackgroundActivity, // Sidebar rows render active workflow/background task state.
       dirtyThreadDetailQueriesForBackgroundActivity, // Detail indicator reads activeBackgroundAgentCount.
+      dirtyThreadDetailQueriesForCompletedTurn, // Completion must clear optimistic active state even if the status push races or is missed.
       dirtyThreadSearchQueriesForCompletedTurn, // Indexed conversation content may match a search query once the turn settles.
       dirtyThreadTimelineQueries, // Timeline rows are built from appended events.
       dirtyThreadPullRequestQueryForCompletedTurn, // A turn may create a remote PR without changing the workspace.
@@ -934,6 +937,15 @@ function dirtyThreadDetailQueriesForBackgroundActivity(
   return dirtyThreadDetailQueries(context);
 }
 
+function dirtyThreadDetailQueriesForCompletedTurn({
+  eventTypes,
+  threadId,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  return eventTypes?.includes("turn/completed")
+    ? getThreadDetailInvalidationQueryKeys({ threadId })
+    : [];
+}
+
 function dirtyRootOrderThreadListQueries({
   projectId,
   queryClient,
@@ -999,6 +1011,14 @@ function dirtyThreadSearchQueriesForCompletedTurn({
     queryClient,
     queryKeys: [threadSearchQueryKeyPrefix()],
   });
+}
+
+function dirtyNativeSessionQueriesForIdentity({
+  eventTypes,
+}: ThreadRealtimeDirtyContext): QueryKey[] {
+  return eventTypes?.includes("thread/identity")
+    ? [allNativeSessionQueryKeyPrefix]
+    : [];
 }
 
 function dirtyThreadTimelineQueries({

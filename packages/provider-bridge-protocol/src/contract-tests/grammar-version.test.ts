@@ -8,17 +8,12 @@
  * the committed snapshot fails this test, which puts the diff in front of a
  * reviewer together with the version question.
  *
- * The version is NOT bumped for grammar v3. version.ts states the rule: bump
- * only for changes an older bridge or runtime cannot tolerate. Every v3
- * addition is a new union member or an optional field — a v2 bridge's
- * deltas still validate and a v2 runtime ignores a notification method it
- * does not know — so the wire stays at 2 and the `grammarVersions` handshake
- * range is how a bridge says which vocabulary it speaks. Members only one
+ * Grammar v3 remains negotiated independently through `grammarVersions`.
+ * Protocol version 3 records the separate native-session metadata tightening;
+ * it does not change the delta grammar compatibility rule. Members only one
  * in-repo bridge ever spoke (`thread.goal`, the `thread/openWork`
- * notification, `turn.plan`) were dropped under that range once the bridge
- * migrated; the
- * stabilization workstream that makes `presentation` required is the one
- * that tightens the parse for every bridge and must bump.
+ * notification, `turn.plan`) were dropped under the grammar range once the
+ * bridge migrated.
  *
  * To accept an intentional grammar change: review the diff, then run
  *   pnpm exec turbo run test --filter=@bb/provider-bridge-protocol -- -u
@@ -86,10 +81,7 @@ describe("guardrail G3: delta grammar shape is paired with the protocol version"
     );
   });
 
-  it("keeps the protocol at version 2 while v3 is additive", () => {
-    // See the file header: bumping here is the v2-deletion workstream's job.
-    // If this fails because you bumped the version deliberately, rename the
-    // snapshot file to match and update this assertion in the same change.
-    expect(PROVIDER_BRIDGE_PROTOCOL_VERSION).toBe(2);
+  it("uses protocol version 3 for required native-session metadata", () => {
+    expect(PROVIDER_BRIDGE_PROTOCOL_VERSION).toBe(3);
   });
 });

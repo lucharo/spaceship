@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ComponentType } from "react";
 import type {
   AdoptNativeThreadResponse,
   SystemNativeSessionsResponse,
@@ -50,6 +51,7 @@ const nativeSessions: SystemNativeSessionsResponse = {
   sessions: [
     {
       providerThreadId: "native-thread-1",
+      localThreadId: "thr_existing",
       title: "Recover a native session",
       cwd: "/Users/demo/Projects/spaceship",
       projectId: "project-spaceship",
@@ -102,7 +104,11 @@ function LocationPath() {
   return <span>{useLocation().pathname}</span>;
 }
 
-function renderSidebar() {
+function renderSidebar({
+  fallback,
+}: {
+  fallback?: ComponentType;
+} = {}) {
   const { wrapper: QueryWrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter initialEntries={["/"]}>
@@ -113,6 +119,7 @@ function renderSidebar() {
               path="/"
               element={
                 <NativeSessionThreadList
+                  fallback={fallback}
                   providerId="codex"
                   providerLabel="Codex"
                 />
@@ -152,6 +159,11 @@ describe("NativeSessionThreadList", () => {
     expect(await screen.findByText("Recover a native session")).toBeTruthy();
     expect(screen.getByText("/Users/demo/Projects/spaceship")).toBeTruthy();
     expect(screen.queryByText("Codex sessions")).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: /^Recover a native session,/u })
+        .getAttribute("data-sidebar-thread-id"),
+    ).toBe("thr_existing");
     expect(sdk.providers.nativeSessions).toHaveBeenCalledWith(
       "codex",
       expect.objectContaining({
@@ -273,6 +285,55 @@ describe("NativeSessionThreadList", () => {
     expect(
       screen.getByRole("button", { name: "Collapse spaceship" }).textContent,
     ).toContain("2");
+  });
+
+  it("groups a native worktree with its project identity", async () => {
+    vi.mocked(sdk.providers.nativeSessions).mockResolvedValue({
+      ...nativeSessions,
+      sessions: [
+        {
+          ...nativeSessions.sessions[0],
+          repositoryUrl: null,
+          cwd: "/Users/demo/Projects/org-rl",
+          workspaceRoot: "/Users/demo/Projects/org-rl",
+          projectId: "project-org-rl",
+        },
+        {
+          ...nativeSessions.sessions[0],
+          providerThreadId: "native-thread-worktree",
+          localThreadId: null,
+          title: "Review worktree",
+          repositoryUrl: null,
+          cwd: "/Users/demo/.codex/worktrees/a1b2/org-rl",
+          workspaceRoot: "/Users/demo/.codex/worktrees/a1b2/org-rl",
+          projectId: "project-org-rl",
+        },
+      ],
+    });
+
+    renderSidebar();
+    await screen.findByText("Recover a native session");
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Thread display options" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitemcheckbox", { name: "By project" }),
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Collapse org-rl" }).textContent,
+    ).toContain("2");
+  });
+
+  it("falls back to the original sidebar when native discovery fails", async () => {
+    vi.mocked(sdk.providers.nativeSessions).mockRejectedValue(
+      new Error("native listing unavailable"),
+    );
+    const Fallback = () => <div>Original thread list</div>;
+
+    renderSidebar({ fallback: Fallback });
+
+    expect(await screen.findByText("Original thread list")).toBeTruthy();
   });
 
   it("shows native activity with the provider mark", async () => {

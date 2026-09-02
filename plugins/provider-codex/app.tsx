@@ -6,9 +6,13 @@ import {
 
 const NativeSessionThreadList = experimental_NativeSessionThreadList;
 
-function CodexNativeThreadList({ onNavigate }: PluginThreadListProps) {
+function CodexNativeThreadList({
+  Original,
+  onNavigate,
+}: PluginThreadListProps) {
   return (
     <NativeSessionThreadList
+      fallback={Original}
       providerId="codex"
       providerLabel="Codex"
       onNavigate={onNavigate}

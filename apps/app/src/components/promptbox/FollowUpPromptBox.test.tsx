@@ -631,6 +631,42 @@ describe("FollowUpPromptBox", () => {
     },
   );
 
+  it("collapses after a submitted draft clears before deferred blur settles", async () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    if (props.composer === null) throw new Error("Missing composer");
+    const { rerender } = render(
+      <>
+        <FollowUpPromptBox {...props} />
+        <button type="button">Outside composer</button>
+      </>,
+    );
+    const input = screen.getByRole("textbox", { name: "Follow-up prompt" });
+    const outside = screen.getByRole("button", { name: "Outside composer" });
+
+    act(() => input.focus());
+    fireEvent.blur(input, { relatedTarget: outside });
+    act(() => outside.focus());
+    const submittedProps = {
+      ...props,
+      composer: {
+        ...props.composer,
+        message: "",
+      },
+    };
+    rerender(
+      <>
+        <FollowUpPromptBox {...submittedProps} />
+        <button type="button">Outside composer</button>
+      </>,
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("prompt-box").getAttribute("data-compact"),
+      ).toBe("true"),
+    );
+  });
+
   it("forwards customization suppression changes without remounting the composer", () => {
     const props = createFollowUpPromptBoxProps({ kind: "ready" });
     const { rerender } = render(

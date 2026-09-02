@@ -11,6 +11,9 @@
  * the protocol: bridges version with their plugin, not with the daemon.
  *
  * Version history:
+ * - 3 (2026-09): native-session catalogue responses require stable project,
+ *   workspace, repository, and lifecycle metadata. A version-2 bridge can
+ *   still initialize but cannot satisfy the tightened response grammar.
  * - 2 (2026-08): the narrow-grammar cutover. `thread/event` is gone; the
  *   timeline rides `thread/delta` exclusively and the runtime assembles
  *   canonical events. A version-1 bridge still emits `thread/event`
@@ -19,7 +22,7 @@
  * - 1: the original dialect — bridges emitted finished `ThreadEvent`s on
  *   `thread/event`.
  */
-export const PROVIDER_BRIDGE_PROTOCOL_VERSION = 2 as const;
+export const PROVIDER_BRIDGE_PROTOCOL_VERSION = 3 as const;
 
 /**
  * The `thread/delta` grammar versions. The grammar is versioned separately
@@ -35,5 +38,5 @@ export const PROVIDER_BRIDGE_PROTOCOL_VERSION = 2 as const;
  * bridge that predates `grammarVersions` reads as `[2, 2]` and is refused at
  * the handshake.
  */
-export const THREAD_DELTA_GRAMMAR_V2 = PROVIDER_BRIDGE_PROTOCOL_VERSION;
+export const THREAD_DELTA_GRAMMAR_V2 = 2 as const;
 export const THREAD_DELTA_GRAMMAR_V3 = 3 as const;

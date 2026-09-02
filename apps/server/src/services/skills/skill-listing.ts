@@ -166,6 +166,7 @@ export function assembleSkillList(
             : null,
         filePath: skill.filePath,
         canonicalFilePath: skill.canonicalFilePath,
+        canonicalRootPath: skill.canonicalRootPath,
         sourceRepository: skill.sourceRepository,
         sourceRelativePath: skill.sourceRelativePath,
         manageable: mapped.manageable && !skill.linked,
@@ -208,6 +209,7 @@ function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
         pluginId: null,
         filePath: path.join(rootPath, runtimeSource.entryPath),
         canonicalFilePath: path.join(rootPath, runtimeSource.entryPath),
+        canonicalRootPath: rootPath,
         sourceRepository: null,
         sourceRelativePath: null,
         manageable: !builtin,
@@ -237,6 +239,7 @@ function listBbPluginSkills(deps: AppDeps): SkillSummary[] {
         pluginId: provenance.pluginId,
         filePath: path.join(rootPath, runtimeSource.entryPath),
         canonicalFilePath: path.join(rootPath, runtimeSource.entryPath),
+        canonicalRootPath: rootPath,
         sourceRepository: null,
         sourceRelativePath: null,
         manageable: false,
@@ -428,7 +431,9 @@ export async function listProjectSkillFiles(
   if (isServerOwnedSkill(deps, skill)) {
     return listServerSkillFiles(skill);
   }
-  const rootPath = hostPathDirname(skill.canonicalFilePath ?? skill.filePath);
+  const rootPath =
+    skill.canonicalRootPath ??
+    hostPathDirname(skill.canonicalFilePath ?? skill.filePath);
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
@@ -470,7 +475,9 @@ export async function readProjectSkill(
       revision: createHash("sha256").update(contents).digest("hex"),
     };
   }
-  const rootPath = hostPathDirname(skill.canonicalFilePath ?? skill.filePath);
+  const rootPath =
+    skill.canonicalRootPath ??
+    hostPathDirname(skill.canonicalFilePath ?? skill.filePath);
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,

@@ -2,6 +2,7 @@ import type {
   SystemNativeSessionsQuery,
   SystemNativeSessionsResponse,
 } from "@bb/server-contract";
+import { findThreadByNativeIdentity } from "@bb/db";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { AppDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
@@ -22,7 +23,7 @@ export async function listProviderNativeSessions(
   const cwd = query.cwd ?? environmentCwd;
   const bridgeLaunch = requireBridgeLaunchForProviderId(deps, providerId);
 
-  return callHostRetryableOnlineRpc(deps, {
+  const result = await callHostRetryableOnlineRpc(deps, {
     hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
@@ -38,6 +39,18 @@ export async function listProviderNativeSessions(
         : {}),
     },
   });
+  return {
+    ...result,
+    sessions: result.sessions.map((session) => ({
+      ...session,
+      localThreadId:
+        findThreadByNativeIdentity(deps.db, {
+          hostId,
+          providerId,
+          providerThreadId: session.providerThreadId,
+        })?.id ?? null,
+    })),
+  };
 }
 
 export async function readProviderNativeSession(

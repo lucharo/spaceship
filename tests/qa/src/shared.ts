@@ -520,7 +520,7 @@ export async function startQaServer(
 
   const serverProcess = spawnLoggedProcess({
     command: process.execPath,
-    args: ["apps/server/dist/index.js"],
+    args: ["--use-system-ca", "apps/server/dist/index.js"],
     cwd: repoRoot,
     env: serverEnv,
     logPath: args.logPath,

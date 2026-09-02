@@ -722,9 +722,10 @@ export function ThreadDetailPromptArea({
     ? modelFallback.fallbackModel
     : (activeModel?.model ?? selectedModel);
   const canSubmitVisibleExecutionSelection =
-    hasConcreteDefaultExecutionOptions ||
-    (defaultExecutionOptionsState === "unavailable" &&
-      effectiveSelectedModel.length > 0);
+    !defaultExecutionOptionsQuery.isError &&
+    (hasConcreteDefaultExecutionOptions ||
+      (verifiedDefaultExecutionOptions === null &&
+        effectiveSelectedModel.length > 0));
   const handleModelChange = useCallback(
     (model: string) => {
       if (fallbackIdentity !== null) {
