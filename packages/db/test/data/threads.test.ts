@@ -5,6 +5,7 @@ import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
   adoptNativeThread,
+  confirmNativeSessionArchive,
   createThread,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
@@ -12,6 +13,7 @@ import {
   getThread,
   getThreadExecutionOverride,
   hasActiveThreadAttention,
+  hasNativeSessionArchiveConfirmation,
   setThreadExecutionOverride,
   hasPendingThreadShutdownInEnvironment,
   listHostThreadIds,
@@ -1388,6 +1390,34 @@ describe("threads", () => {
     const unarchived = unarchiveThread(db, noopNotifier, thread.id);
     expect(unarchived?.archivedAt).toBeNull();
     expect(unarchived?.latestAttentionAt).toBe(thread.latestAttentionAt);
+  });
+
+  it("clears native archive confirmation when unarchiving a thread", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+    });
+    archiveThread(db, noopNotifier, thread.id);
+    confirmNativeSessionArchive(db, {
+      providerThreadId: "native-thread-1",
+      threadId: thread.id,
+    });
+    expect(
+      hasNativeSessionArchiveConfirmation(db, {
+        providerThreadId: "native-thread-1",
+        threadId: thread.id,
+      }),
+    ).toBe(true);
+
+    unarchiveThread(db, noopNotifier, thread.id);
+
+    expect(
+      hasNativeSessionArchiveConfirmation(db, {
+        providerThreadId: "native-thread-1",
+        threadId: thread.id,
+      }),
+    ).toBe(false);
   });
 
   it("moves an active thread to stopping on stop.requested and settles to idle on stop.settled", () => {

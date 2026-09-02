@@ -666,6 +666,17 @@ export const threadTabs = sqliteTable("thread_tabs", {
   updatedAt: integer("updated_at").notNull(),
 });
 
+export const nativeSessionArchiveConfirmations = sqliteTable(
+  "native_session_archive_confirmations",
+  {
+    threadId: text("thread_id")
+      .primaryKey()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    providerThreadId: text("provider_thread_id").notNull(),
+    confirmedAt: integer("confirmed_at").notNull(),
+  },
+);
+
 export const threadSections = sqliteTable(
   "thread_sections",
   {

@@ -1,6 +1,7 @@
 import path from "node:path";
 import {
   adoptNativeThread,
+  confirmNativeSessionArchive,
   createEnvironment,
   findManagedEnvironmentAtHostPath,
   findThreadByNativeIdentity,
@@ -85,8 +86,8 @@ import {
   emitPluginThreadDeleted,
 } from "../../services/plugins/plugin-thread-events.js";
 import {
-  archivePreparedThreadAndChildren,
-  prepareThreadAndChildrenArchive,
+  archiveThreadAndHiddenSourceForks,
+  resolveArchiveThreadEnvironment,
 } from "../../services/threads/thread-archive.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
@@ -523,16 +524,22 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   post(routes.archiveNative, async (context, payload) => {
     requireNonDestroyedHostWithStatus(deps, payload.hostId);
     const existing = findThreadByNativeIdentity(deps.db, payload);
-    const preparedLocalArchive =
-      existing === null
-        ? null
-        : prepareThreadAndChildrenArchive(deps, {
-            parentThread: existing,
-            skipProviderArchiveThreadId: existing.id,
-          });
+    const environment =
+      existing !== null && existing.archivedAt === null
+        ? resolveArchiveThreadEnvironment(deps, { thread: existing })
+        : null;
     await archiveProviderNativeSession(deps, payload);
-    if (preparedLocalArchive !== null) {
-      archivePreparedThreadAndChildren(deps, preparedLocalArchive);
+    if (existing !== null) {
+      confirmNativeSessionArchive(deps.db, {
+        providerThreadId: payload.providerThreadId,
+        threadId: existing.id,
+      });
+      if (existing.archivedAt === null) {
+        archiveThreadAndHiddenSourceForks(deps, {
+          environment,
+          thread: existing,
+        });
+      }
     }
     return context.json({ ok: true as const });
   });

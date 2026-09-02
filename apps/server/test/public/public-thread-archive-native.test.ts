@@ -1,4 +1,10 @@
-import { archiveThread, findThreadByNativeIdentity, getThread } from "@bb/db";
+import {
+  archiveThread,
+  findThreadByNativeIdentity,
+  getThread,
+  hasNativeSessionArchiveConfirmation,
+  unarchiveThread,
+} from "@bb/db";
 import { describe, expect, it } from "vitest";
 import {
   listQueuedCommands,
@@ -110,7 +116,7 @@ describe("public native thread archive", () => {
     });
   });
 
-  it("preflights every local projection before archiving the provider", async () => {
+  it("releases assigned child threads instead of archiving their separate sessions", async () => {
     await withTestHarness(async (harness) => {
       const { host, project, environment, thread } = seedThreadFixture(
         harness,
@@ -125,13 +131,13 @@ describe("public native thread archive", () => {
         threadId: thread.id,
       });
       const child = seedThread(harness.deps, {
-        environmentId: null,
+        environmentId: environment.id,
         parentThreadId: thread.id,
         projectId: project.id,
-        status: "starting",
+        status: "idle",
       });
 
-      const response = await harness.app.request(
+      const responsePromise = harness.app.request(
         "/api/v1/threads/archive-native",
         {
           method: "POST",
@@ -144,12 +150,21 @@ describe("public native thread archive", () => {
         },
       );
 
-      expect(response.status).toBe(409);
-      expect(getThread(harness.db, thread.id)?.archivedAt).toBeNull();
-      expect(getThread(harness.db, child.id)?.archivedAt).toBeNull();
-      expect(
-        listQueuedCommands(harness, "provider.native_sessions.archive"),
-      ).toEqual([]);
+      const archive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.archive" &&
+          command.providerThreadId === providerThreadId,
+      );
+      await reportQueuedCommandSuccess(harness, archive as never, {} as never);
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
+      expect(getThread(harness.db, child.id)).toMatchObject({
+        archivedAt: null,
+        parentThreadId: null,
+      });
     });
   });
 
@@ -204,6 +219,12 @@ describe("public native thread archive", () => {
       expect(
         listQueuedThreadCommands(harness, "thread.archive", thread.id),
       ).toEqual([]);
+      expect(
+        hasNativeSessionArchiveConfirmation(harness.db, {
+          providerThreadId,
+          threadId: thread.id,
+        }),
+      ).toBe(true);
     });
   });
 
@@ -249,6 +270,20 @@ describe("public native thread archive", () => {
       expect(
         listQueuedThreadCommands(harness, "thread.archive", thread.id),
       ).toEqual([]);
+      expect(
+        hasNativeSessionArchiveConfirmation(harness.db, {
+          providerThreadId,
+          threadId: thread.id,
+        }),
+      ).toBe(true);
+
+      unarchiveThread(harness.db, harness.deps.hub, thread.id);
+      expect(
+        hasNativeSessionArchiveConfirmation(harness.db, {
+          providerThreadId,
+          threadId: thread.id,
+        }),
+      ).toBe(false);
     });
   });
 });

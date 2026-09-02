@@ -22,7 +22,6 @@ import { emitPluginThreadArchived } from "../plugins/plugin-thread-events.js";
 import {
   dispatchSettledArchivedThreadProviderArchiveCommand,
   requestActiveRuntimeThreadStopIfNeeded,
-  suppressSettledArchivedThreadProviderArchiveCommand,
 } from "./thread-lifecycle.js";
 import { archiveThreadAndReleaseChildren } from "./thread-ownership.js";
 import { requireThreadHostCommandEnvironment } from "./thread-command-environment.js";
@@ -36,7 +35,6 @@ interface ArchiveThreadEnvironment {
 
 interface ArchiveThreadWithLifecycleEffectsArgs {
   environment: ArchiveThreadEnvironment | null;
-  skipProviderArchive?: boolean;
   thread: Pick<Thread, "environmentId" | "id" | "status">;
 }
 
@@ -50,12 +48,10 @@ interface ArchiveEnvironmentThreadsArgs {
 
 interface ArchiveThreadAndChildrenArgs {
   parentThread: Thread;
-  skipProviderArchiveThreadId?: string;
 }
 
 interface PreparedArchiveThread {
   environment: ArchiveThreadEnvironment | null;
-  skipProviderArchive: boolean;
   thread: ArchiveThreadWithLifecycleEffectsArgs["thread"];
 }
 
@@ -108,9 +104,6 @@ function archiveThreadWithLifecycleEffects(
   deps.terminalSessions.closeArchivedThreadTerminals({
     threadId: archivedThread.id,
   });
-  if (args.skipProviderArchive) {
-    suppressSettledArchivedThreadProviderArchiveCommand(archivedThread.id);
-  }
   // Archive only stops active runtime work; manual stop is the pre-start
   // provisioning cancellation entrypoint. A thread whose environment row was
   // pruned has no runtime left to stop.
@@ -218,7 +211,6 @@ export function prepareThreadAndChildrenArchive(
   return {
     threads: threads.map((thread) => ({
       environment: resolveArchiveThreadEnvironment(deps, { thread }),
-      skipProviderArchive: thread.id === args.skipProviderArchiveThreadId,
       thread,
     })),
   };
@@ -231,10 +223,9 @@ export function archivePreparedThreadAndChildren(
   const archivedThreadIds: string[] = [];
   const affectedEnvironmentIds = new Set<string>();
 
-  for (const { environment, skipProviderArchive, thread } of prepared.threads) {
+  for (const { environment, thread } of prepared.threads) {
     const result = archiveThreadWithLifecycleEffects(deps, {
       environment,
-      skipProviderArchive,
       thread,
     });
     if (!result) {

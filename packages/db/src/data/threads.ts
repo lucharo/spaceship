@@ -38,6 +38,7 @@ import type { DbNotifier } from "../notifier.js";
 import {
   environments,
   events,
+  nativeSessionArchiveConfirmations,
   pendingInteractions,
   projects,
   threadSearchSegments,
@@ -2037,18 +2038,74 @@ export function archiveThread(
   return updated ?? null;
 }
 
+export function confirmNativeSessionArchive(
+  db: ThreadWriteConnection,
+  args: {
+    providerThreadId: string;
+    threadId: string;
+  },
+): void {
+  const confirmedAt = Date.now();
+  db.insert(nativeSessionArchiveConfirmations)
+    .values({
+      confirmedAt,
+      providerThreadId: args.providerThreadId,
+      threadId: args.threadId,
+    })
+    .onConflictDoUpdate({
+      target: nativeSessionArchiveConfirmations.threadId,
+      set: {
+        confirmedAt,
+        providerThreadId: args.providerThreadId,
+      },
+    })
+    .run();
+}
+
+export function hasNativeSessionArchiveConfirmation(
+  db: ThreadWriteConnection,
+  args: {
+    providerThreadId: string;
+    threadId: string;
+  },
+): boolean {
+  return (
+    db
+      .select({ threadId: nativeSessionArchiveConfirmations.threadId })
+      .from(nativeSessionArchiveConfirmations)
+      .where(
+        and(
+          eq(nativeSessionArchiveConfirmations.threadId, args.threadId),
+          eq(
+            nativeSessionArchiveConfirmations.providerThreadId,
+            args.providerThreadId,
+          ),
+        ),
+      )
+      .get() !== undefined
+  );
+}
+
 export function unarchiveThread(
   db: DbConnection,
   notifier: DbNotifier,
   id: string,
 ) {
   const now = Date.now();
-  const updated = db
-    .update(threads)
-    .set({ archivedAt: null, updatedAt: now })
-    .where(eq(threads.id, id))
-    .returning()
-    .get();
+  const updated = db.transaction((tx) => {
+    const row = tx
+      .update(threads)
+      .set({ archivedAt: null, updatedAt: now })
+      .where(eq(threads.id, id))
+      .returning()
+      .get();
+    if (row) {
+      tx.delete(nativeSessionArchiveConfirmations)
+        .where(eq(nativeSessionArchiveConfirmations.threadId, id))
+        .run();
+    }
+    return row;
+  });
   if (updated) {
     notifier.notifyThread(id, ["archived-changed"], {
       projectId: updated.projectId,

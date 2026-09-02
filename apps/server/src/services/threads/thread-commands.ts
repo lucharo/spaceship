@@ -1,4 +1,9 @@
-import { environments, events, threads } from "@bb/db";
+import {
+  environments,
+  events,
+  hasNativeSessionArchiveConfirmation,
+  threads,
+} from "@bb/db";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import {
   PromptInput,
@@ -497,6 +502,14 @@ export function dispatchArchivedThreadProviderArchiveCommand(
 
   const providerThreadId = getLastProviderThreadId(deps, thread.id);
   if (!providerThreadId || !thread.environmentId) {
+    return false;
+  }
+  if (
+    hasNativeSessionArchiveConfirmation(deps.db, {
+      providerThreadId,
+      threadId: thread.id,
+    })
+  ) {
     return false;
   }
 
