@@ -118,6 +118,7 @@ describe("public native thread adoption", () => {
         type: "item/completed",
         scope: turnScope("native-turn-summary"),
         data: {
+          providerThreadId,
           item: {
             type: "planSteps",
             id: "native-plan-summary",
@@ -134,6 +135,7 @@ describe("public native thread adoption", () => {
         type: "item/started",
         scope: turnScope("native-turn-summary"),
         data: {
+          providerThreadId,
           item: {
             id: "native-workflow-summary",
             type: "backgroundTask",
@@ -542,7 +544,7 @@ describe("public native thread adoption", () => {
       ];
       const readTimeline = async (nativeEvents: typeof settledNativeEvents) => {
         const responsePromise = harness.app.request(
-          `/api/v1/threads/${adopted.thread.id}/timeline`,
+          `/api/v1/threads/${adopted.thread.id}/timeline?includeNestedRows=true`,
         );
         const history = await waitForQueuedCommand(
           harness,

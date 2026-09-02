@@ -109,7 +109,7 @@ describe("public native thread archive", () => {
       expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
       expect(
         listQueuedCommands(harness, "provider.native_sessions.archive"),
-      ).toHaveLength(1);
+      ).toEqual([]);
       expect(
         listQueuedThreadCommands(harness, "thread.archive", thread.id),
       ).toEqual([]);
@@ -215,7 +215,7 @@ describe("public native thread archive", () => {
       expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
       expect(
         listQueuedCommands(harness, "provider.native_sessions.archive"),
-      ).toHaveLength(1);
+      ).toEqual([]);
       expect(
         listQueuedThreadCommands(harness, "thread.archive", thread.id),
       ).toEqual([]);
@@ -266,7 +266,7 @@ describe("public native thread archive", () => {
       expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
       expect(
         listQueuedCommands(harness, "provider.native_sessions.archive"),
-      ).toHaveLength(1);
+      ).toEqual([]);
       expect(
         listQueuedThreadCommands(harness, "thread.archive", thread.id),
       ).toEqual([]);
