@@ -2276,7 +2276,7 @@ export function PromptBoxInternal({
     activeTriggerKind === "command" &&
     !commandLoading &&
     !commandError &&
-    commandSuggestions.length === 0;
+    visibleCommandSuggestions.length === 0;
   const isBareNonDefaultMentionTrigger =
     activeTrigger?.kind === "mention" &&
     activeTrigger.char !== DEFAULT_PLUGIN_MENTION_TRIGGER &&

@@ -3737,6 +3737,30 @@ describe("PromptBoxInternal prompt actions", () => {
     ]);
   });
 
+  it("keeps a dollar-prefixed command literal when no skills match", async () => {
+    const { onCommandQueryChange, promptBoxRef } = renderPromptBox("$write", {
+      commandAliases: ["$"],
+      commandSuggestions: [
+        {
+          kind: "command",
+          name: "write",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(onCommandQueryChange).toHaveBeenLastCalledWith("write"),
+    );
+    expect(
+      document.querySelector("[data-promptbox-typeahead-menu]"),
+    ).toBeNull();
+  });
+
   it("keeps typed content after a prompt action when selecting another action", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
 
