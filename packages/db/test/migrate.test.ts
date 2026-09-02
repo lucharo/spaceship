@@ -415,6 +415,9 @@ const branchLocalThreadTabsMigrationWhen = 1783633750817;
 const eventParentToolCallMigrationWhen = 1787181956957;
 const eventParentToolCallPreJsonValidMigrationHash =
   "79d39e7b68d1db8ba02614fe4cc227cc0c154d77c7183f2e37ed2d8475412993";
+const nativeSessionArchiveConfirmationMigrationWhen = 1788388134184;
+const nativeSessionArchiveConfirmationPreIdempotencyHash =
+  "71ce43395060f524f24263c4e9e2ef77f7d3463a668a76f9b61c44272ff43f97";
 const eventLargeValuesPreOptimizationHash =
   "bc111f5134183c37cf135af70231ec5a79823f9868818fdd8377e1ab3c05a23f";
 const queuedMessageSortKeyMigrationPath = resolve(
@@ -4457,6 +4460,23 @@ describe("migrate", () => {
           eventParentToolCallPreJsonValidMigrationHash,
           eventParentToolCallMigrationWhen,
         );
+
+      expect(() => migrate(db)).not.toThrow();
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("accepts the native archive confirmation migration hash from before its idempotency guard", () => {
+    const db = createConnection(":memory:");
+
+    try {
+      migrate(db);
+      replaceAppliedMigrationHash({
+        db,
+        createdAt: nativeSessionArchiveConfirmationMigrationWhen,
+        hash: nativeSessionArchiveConfirmationPreIdempotencyHash,
+      });
 
       expect(() => migrate(db)).not.toThrow();
     } finally {
