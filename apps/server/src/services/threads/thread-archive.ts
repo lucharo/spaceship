@@ -62,25 +62,26 @@ export interface PreparedThreadAndChildrenArchive {
 const threadArchiveMutationChains = new Map<string, Promise<void>>();
 
 /**
- * Serialize archive, unarchive, and fork mutations that share a source thread.
- * Native archive waits on a provider RPC, so the lock keeps a concurrent local
- * unarchive or hidden-fork creation from invalidating its preflight snapshot.
+ * Serialize lifecycle mutations that share either a projected source thread or
+ * a provider-native session identity. Native archive waits on a provider RPC,
+ * so the lock keeps adoption, unarchive, or hidden-fork creation from
+ * invalidating its preflight snapshot.
  */
 export function withThreadArchiveMutation<T>(
-  threadId: string,
+  mutationKey: string,
   mutate: () => Promise<T>,
 ): Promise<T> {
   const previous =
-    threadArchiveMutationChains.get(threadId) ?? Promise.resolve();
+    threadArchiveMutationChains.get(mutationKey) ?? Promise.resolve();
   const result = previous.then(mutate);
   const tail = result.then(
     () => {},
     () => {},
   );
-  threadArchiveMutationChains.set(threadId, tail);
+  threadArchiveMutationChains.set(mutationKey, tail);
   void tail.then(() => {
-    if (threadArchiveMutationChains.get(threadId) === tail) {
-      threadArchiveMutationChains.delete(threadId);
+    if (threadArchiveMutationChains.get(mutationKey) === tail) {
+      threadArchiveMutationChains.delete(mutationKey);
     }
   });
   return result;

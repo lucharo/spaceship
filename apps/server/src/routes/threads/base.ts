@@ -104,6 +104,19 @@ function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
   return includes;
 }
 
+function nativeSessionMutationKey(args: {
+  hostId: string;
+  providerId: string;
+  providerThreadId: string;
+}): string {
+  return JSON.stringify([
+    "native-session",
+    args.hostId,
+    args.providerId,
+    args.providerThreadId,
+  ]);
+}
+
 interface BuildThreadResponseArgs {
   includes: Set<ThreadIncludeOption>;
   thread: Thread;
@@ -339,230 +352,250 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if (payload.sectionId) {
       requireThreadSection(deps, payload.sectionId);
     }
-    const thread = await createThreadFromRequest(deps, {
-      ...payload,
-      origin: payload.origin,
-    });
+    const createThread = () =>
+      createThreadFromRequest(deps, {
+        ...payload,
+        origin: payload.origin,
+      });
+    const thread = payload.sourceThreadId
+      ? await withThreadArchiveMutation(payload.sourceThreadId, createThread)
+      : await createThread();
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });
 
   post(routes.adoptNative, async (context, payload) => {
-    requireNonDestroyedHostWithStatus(deps, payload.hostId);
-    requireBridgeLaunchForProviderId(deps, payload.providerId);
-    const nativeSession = await readProviderNativeSession(deps, payload);
-    if (nativeSession.providerThreadId !== payload.providerThreadId) {
-      throw new ApiError(
-        409,
-        "native_session_identity_mismatch",
-        "The provider returned a different native session",
-      );
-    }
-    if (nativeSession.archived) {
-      throw new ApiError(
-        409,
-        "native_session_archived",
-        "Unarchive the native session before opening it in Spaceship",
-      );
-    }
-    if (nativeSession.cwd === null) {
-      throw new ApiError(
-        409,
-        "native_session_cwd_unavailable",
-        "The native session has no usable working directory",
-      );
-    }
-    const nativePath = normalizeProjectPathInput(nativeSession.cwd);
-    const pathValidationMessage = getProjectPathValidationMessage(nativePath);
-    if (pathValidationMessage !== null) {
-      throw new ApiError(
-        409,
-        "native_session_cwd_invalid",
-        pathValidationMessage,
-      );
-    }
-    const inspection = await callHostRetryableOnlineRpc(deps, {
-      hostId: payload.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: { type: "project.inspect", path: nativePath },
-    });
-    const inspectedPath = normalizeProjectPathInput(inspection.path);
-    const inspectedPathValidationMessage =
-      getProjectPathValidationMessage(inspectedPath);
-    if (inspectedPathValidationMessage !== null) {
-      throw new ApiError(
-        409,
-        "native_session_cwd_invalid",
-        inspectedPathValidationMessage,
-      );
-    }
-    const existing = findThreadByNativeIdentity(deps.db, payload);
-    if (existing) {
-      const existingEnvironment =
-        existing.environmentId === null
-          ? null
-          : getEnvironment(deps.db, existing.environmentId);
-      if (
-        existingEnvironment === null ||
-        existingEnvironment.hostId !== payload.hostId ||
-        existingEnvironment.path !== inspectedPath
-      ) {
-        throw new ApiError(
-          409,
-          "native_session_workspace_changed",
-          "The native session workspace no longer matches its Spaceship projection",
-        );
-      }
-      let reopenEnvironment = existingEnvironment;
-      if (existingEnvironment.status === "retiring") {
-        applyLoggedEnvironmentLifecycleEvent(deps, {
-          environmentId: existingEnvironment.id,
-          event: { type: "retire.cancelled" },
+    return withThreadArchiveMutation(
+      nativeSessionMutationKey(payload),
+      async () => {
+        requireNonDestroyedHostWithStatus(deps, payload.hostId);
+        requireBridgeLaunchForProviderId(deps, payload.providerId);
+        const nativeSession = await readProviderNativeSession(deps, payload);
+        if (nativeSession.providerThreadId !== payload.providerThreadId) {
+          throw new ApiError(
+            409,
+            "native_session_identity_mismatch",
+            "The provider returned a different native session",
+          );
+        }
+        if (nativeSession.archived) {
+          throw new ApiError(
+            409,
+            "native_session_archived",
+            "Unarchive the native session before opening it in Spaceship",
+          );
+        }
+        if (nativeSession.cwd === null) {
+          throw new ApiError(
+            409,
+            "native_session_cwd_unavailable",
+            "The native session has no usable working directory",
+          );
+        }
+        const nativePath = normalizeProjectPathInput(nativeSession.cwd);
+        const pathValidationMessage =
+          getProjectPathValidationMessage(nativePath);
+        if (pathValidationMessage !== null) {
+          throw new ApiError(
+            409,
+            "native_session_cwd_invalid",
+            pathValidationMessage,
+          );
+        }
+        const inspection = await callHostRetryableOnlineRpc(deps, {
+          hostId: payload.hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: { type: "project.inspect", path: nativePath },
         });
-        reopenEnvironment =
-          getEnvironment(deps.db, existingEnvironment.id) ??
-          existingEnvironment;
-      }
-      if (
-        reopenEnvironment.status !== "ready" ||
-        reopenEnvironment.path === null
-      ) {
-        throwEnvironmentNotReady(reopenEnvironment);
-      }
-      const reconciled =
-        existing.archivedAt === null
-          ? existing
-          : (unarchiveThread(deps.db, deps.hub, existing.id) ?? existing);
-      return context.json(
-        {
-          created: false,
-          thread: toThreadResponseFromThread(deps, { thread: reconciled }),
-        },
-        200,
-      );
-    }
-    const managedEnvironment = findManagedEnvironmentAtHostPath(deps.db, {
-      hostId: payload.hostId,
-      path: inspectedPath,
-    });
-    const requestedProject = payload.projectId
-      ? requirePublicProject(deps.db, payload.projectId)
-      : null;
-    const refusal = unmanagedAttachRefusal(deps.db, {
-      checksOutBranch: false,
-      dataDir: findHostDataDir(deps, payload.hostId),
-      hostId: payload.hostId,
-      path: inspectedPath,
-      projectId: requestedProject?.id ?? managedEnvironment?.projectId ?? null,
-    });
-    if (refusal) {
-      throw new ApiError(409, "invalid_request", refusal.message);
-    }
-    const project = payload.projectId
-      ? requestedProject!
-      : managedEnvironment
-        ? requirePublicProject(deps.db, managedEnvironment.projectId)
-        : findOrCreateProjectByLocalPathSource(deps.db, deps.hub, {
-            name: path.basename(inspectedPath) || "Workspace",
-            source: {
-              type: "local_path",
-              hostId: payload.hostId,
-              path: inspectedPath,
+        const inspectedPath = normalizeProjectPathInput(inspection.path);
+        const inspectedPathValidationMessage =
+          getProjectPathValidationMessage(inspectedPath);
+        if (inspectedPathValidationMessage !== null) {
+          throw new ApiError(
+            409,
+            "native_session_cwd_invalid",
+            inspectedPathValidationMessage,
+          );
+        }
+        const existing = findThreadByNativeIdentity(deps.db, payload);
+        if (existing) {
+          const existingEnvironment =
+            existing.environmentId === null
+              ? null
+              : getEnvironment(deps.db, existing.environmentId);
+          if (
+            existingEnvironment === null ||
+            existingEnvironment.hostId !== payload.hostId ||
+            existingEnvironment.path !== inspectedPath
+          ) {
+            throw new ApiError(
+              409,
+              "native_session_workspace_changed",
+              "The native session workspace no longer matches its Spaceship projection",
+            );
+          }
+          let reopenEnvironment = existingEnvironment;
+          if (existingEnvironment.status === "retiring") {
+            applyLoggedEnvironmentLifecycleEvent(deps, {
+              environmentId: existingEnvironment.id,
+              event: { type: "retire.cancelled" },
+            });
+            reopenEnvironment =
+              getEnvironment(deps.db, existingEnvironment.id) ??
+              existingEnvironment;
+          }
+          if (
+            reopenEnvironment.status !== "ready" ||
+            reopenEnvironment.path === null
+          ) {
+            throwEnvironmentNotReady(reopenEnvironment);
+          }
+          const reconciled =
+            existing.archivedAt === null
+              ? existing
+              : (unarchiveThread(deps.db, deps.hub, existing.id) ?? existing);
+          return context.json(
+            {
+              created: false,
+              thread: toThreadResponseFromThread(deps, {
+                thread: reconciled,
+              }),
             },
-          }).project;
-    let environment = payload.environmentId
-      ? requireEnvironment(deps.db, payload.environmentId)
-      : findProjectEnvironmentByHostPath(
-          deps.db,
-          project.id,
-          payload.hostId,
-          inspectedPath,
+            200,
+          );
+        }
+        const managedEnvironment = findManagedEnvironmentAtHostPath(deps.db, {
+          hostId: payload.hostId,
+          path: inspectedPath,
+        });
+        const requestedProject = payload.projectId
+          ? requirePublicProject(deps.db, payload.projectId)
+          : null;
+        const refusal = unmanagedAttachRefusal(deps.db, {
+          checksOutBranch: false,
+          dataDir: findHostDataDir(deps, payload.hostId),
+          hostId: payload.hostId,
+          path: inspectedPath,
+          projectId:
+            requestedProject?.id ?? managedEnvironment?.projectId ?? null,
+        });
+        if (refusal) {
+          throw new ApiError(409, "invalid_request", refusal.message);
+        }
+        const project = payload.projectId
+          ? requestedProject!
+          : managedEnvironment
+            ? requirePublicProject(deps.db, managedEnvironment.projectId)
+            : findOrCreateProjectByLocalPathSource(deps.db, deps.hub, {
+                name: path.basename(inspectedPath) || "Workspace",
+                source: {
+                  type: "local_path",
+                  hostId: payload.hostId,
+                  path: inspectedPath,
+                },
+              }).project;
+        let environment = payload.environmentId
+          ? requireEnvironment(deps.db, payload.environmentId)
+          : findProjectEnvironmentByHostPath(
+              deps.db,
+              project.id,
+              payload.hostId,
+              inspectedPath,
+            );
+        if (!environment) {
+          environment = createEnvironment(deps.db, deps.hub, {
+            projectId: project.id,
+            hostId: payload.hostId,
+            workspaceProvisionType: "unmanaged",
+            path: inspectedPath,
+            managed: false,
+            isGitRepo: inspection.isGitRepo,
+            isWorktree: inspection.isWorktree,
+            branchName: inspection.branchName,
+            defaultBranch: inspection.defaultBranch,
+            status: "ready",
+          });
+        }
+        if (
+          environment.projectId !== project.id ||
+          environment.hostId !== payload.hostId ||
+          environment.path !== inspection.path ||
+          environment.status !== "ready" ||
+          environment.path === null
+        ) {
+          throw new ApiError(
+            409,
+            "environment_not_ready",
+            "Native sessions can only be adopted into a ready project environment",
+          );
+        }
+        const result = adoptNativeThread(deps.db, deps.hub, {
+          projectId: project.id,
+          environmentId: environment.id,
+          hostId: environment.hostId,
+          providerId: payload.providerId,
+          providerThreadId: payload.providerThreadId,
+          title: nativeSession.title,
+        });
+        if (result.created) {
+          emitPluginThreadCreated(result.thread);
+        }
+        return context.json(
+          {
+            created: result.created,
+            thread: toThreadResponseFromThread(deps, {
+              thread: result.thread,
+            }),
+          },
+          200,
         );
-    if (!environment) {
-      environment = createEnvironment(deps.db, deps.hub, {
-        projectId: project.id,
-        hostId: payload.hostId,
-        workspaceProvisionType: "unmanaged",
-        path: inspectedPath,
-        managed: false,
-        isGitRepo: inspection.isGitRepo,
-        isWorktree: inspection.isWorktree,
-        branchName: inspection.branchName,
-        defaultBranch: inspection.defaultBranch,
-        status: "ready",
-      });
-    }
-    if (
-      environment.projectId !== project.id ||
-      environment.hostId !== payload.hostId ||
-      environment.path !== inspection.path ||
-      environment.status !== "ready" ||
-      environment.path === null
-    ) {
-      throw new ApiError(
-        409,
-        "environment_not_ready",
-        "Native sessions can only be adopted into a ready project environment",
-      );
-    }
-    const result = adoptNativeThread(deps.db, deps.hub, {
-      projectId: project.id,
-      environmentId: environment.id,
-      hostId: environment.hostId,
-      providerId: payload.providerId,
-      providerThreadId: payload.providerThreadId,
-      title: nativeSession.title,
-    });
-    if (result.created) {
-      emitPluginThreadCreated(result.thread);
-    }
-    return context.json(
-      {
-        created: result.created,
-        thread: toThreadResponseFromThread(deps, { thread: result.thread }),
       },
-      200,
     );
   });
 
   post(routes.archiveNative, async (context, payload) => {
-    requireNonDestroyedHostWithStatus(deps, payload.hostId);
-    const existing = findThreadByNativeIdentity(deps.db, payload);
-    if (existing === null) {
-      await archiveProviderNativeSession(deps, payload);
-      return context.json({ ok: true as const });
-    }
-
-    await withThreadArchiveMutation(existing.id, async () => {
-      const current = findThreadByNativeIdentity(deps.db, payload);
-      const prepared =
-        current !== null && current.archivedAt === null
-          ? prepareThreadAndHiddenSourceForksArchive(deps, {
-              environment: resolveArchiveThreadEnvironment(deps, {
-                thread: current,
-              }),
-              thread: current,
-            })
-          : null;
-      const providerAlreadyArchived =
-        current !== null &&
-        hasNativeSessionArchiveConfirmation(deps.db, {
-          providerThreadId: payload.providerThreadId,
-          threadId: current.id,
-        });
-      if (!providerAlreadyArchived) {
-        await archiveProviderNativeSession(deps, payload);
-      }
-      if (current !== null) {
-        confirmNativeSessionArchive(deps.db, {
-          providerThreadId: payload.providerThreadId,
-          threadId: current.id,
-        });
-        if (prepared !== null) {
-          archivePreparedThreadAndHiddenSourceForks(deps, prepared);
+    return withThreadArchiveMutation(
+      nativeSessionMutationKey(payload),
+      async () => {
+        requireNonDestroyedHostWithStatus(deps, payload.hostId);
+        const existing = findThreadByNativeIdentity(deps.db, payload);
+        if (existing === null) {
+          await archiveProviderNativeSession(deps, payload);
+          return context.json({ ok: true as const });
         }
-      }
-    });
-    return context.json({ ok: true as const });
+
+        await withThreadArchiveMutation(existing.id, async () => {
+          const current = findThreadByNativeIdentity(deps.db, payload);
+          const prepared =
+            current !== null && current.archivedAt === null
+              ? prepareThreadAndHiddenSourceForksArchive(deps, {
+                  environment: resolveArchiveThreadEnvironment(deps, {
+                    thread: current,
+                  }),
+                  thread: current,
+                })
+              : null;
+          const providerAlreadyArchived =
+            current !== null &&
+            hasNativeSessionArchiveConfirmation(deps.db, {
+              providerThreadId: payload.providerThreadId,
+              threadId: current.id,
+            });
+          if (!providerAlreadyArchived) {
+            await archiveProviderNativeSession(deps, payload);
+          }
+          if (current !== null) {
+            confirmNativeSessionArchive(deps.db, {
+              providerThreadId: payload.providerThreadId,
+              threadId: current.id,
+            });
+            if (prepared !== null) {
+              archivePreparedThreadAndHiddenSourceForks(deps, prepared);
+            }
+          }
+        });
+        return context.json({ ok: true as const });
+      },
+    );
   });
 
   post(routes.fork, async (context, payload) => {

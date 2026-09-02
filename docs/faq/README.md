@@ -71,13 +71,14 @@ _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02 · Scope/ver
 
 Archiving a native row does not adopt it, create a Spaceship thread, or require a working directory. When a lightweight local projection already exists, Spaceship archives Codex once and then reconciles that projection without sending a duplicate provider command. Existing local projections can recover through native unarchive. A direct unarchive action in the archived catalogue, plus rename and fork parity, remains tracked rather than being emulated in Spaceship.
 
-Before asking Codex to archive, Spaceship verifies that the matching local projection and every hidden source fork can be reconciled. Archive, unarchive, and source-thread fork creation are serialized while the provider request is in flight, so a concurrent local action cannot leave Codex archived while Spaceship appears active. BB-assigned child threads represent separate sessions, so they are released rather than archived with the parent. A durable confirmation prevents retries, later stop settlement, or process restart from sending the same provider archive command twice; unarchiving clears that confirmation.
+Before asking Codex to archive, Spaceship verifies that the matching local projection and every hidden source fork can be reconciled. Native adoption and archive are serialized by host, provider, and native session ID; local archive, unarchive, and every source-derived creation path are also serialized by projected source thread. A concurrent action therefore cannot adopt, reopen, or fork a session while its provider archive is in flight. BB-assigned child threads represent separate sessions, so they are released rather than archived with the parent. Once recorded, a durable confirmation prevents retries, later stop settlement, or process restart from sending the same provider archive command twice; crash recovery between provider success and that local write remains tracked separately. Unarchiving clears the confirmation.
 
 ### Sources
 
 - [Native session architecture](../spaceship-native-sessions.md) — current lifecycle limits.
 - `bb provider archive <providerId> <providerThreadId>` — CLI access to the same native operation.
 - [Lifecycle parity issue](https://github.com/lucharo/spaceship/issues/4) — remaining direct unarchive, rename, and fork work.
+- [Archive recovery issue](https://github.com/lucharo/spaceship/issues/16) — durable recovery for interruption between provider success and local reconciliation.
 
 _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
 
