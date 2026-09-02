@@ -8,7 +8,7 @@ Spaceship now treats Codex as the owner of its sessions while supplying the desk
 - Opening a row reads native history on demand and resumes the same Codex thread. Spaceship does not copy that history into its event store.
 - Worktree sessions group under their canonical project identity rather than appearing as unrelated projects.
 - Codex event projection respects native turn boundaries, hides successful hook noise, retains failures, and normalises citation markers.
-- Installed skills are discovered from shared and provider roots, grouped by provenance, deduplicated by canonical path, and invokable with either `$name` or `/name`.
+- Installed skills are discovered from shared and provider roots, grouped by provenance, and deduplicated by canonical path. Codex supports `$name` and `/name`; other providers retain `/name`.
 - Provider-specific behaviour remains in plugins. Core changes are limited to generic contracts, lifecycle hooks, caching, and sidebar seams.
 
 ## Decisions that changed the direction
@@ -23,7 +23,7 @@ The final sweep found several contract edges that narrower tests had missed: eve
 
 The isolated runtime found two more faults that unit-only checks would not have exposed. Plugin SDK bare aliases were swallowing explicit subpath imports at runtime, so the resolver now registers current and legacy subpaths before the package root. A completed Codex turn could also remain visually "running" until reload; completion events now invalidate the thread detail query, and a no-reload continuation confirmed that the composer returns to idle.
 
-The landing review caught the remaining boundary failures: native history needed identity verification and turn pagination; catalogue projection needed one batched native-identity lookup rather than one database query per row; unavailable providers needed to stop retrying and yield the sidebar; directly symlinked skill files needed their target directory as the read boundary; provisional picker values could not be sent before their catalogues were verified; and `$skill` completion had to remain Codex-specific until other providers declare equivalent support.
+The landing review caught the remaining boundary failures: native history needed identity verification and turn pagination, including an active final turn; catalogue projection needed one batched native-identity lookup rather than one database query per row; unavailable providers needed to stop retrying and yield the sidebar; directly symlinked skill files needed a single-file read boundary; provisional picker values could not be sent before their catalogues were verified; and `$skill` completion had to remain Codex-specific until other providers declare equivalent support.
 
 It also exposed two existing macOS test assumptions: Linux process supervision expected `/proc`, and temporary paths could compare as `/tmp` versus `/private/tmp`. Those checks now use portable behaviour. The Electron window smoke itself cannot be torn down by this agent host because macOS denies signalling the spawned process; that test remains a runtime-environment exception rather than a product assertion.
 

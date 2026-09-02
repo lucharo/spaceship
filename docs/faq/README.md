@@ -74,7 +74,7 @@ Existing local projections can recover through native unarchive. A direct unarch
 ### Sources
 
 - [Native session architecture](../spaceship-native-sessions.md) — current lifecycle limits.
-- [Lifecycle parity issue](https://github.com/lucharo/spaceship/issues/4) — remaining rename and fork work.
+- [Lifecycle parity issue](https://github.com/lucharo/spaceship/issues/4) — remaining direct unarchive, rename, and fork work.
 
 _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
 
