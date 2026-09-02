@@ -55,6 +55,7 @@ export const unexpectedProviderMaintenance: Pick<
   | "listModels"
   | "listNativeSessions"
   | "readNativeSession"
+  | "archiveNativeSession"
   | "providerHealth"
   | "providerUsage"
   | "providerInstallationStatus"
@@ -69,6 +70,9 @@ export const unexpectedProviderMaintenance: Pick<
   },
   readNativeSession: async () => {
     throw new Error("Unexpected provider.native_sessions.read call");
+  },
+  archiveNativeSession: async () => {
+    throw new Error("Unexpected provider.native_sessions.archive call");
   },
   providerHealth: async () => {
     throw new Error("Unexpected provider.health call");

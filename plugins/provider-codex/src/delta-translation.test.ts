@@ -1710,6 +1710,154 @@ describe("codex delta and usage translation", () => {
     ).toBe(false);
   });
 
+  it("synthesizes a phase-null agent message opening on zero-delta completion", () => {
+    const harness = createHarness();
+    expect(
+      harness.translate(
+        codexEvent("item/started", {
+          threadId: "t1",
+          turnId: "turn-1",
+          startedAtMs: 0,
+          item: {
+            type: "agentMessage",
+            id: "item-zero-delta",
+            text: "",
+            phase: null,
+            memoryCitation: null,
+            delivery: null,
+          },
+        }),
+      ),
+    ).toEqual([]);
+
+    const events = harness.translate(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 1,
+        item: {
+          type: "agentMessage",
+          id: "item-zero-delta",
+          text: "all done",
+          phase: null,
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "item/started",
+      "item/completed",
+    ]);
+    expect(events[0]).toMatchObject({
+      item: { type: "agentMessage", text: "all done" },
+    });
+  });
+
+  it("flushes deferred agent output before a failed turn boundary", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "item-interrupted",
+          text: "",
+          phase: null,
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+    harness.translate(
+      codexEvent("item/agentMessage/delta", {
+        threadId: "t1",
+        turnId: "turn-1",
+        itemId: "item-interrupted",
+        delta: "Partial answer",
+      }),
+    );
+
+    const events = harness.translate(
+      codexEvent("turn/completed", {
+        threadId: "t1",
+        turn: codexTurn({
+          id: "turn-1",
+          status: "failed",
+          error: {
+            message: "Synthetic failure",
+            codexErrorInfo: "other",
+            additionalDetails: null,
+          },
+        }),
+      }),
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "item/started",
+      "item/agentMessage/delta",
+      "item/completed",
+      "turn/completed",
+    ]);
+    expect(events[2]).toMatchObject({
+      item: { type: "agentMessage", text: "Partial answer" },
+    });
+    expect(events[3]).toMatchObject({
+      status: "failed",
+      error: { message: "Synthetic failure" },
+    });
+  });
+
+  it("flushes and clears deferred agent output when a child exits", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "item-child-exit",
+          text: "",
+          phase: null,
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+    harness.translate(
+      codexEvent("item/agentMessage/delta", {
+        threadId: "t1",
+        turnId: "turn-1",
+        itemId: "item-child-exit",
+        delta: "Last visible output",
+      }),
+    );
+
+    const events = harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: harness.translator.clearExitedChildThreadState({
+        providerThreadId: "t1",
+      }),
+    });
+    expect(events.map((event) => event.type)).toEqual([
+      "item/started",
+      "item/agentMessage/delta",
+      "item/completed",
+    ]);
+    expect(events[2]).toMatchObject({
+      item: { type: "agentMessage", text: "Last visible output" },
+    });
+    expect(
+      harness.translator.clearExitedChildThreadState({
+        providerThreadId: "t1",
+      }),
+    ).toEqual([]);
+  });
+
   it("streams commentary-phase agent messages into reasoning summaries", () => {
     const harness = createHarness();
     harness.translate(

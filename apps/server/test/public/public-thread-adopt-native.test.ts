@@ -2,6 +2,7 @@ import {
   archiveThread,
   getEnvironment,
   getLastStoredProviderThreadId,
+  getLatestThreadSequence,
   getThread,
   listEnvironments,
   listPublicProjects,
@@ -10,7 +11,11 @@ import {
   applyEnvironmentLifecycleEvent,
   requireEnvironmentLifecycleEventApplied,
 } from "@bb/db/internal-environment-lifecycle";
-import { turnScope } from "@bb/domain";
+import {
+  encodeClientTurnRequestIdNumber,
+  threadScope,
+  turnScope,
+} from "@bb/domain";
 import {
   adoptNativeThreadResponseSchema,
   threadTimelineResponseSchema,
@@ -24,6 +29,7 @@ import {
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
+  seedEvent,
   seedHostSession,
   seedProjectWithSource,
 } from "../helpers/seed.js";
@@ -274,6 +280,358 @@ describe("public native thread adoption", () => {
       expect(await readJson(storedEventsResponse)).toEqual([
         expect.objectContaining({ type: "thread/identity" }),
       ]);
+    });
+  });
+
+  it("keeps local native head state without duplicating provider-owned transcript", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-local-head",
+      });
+      const providerThreadId = "native-thread-local-head";
+      const adoptionResponse = await postAdoptNativeThread(harness, {
+        hostId: host.id,
+        providerId: "codex",
+        providerThreadId,
+      });
+      expect(adoptionResponse.status).toBe(200);
+      const adopted = adoptNativeThreadResponseSchema.parse(
+        await readJson(adoptionResponse),
+      );
+
+      let sequence = getLatestThreadSequence(harness.db, {
+        threadId: adopted.thread.id,
+      });
+      const settledRequestId = encodeClientTurnRequestIdNumber({ value: 101 });
+      const pendingRequestId = encodeClientTurnRequestIdNumber({ value: 102 });
+      const execution = {
+        model: "gpt-5",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        permissionMode: "full",
+        source: "client/turn/requested",
+      } as const;
+      const seedClientRequest = (args: {
+        requestId: typeof settledRequestId;
+        text: string;
+      }) =>
+        seedEvent(harness.deps, {
+          threadId: adopted.thread.id,
+          environmentId: adopted.thread.environmentId,
+          sequence: (sequence += 1),
+          type: "client/turn/requested",
+          scope: threadScope(),
+          data: {
+            direction: "outbound",
+            requestId: args.requestId,
+            input: [{ type: "text", text: args.text, mentions: [] }],
+            target: { kind: "new-turn" },
+            execution,
+            initiator: "user",
+            senderThreadId: null,
+            request: { method: "turn/start", params: {} },
+            source: "tell",
+          },
+        });
+
+      seedEvent(harness.deps, {
+        threadId: adopted.thread.id,
+        environmentId: adopted.thread.environmentId,
+        providerThreadId,
+        sequence: (sequence += 1),
+        type: "thread/goal/updated",
+        scope: threadScope(),
+        data: {
+          providerThreadId,
+          objective: "Preserve native head state",
+          status: "active",
+          tokenBudget: null,
+          tokensUsed: 120,
+          timeUsedSeconds: 45,
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: adopted.thread.id,
+        environmentId: adopted.thread.environmentId,
+        providerThreadId,
+        sequence: (sequence += 1),
+        type: "thread/contextWindowUsage/updated",
+        scope: threadScope(),
+        data: {
+          providerThreadId,
+          contextWindowUsage: {
+            usedTokens: 900,
+            modelContextWindow: 200_000,
+            estimated: false,
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: adopted.thread.id,
+        environmentId: adopted.thread.environmentId,
+        providerThreadId,
+        sequence: (sequence += 1),
+        type: "thread/contextWindowUsage/updated",
+        scope: threadScope(),
+        data: {
+          providerThreadId,
+          contextWindowUsage: {
+            usedTokens: 1_234,
+            modelContextWindow: null,
+            estimated: true,
+          },
+        },
+      });
+      seedClientRequest({
+        requestId: settledRequestId,
+        text: "Settled local request",
+      });
+      seedEvent(harness.deps, {
+        threadId: adopted.thread.id,
+        environmentId: adopted.thread.environmentId,
+        providerThreadId,
+        sequence: (sequence += 1),
+        type: "turn/input/accepted",
+        scope: turnScope("native-turn-settled"),
+        data: { clientRequestId: settledRequestId, providerThreadId },
+      });
+      seedClientRequest({
+        requestId: pendingRequestId,
+        text: "Pending local request",
+      });
+
+      const nativeSession = {
+        providerThreadId,
+        title: "Recovered session",
+        cwd: "/tmp/native-adoption",
+        projectId: null,
+        workspaceRoot: "/tmp/native-adoption",
+        status: "idle",
+        createdAt: 1_777_000_000,
+        updatedAt: 1_777_000_100,
+        archived: false,
+        source: "cli",
+      } as const;
+      const settledNativeEvents = [
+        {
+          createdAt: 1_777_000_010_000,
+          event: {
+            type: "turn/started",
+            threadId: adopted.thread.id,
+            providerThreadId,
+            scope: turnScope("native-turn-settled"),
+          },
+        },
+        {
+          createdAt: 1_777_000_011_000,
+          event: {
+            type: "item/completed",
+            threadId: adopted.thread.id,
+            providerThreadId,
+            scope: turnScope("native-turn-settled"),
+            item: {
+              type: "userMessage",
+              id: "native-user-settled",
+              content: [{ type: "text", text: "Settled local request" }],
+            },
+          },
+        },
+        {
+          createdAt: 1_777_000_012_000,
+          event: {
+            type: "item/completed",
+            threadId: adopted.thread.id,
+            providerThreadId,
+            scope: turnScope("native-turn-settled"),
+            item: {
+              type: "agentMessage",
+              id: "native-agent-settled",
+              text: "Settled answer",
+            },
+          },
+        },
+        {
+          createdAt: 1_777_000_013_000,
+          event: {
+            type: "turn/completed",
+            threadId: adopted.thread.id,
+            providerThreadId,
+            scope: turnScope("native-turn-settled"),
+            status: "completed",
+          },
+        },
+      ];
+      const readTimeline = async (nativeEvents: typeof settledNativeEvents) => {
+        const responsePromise = harness.app.request(
+          `/api/v1/threads/${adopted.thread.id}/timeline`,
+        );
+        const history = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "provider.native_sessions.history" &&
+            command.providerThreadId === providerThreadId,
+        );
+        await reportQueuedCommandSuccess(
+          harness,
+          history as never,
+          { session: nativeSession, events: nativeEvents } as never,
+        );
+        const response = await responsePromise;
+        expect(response.status).toBe(200);
+        return threadTimelineResponseSchema.parse(await readJson(response));
+      };
+      const conversationTexts = (timeline: {
+        rows: Array<{ kind: string; text?: string }>;
+      }) =>
+        timeline.rows.flatMap((row) =>
+          row.kind === "conversation" && row.text !== undefined
+            ? [row.text]
+            : [],
+        );
+      const expectDeterministicUniqueRows = (timeline: {
+        rows: Array<{ id: string; sourceSeqStart: number }>;
+      }) => {
+        const ids = timeline.rows.map((row) => row.id);
+        const sequences = timeline.rows.map((row) => row.sourceSeqStart);
+        expect(new Set(ids).size).toBe(ids.length);
+        expect(new Set(sequences).size).toBe(sequences.length);
+        expect(sequences).toEqual(
+          [...sequences].sort((left, right) => left - right),
+        );
+      };
+
+      const beforeMutation = await readTimeline(settledNativeEvents);
+      expect(beforeMutation.goal).toMatchObject({
+        objective: "Preserve native head state",
+        status: "active",
+      });
+      expect(beforeMutation.contextWindowUsage).toEqual({
+        usedTokens: 1_234,
+        modelContextWindow: 200_000,
+        estimated: true,
+      });
+      expect(
+        conversationTexts(beforeMutation).filter(
+          (text) => text === "Settled local request",
+        ),
+      ).toHaveLength(1);
+      const pendingRow = beforeMutation.rows.find(
+        (row) =>
+          row.kind === "conversation" &&
+          row.role === "user" &&
+          row.text === "Pending local request",
+      );
+      expect(pendingRow).toMatchObject({
+        turnRequest: { kind: "message", status: "pending" },
+      });
+      expectDeterministicUniqueRows(beforeMutation);
+
+      seedEvent(harness.deps, {
+        threadId: adopted.thread.id,
+        environmentId: adopted.thread.environmentId,
+        providerThreadId,
+        sequence: (sequence += 1),
+        type: "thread/goal/cleared",
+        scope: threadScope(),
+        data: { providerThreadId },
+      });
+      seedEvent(harness.deps, {
+        threadId: adopted.thread.id,
+        environmentId: adopted.thread.environmentId,
+        providerThreadId,
+        sequence: (sequence += 1),
+        type: "thread/contextWindowUsage/updated",
+        scope: threadScope(),
+        data: {
+          providerThreadId,
+          contextWindowUsage: {
+            usedTokens: 1_500,
+            modelContextWindow: null,
+            estimated: false,
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        threadId: adopted.thread.id,
+        environmentId: adopted.thread.environmentId,
+        providerThreadId,
+        sequence: (sequence += 1),
+        type: "turn/input/accepted",
+        scope: turnScope("native-turn-pending"),
+        data: { clientRequestId: pendingRequestId, providerThreadId },
+      });
+      const completedNativeEvents = [
+        ...settledNativeEvents,
+        {
+          createdAt: 1_777_000_020_000,
+          event: {
+            type: "turn/started",
+            threadId: adopted.thread.id,
+            providerThreadId,
+            scope: turnScope("native-turn-pending"),
+          },
+        },
+        {
+          createdAt: 1_777_000_021_000,
+          event: {
+            type: "item/completed",
+            threadId: adopted.thread.id,
+            providerThreadId,
+            scope: turnScope("native-turn-pending"),
+            item: {
+              type: "userMessage",
+              id: "native-user-pending",
+              content: [{ type: "text", text: "Pending local request" }],
+            },
+          },
+        },
+        {
+          createdAt: 1_777_000_022_000,
+          event: {
+            type: "item/completed",
+            threadId: adopted.thread.id,
+            providerThreadId,
+            scope: turnScope("native-turn-pending"),
+            item: {
+              type: "agentMessage",
+              id: "native-agent-pending",
+              text: "Pending answer",
+            },
+          },
+        },
+        {
+          createdAt: 1_777_000_023_000,
+          event: {
+            type: "turn/completed",
+            threadId: adopted.thread.id,
+            providerThreadId,
+            scope: turnScope("native-turn-pending"),
+            status: "completed",
+          },
+        },
+      ];
+
+      const afterMutation = await readTimeline(completedNativeEvents);
+      expect(afterMutation.goal).toBeNull();
+      expect(afterMutation.contextWindowUsage).toEqual({
+        usedTokens: 1_500,
+        modelContextWindow: 200_000,
+        estimated: false,
+      });
+      expect(
+        conversationTexts(afterMutation).filter(
+          (text) => text === "Settled local request",
+        ),
+      ).toHaveLength(1);
+      expect(
+        conversationTexts(afterMutation).filter(
+          (text) => text === "Pending local request",
+        ),
+      ).toHaveLength(1);
+      expectDeterministicUniqueRows(afterMutation);
+      await expect(readTimeline(completedNativeEvents)).resolves.toEqual(
+        afterMutation,
+      );
     });
   });
 

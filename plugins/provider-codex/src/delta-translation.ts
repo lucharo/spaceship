@@ -140,17 +140,22 @@ export function normalizeCodexCitationText(text: string): string {
   });
 }
 
-function citationBufferKey(turnId: string, itemId: string): string {
-  return `${turnId}\0${itemId}`;
+function agentMessageItemKey(
+  threadId: string,
+  turnId: string,
+  itemId: string,
+): string {
+  return `${threadId}\0${turnId}\0${itemId}`;
 }
 
 function normalizeCodexCitationDelta(
   state: CodexEventTranslationState,
+  threadId: string,
   turnId: string,
   itemId: string,
   delta: string,
 ): string {
-  const key = citationBufferKey(turnId, itemId);
+  const key = agentMessageItemKey(threadId, turnId, itemId);
   let pending = (state.citationBuffersByItemKey.get(key) ?? "") + delta;
   let output = "";
 
@@ -486,13 +491,98 @@ function takeCodexRetryError(
 export function clearCodexEventTranslationThreadState(
   state: CodexEventTranslationState,
   threadId: string,
-): void {
+): ThreadDelta[] {
   const prefix = codexTurnKey({ threadId });
   for (const key of state.retryErrorsByTurnKey.keys()) {
     if (key.startsWith(prefix)) {
       state.retryErrorsByTurnKey.delete(key);
     }
   }
+  const turnIds = new Set<string>();
+  for (const key of state.pendingAgentMessageDeltasByItemKey.keys()) {
+    if (!key.startsWith(prefix)) continue;
+    const turnId = key.slice(prefix.length).split("\0", 1)[0];
+    if (turnId) turnIds.add(turnId);
+  }
+  const deltas = [...turnIds].flatMap((turnId) =>
+    takePendingAgentMessageDeltasForTurn(state, {
+      threadId,
+      turnId,
+      status: "failed",
+    }),
+  );
+  clearAgentMessageStateForPrefix(state, prefix);
+  return deltas;
+}
+
+function clearAgentMessageStateForPrefix(
+  state: CodexEventTranslationState,
+  prefix: string,
+): void {
+  for (const map of [
+    state.citationBuffersByItemKey,
+    state.pendingAgentMessageDeltasByItemKey,
+  ]) {
+    for (const key of map.keys()) {
+      if (key.startsWith(prefix)) map.delete(key);
+    }
+  }
+  for (const set of [
+    state.commentaryAgentMessageKeys,
+    state.classifiedAgentMessageKeys,
+  ]) {
+    for (const key of set) {
+      if (key.startsWith(prefix)) set.delete(key);
+    }
+  }
+}
+
+function takePendingAgentMessageDeltasForTurn(
+  state: CodexEventTranslationState,
+  args: {
+    threadId: string;
+    turnId: string;
+    status: ThreadEventItemStatus;
+  },
+): ThreadDelta[] {
+  const prefix = agentMessageItemKey(args.threadId, args.turnId, "");
+  const output: ThreadDelta[] = [];
+  for (const [key, pendingDeltas] of state.pendingAgentMessageDeltasByItemKey) {
+    if (!key.startsWith(prefix) || pendingDeltas.length === 0) continue;
+    const providerItemId = key.slice(prefix.length);
+    const item = {
+      type: "agentMessage" as const,
+      text: pendingDeltas.join(""),
+    };
+    output.push(
+      {
+        kind: "item.open",
+        key: { providerItemId },
+        item: { ...item, text: "" },
+        presentation: AGENT_MESSAGE_PRESENTATION,
+        providerTurnId: args.turnId,
+      },
+      ...pendingDeltas.map((text): ThreadDelta => ({
+        kind: "item.textDelta",
+        key: { providerItemId },
+        channel: state.commentaryAgentMessageKeys.has(key)
+          ? "reasoningSummary"
+          : "agentMessage",
+        text,
+        providerTurnId: args.turnId,
+      })),
+      {
+        kind: "item.close",
+        key: { providerItemId },
+        status: args.status,
+        item,
+        presentation: AGENT_MESSAGE_PRESENTATION,
+        providerTurnId: args.turnId,
+      },
+    );
+  }
+  clearAgentMessageStateForPrefix(state, prefix);
+  return output;
 }
 
 /**
@@ -1161,6 +1251,11 @@ export function translateCodexEventToDeltas(
       });
       const status = toTurnStatus(handledEvent.params.turn.status);
       return [
+        ...takePendingAgentMessageDeltasForTurn(state, {
+          threadId: handledEvent.params.threadId,
+          turnId: handledEvent.params.turn.id,
+          status,
+        }),
         {
           kind: "turn.boundary",
           providerTurnId: handledEvent.params.turn.id,
@@ -1237,7 +1332,8 @@ export function translateCodexEventToDeltas(
       ];
     case "item/started":
     case "item/completed": {
-      const itemKey = citationBufferKey(
+      const itemKey = agentMessageItemKey(
+        handledEvent.params.threadId,
         handledEvent.params.turnId,
         handledEvent.params.item.id,
       );
@@ -1261,6 +1357,9 @@ export function translateCodexEventToDeltas(
         handledEvent.method === "item/started" &&
         agentMessagePhaseIsUnknown
       ) {
+        if (!state.pendingAgentMessageDeltasByItemKey.has(itemKey)) {
+          state.pendingAgentMessageDeltasByItemKey.set(itemKey, []);
+        }
         return [];
       }
       const translation = translateCodexItemShape(
@@ -1307,6 +1406,9 @@ export function translateCodexEventToDeltas(
         handledEvent.params.item.type === "agentMessage"
           ? (state.pendingAgentMessageDeltasByItemKey.get(itemKey) ?? [])
           : [];
+      const hadDeferredStart =
+        handledEvent.params.item.type === "agentMessage" &&
+        state.pendingAgentMessageDeltasByItemKey.has(itemKey);
       const pendingChannel = state.commentaryAgentMessageKeys.has(itemKey)
         ? "reasoningSummary"
         : "agentMessage";
@@ -1325,7 +1427,11 @@ export function translateCodexEventToDeltas(
         presentation: translation.presentation,
         providerTurnId: handledEvent.params.turnId,
       };
-      if (pendingDeltas.length === 0) {
+      if (
+        pendingDeltas.length === 0 &&
+        !hadDeferredStart &&
+        !agentMessagePhaseIsUnknown
+      ) {
         return [closeDelta];
       }
       return [
@@ -1349,12 +1455,14 @@ export function translateCodexEventToDeltas(
     case "item/agentMessage/delta": {
       const text = normalizeCodexCitationDelta(
         state,
+        handledEvent.params.threadId,
         handledEvent.params.turnId,
         handledEvent.params.itemId,
         handledEvent.params.delta,
       );
       if (text.length === 0) return [];
-      const itemKey = citationBufferKey(
+      const itemKey = agentMessageItemKey(
+        handledEvent.params.threadId,
         handledEvent.params.turnId,
         handledEvent.params.itemId,
       );

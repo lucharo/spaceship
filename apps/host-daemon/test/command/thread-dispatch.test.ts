@@ -2344,6 +2344,34 @@ describe("thread command dispatch", () => {
     expect(result).toMatchObject({ providerThreadId: "native-1" });
   });
 
+  it("covers provider.native_sessions.archive", async () => {
+    const harness = createHarness();
+    let capturedArgs: unknown;
+
+    await expect(
+      dispatchOnlineRpcCommand(
+        {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          type: "provider.native_sessions.archive",
+          providerId: "codex",
+          providerThreadId: "native-1",
+        },
+        {
+          ...harness.dispatchOptions(),
+          archiveNativeSession: async (args) => {
+            capturedArgs = args;
+          },
+        },
+      ),
+    ).resolves.toEqual({});
+
+    expect(capturedArgs).toEqual({
+      providerId: "codex",
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      providerThreadId: "native-1",
+    });
+  });
+
   it("uses the server-provided thread runtime config", async () => {
     const threadStorage = await makeTempDir("bb-thread-runtime-");
     const harness = createHarness({ workspacePath: threadStorage });

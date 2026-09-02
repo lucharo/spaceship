@@ -389,6 +389,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     source: "cli",
     status: "idle",
   },
+  "provider.native_sessions.archive": {},
   "provider.native_sessions.history": {
     session: {
       providerThreadId: "native-1",
@@ -1108,7 +1109,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(180);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(181);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1139,6 +1140,21 @@ describe("host-daemon command schemas", () => {
       }),
     ).toMatchObject({
       type: "provider.native_sessions.read",
+      providerId: "codex",
+      providerThreadId: "native-1",
+    });
+  });
+
+  it("accepts a provider-native archive request", () => {
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
+        type: "provider.native_sessions.archive",
+        providerId: "codex",
+        bridgeLaunch: BRIDGE_LAUNCH,
+        providerThreadId: "native-1",
+      }),
+    ).toMatchObject({
+      type: "provider.native_sessions.archive",
       providerId: "codex",
       providerThreadId: "native-1",
     });

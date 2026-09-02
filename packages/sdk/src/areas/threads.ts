@@ -16,6 +16,7 @@ import type {
   CreateThreadRequest,
   AdoptNativeThreadRequest,
   AdoptNativeThreadResponse,
+  ArchiveNativeThreadRequest,
   EditMessageRequest,
   EditMessageResponse,
   ForkThreadRequest,
@@ -433,6 +434,7 @@ export interface ThreadTabsArea {
 
 export interface ThreadsArea {
   adoptNative(args: AdoptNativeThreadRequest): Promise<ThreadAdoptNativeResult>;
+  archiveNative(args: ArchiveNativeThreadRequest): Promise<{ ok: true }>;
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
@@ -896,6 +898,11 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     async adoptNative(input) {
       return transport.readJson(
         transport.api.v1.threads["adopt-native"].$post({ json: input }),
+      );
+    },
+    async archiveNative(input) {
+      return transport.readJson(
+        transport.api.v1.threads["archive-native"].$post({ json: input }),
       );
     },
     async archive(input) {

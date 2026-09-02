@@ -351,6 +351,7 @@ type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 
 type ExpectedThreadsKey =
   | "adoptNative"
+  | "archiveNative"
   | "archive"
   | "archiveAll"
   | "cancelPlan"

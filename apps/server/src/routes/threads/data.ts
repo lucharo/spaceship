@@ -4,11 +4,17 @@ import {
   getLastStoredProviderThreadId,
   getLatestThreadSequence,
   getLatestStoredConversationOutlineSequence,
+  listContextWindowUsageRows,
+  listLatestThreadStateEventRowsByThreadIds,
   listQueuedThreadMessages,
+  listStoredEventRows,
+  listStoredTurnInputAcceptedRowsByClientRequestIds,
+  listStoredTurnRejectedRowsByClientRequestIds,
 } from "@bb/db";
 import { buildThreadTimelineFromEvents } from "@bb/thread-view";
 import type { Hono } from "hono";
 import {
+  LEGACY_CODEX_GOAL_EXTENSION_KIND,
   PROMPT_HISTORY_ENTRY_LIMIT,
   threadEventTypeSchema,
   type ThreadEventType,
@@ -73,6 +79,7 @@ import {
   findThreadEvent,
   getLastThreadOutput,
   listThreadEventRows,
+  parseStoredEvent,
 } from "../../services/threads/thread-data.js";
 import { listThreadPromptHistory } from "../../services/prompt-history.js";
 import { tryResolveExistingThreadExecutionPlan } from "../../services/threads/thread-execution-plan.js";
@@ -413,14 +420,62 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           "The provider returned a different native session",
         );
       }
-      const events = history.events.map(({ createdAt, event }, index) => ({
-        event,
-        meta: {
-          id: `native-history-${index + 1}`,
-          seq: index + 1,
-          createdAt,
-        },
-      }));
+      const nativeEvents = history.events.map(
+        ({ createdAt, event }, index) => ({
+          event,
+          meta: {
+            id: `native-history-${index + 1}`,
+            seq: index + 1,
+            createdAt,
+          },
+        }),
+      );
+      const localHeadRows = [
+        ...listLatestThreadStateEventRowsByThreadIds(deps.db, {
+          threadIds: [thread.id],
+          kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
+        }),
+        ...listContextWindowUsageRows(deps.db, { threadId: thread.id }),
+      ];
+      const latestClientRequestRow = listStoredEventRows(deps.db, {
+        threadId: thread.id,
+        types: ["client/turn/requested"],
+        order: "desc",
+        limit: 1,
+      })[0];
+      if (latestClientRequestRow) {
+        const latestClientRequest = parseStoredEvent(latestClientRequestRow);
+        if (latestClientRequest.type === "client/turn/requested") {
+          const requestQuery = {
+            afterSequence: latestClientRequestRow.sequence,
+            clientRequestIds: [latestClientRequest.requestId],
+            threadId: thread.id,
+          };
+          const requestIsResolved =
+            listStoredTurnInputAcceptedRowsByClientRequestIds(
+              deps.db,
+              requestQuery,
+            ).length > 0 ||
+            listStoredTurnRejectedRowsByClientRequestIds(deps.db, requestQuery)
+              .length > 0;
+          if (!requestIsResolved) {
+            localHeadRows.push(latestClientRequestRow);
+          }
+        }
+      }
+      const localHeadEvents = [
+        ...new Map(localHeadRows.map((row) => [row.id, row])).values(),
+      ]
+        .sort((left, right) => left.sequence - right.sequence)
+        .map((row, index) => ({
+          event: parseStoredEvent(row),
+          meta: {
+            id: `native-local-head-${row.id}`,
+            seq: nativeEvents.length + index + 1,
+            createdAt: row.createdAt,
+          },
+        }));
+      const events = [...nativeEvents, ...localHeadEvents];
       const timeline = buildThreadTimelineFromEvents({
         acceptedClientRequestContext: {
           acceptedClientRequestEvents: [],

@@ -443,15 +443,14 @@ export function NativeSessionThreadList({
   });
   const archive = useMutation<NativeSession, Error, NativeSession>({
     mutationFn: async (session) => {
-      if (sessions.hostId === null || session.cwd === null) {
-        throw new Error("This session has no usable working directory");
+      if (sessions.hostId === null) {
+        throw new Error("This machine is not connected");
       }
-      const adopted = await sdk.threads.adoptNative({
+      await sdk.threads.archiveNative({
         hostId: sessions.hostId,
         providerId,
         providerThreadId: session.providerThreadId,
       });
-      await sdk.threads.archiveAll({ threadId: adopted.thread.id });
       return session;
     },
     onSuccess: () => {

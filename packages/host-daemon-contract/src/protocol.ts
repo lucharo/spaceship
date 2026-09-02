@@ -331,6 +331,10 @@
 // replaces the owning turn retains it. The wire shape is unchanged, but the
 // server-to-daemon payload semantics differ.
 //
+// Version 181 adds provider.native_sessions.archive so unprojected native
+// sessions can be archived without first creating a local thread or resolving
+// a workspace path. Older daemons cannot answer the command.
+//
 // Version 180 preserves unsupported Codex history items and defers native
 // agent-message classification until the provider supplies its phase. The
 // translated timeline semantics cross the server-to-daemon boundary, so
@@ -368,7 +372,7 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 180 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 181 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

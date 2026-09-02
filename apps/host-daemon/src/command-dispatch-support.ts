@@ -82,6 +82,11 @@ export interface CommandDispatchOptions {
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     providerThreadId: string;
   }) => Promise<NativeSessionReadResult>;
+  archiveNativeSession: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    providerThreadId: string;
+  }) => Promise<void>;
   readNativeSessionHistory?: (args: {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;

@@ -5,7 +5,10 @@ import type {
 import { findThreadsByNativeIdentities } from "@bb/db";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { AppDeps } from "../../types.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
+import {
+  callHostOnlineRpc,
+  callHostRetryableOnlineRpc,
+} from "../hosts/online-rpc.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import { requireBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
@@ -65,6 +68,23 @@ export async function readProviderNativeSession(
     timeoutMs: COMMAND_TIMEOUT_MS,
     command: {
       type: "provider.native_sessions.read",
+      providerId: args.providerId,
+      providerThreadId: args.providerThreadId,
+      bridgeLaunch,
+    },
+  });
+}
+
+export async function archiveProviderNativeSession(
+  deps: AppDeps,
+  args: { hostId: string; providerId: string; providerThreadId: string },
+): Promise<void> {
+  const bridgeLaunch = requireBridgeLaunchForProviderId(deps, args.providerId);
+  await callHostOnlineRpc(deps, {
+    hostId: args.hostId,
+    timeoutMs: COMMAND_TIMEOUT_MS,
+    command: {
+      type: "provider.native_sessions.archive",
       providerId: args.providerId,
       providerThreadId: args.providerThreadId,
       bridgeLaunch,

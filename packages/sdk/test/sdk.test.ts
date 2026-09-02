@@ -670,6 +670,37 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("archives a provider-native session without adopting it", async () => {
+    const queue = createFetchQueue([{ body: { ok: true } }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.archiveNative({
+        hostId: "host_1",
+        providerId: "codex",
+        providerThreadId: "native-1",
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({
+          hostId: "host_1",
+          providerId: "codex",
+          providerThreadId: "native-1",
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/archive-native",
+      },
+    ]);
+  });
+
   it("targets provider usage at an explicit machine", async () => {
     const usage = {
       codex: { status: "unauthenticated" as const },

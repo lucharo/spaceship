@@ -786,6 +786,17 @@ export async function createHostDaemonApp(
         (runtime) => runtime.readNativeSession(args),
       );
     },
+    archiveNativeSession: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) =>
+          runtime.archiveThread({
+            ...args,
+            threadId: args.providerThreadId,
+          }),
+      );
+    },
     readNativeSessionHistory: async (args) => {
       await refreshRuntimeShellEnv();
       return runtimeManager.withProviderMaintenanceRuntime(

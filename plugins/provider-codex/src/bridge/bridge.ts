@@ -114,6 +114,7 @@ import {
   createCodexEventTranslationState,
   translateCodexHistoryItemToDeltas,
 } from "../delta-translation.js";
+import { codexTurnErrorSchema } from "../schemas.js";
 import { readCodexThreadWorkspaceRootHints } from "../native-session-metadata.js";
 import {
   createCodexAppServerConnection,
@@ -942,6 +943,14 @@ function handleChildExit(
   // here (and settles turns as interrupted, not failed).
   const openTurnIds = [...session.openCodexTurnIds];
   const message = `codex app-server exited unexpectedly (code ${info.code ?? "null"}, signal ${info.signal ?? "null"})${info.stderrTail ? `: ${info.stderrTail}` : ""}`;
+  if (session.codexThreadId !== null) {
+    sendThreadDeltas(
+      session,
+      session.translator.clearExitedChildThreadState({
+        providerThreadId: session.codexThreadId,
+      }),
+    );
+  }
   sendThreadDeltas(
     session,
     openTurnIds.map((codexTurnId) => ({
@@ -959,18 +968,9 @@ function handleChildExit(
       : {}),
     message,
   });
-  // Nothing runs behind a dead child, so drop its live state and settle every
-  // delegation it still had open as failed: open delegations are open work
-  // for the runtime's reaper, and without the closes the thread would never
-  // be idle-reaped.
-  if (session.codexThreadId !== null) {
-    sendThreadDeltas(
-      session,
-      session.translator.clearExitedChildThreadState({
-        providerThreadId: session.codexThreadId,
-      }),
-    );
-  }
+  // Nothing runs behind a dead child. Its item and delegation closes were sent
+  // before the turn boundaries above so the canonical timeline never receives
+  // content after a terminal turn.
   // The session entry stays (with its identity) so the next turn/start can
   // restore the thread from its rollout via session/replaced.
 }
@@ -1052,6 +1052,7 @@ const codexThreadHistoryResultSchema = z
               "interrupted",
               "inProgress",
             ]),
+            error: codexTurnErrorSchema.nullable().optional(),
             items: z.array(z.unknown()),
             startedAt: z.number().int().nonnegative().nullable(),
             completedAt: z.number().int().nonnegative().nullable(),
@@ -1808,6 +1809,9 @@ async function handleNativeSessionHistory(
                   kind: "turn.boundary" as const,
                   providerTurnId: turn.id,
                   status: turn.status,
+                  ...(turn.error?.message
+                    ? { error: { message: turn.error.message } }
+                    : {}),
                 },
               ]),
         ],
@@ -2203,6 +2207,12 @@ async function handleThreadStop(
     INTERRUPT_SETTLEMENT_TIMEOUT_MS,
   );
   if (!settled) {
+    sendThreadDeltas(
+      session,
+      session.translator.clearExitedChildThreadState({
+        providerThreadId: session.codexThreadId,
+      }),
+    );
     sendThreadDeltas(session, [
       {
         kind: "turn.boundary",
@@ -2215,12 +2225,14 @@ async function handleThreadStop(
   // thread, so neither may the bridge. Open delegations die with the child
   // and are settled first (they are open work for the runtime's reaper);
   // the rollout on disk keeps the session resumable.
-  sendThreadDeltas(
-    session,
-    session.translator.clearExitedChildThreadState({
-      providerThreadId: session.codexThreadId,
-    }),
-  );
+  if (settled) {
+    sendThreadDeltas(
+      session,
+      session.translator.clearExitedChildThreadState({
+        providerThreadId: session.codexThreadId,
+      }),
+    );
+  }
   releaseSession(session);
   sendResult(id, { ok: true });
 }

@@ -171,6 +171,8 @@ const scriptPath = process.argv[2];
 const script = scriptPath ? JSON.parse(readFileSync(scriptPath, "utf8")) : null;
 const scriptedTurns = script?.turns ?? null;
 const nativeSessionCwd = script?.nativeSessionCwd ?? "/workspace";
+const historicalTurnStatus = script?.historicalTurnStatus ?? "completed";
+const historicalTurnError = script?.historicalTurnError ?? null;
 const modelListFailOnceMarkerPath = script?.modelListFailOnceMarkerPath ?? null;
 /**
  * `archiveStatePath`: a JSON file of archived thread ids shared by every fake
@@ -510,8 +512,8 @@ async function handleRequest(message) {
             ? [
                 {
                   id: "private-turn",
-                  status: "completed",
-                  error: null,
+                  status: historicalTurnStatus,
+                  error: historicalTurnError,
                   startedAt: 1_777_000_010,
                   completedAt: 1_777_000_020,
                   durationMs: 10_000,

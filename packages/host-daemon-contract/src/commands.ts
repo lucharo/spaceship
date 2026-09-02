@@ -977,6 +977,15 @@ const providerNativeSessionsReadCommandSchema = z
   })
   .strict();
 
+const providerNativeSessionsArchiveCommandSchema = z
+  .object({
+    type: z.literal("provider.native_sessions.archive"),
+    providerId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    ...nativeSessionReadParamsSchema.shape,
+  })
+  .strict();
+
 const providerNativeSessionsHistoryCommandSchema = z
   .object({
     type: z.literal("provider.native_sessions.history"),
@@ -2028,6 +2037,15 @@ export const hostDaemonCommandRegistry = {
     resultSchema: nativeSessionReadResultSchema,
     transport: "onlineRpc",
     retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.native_sessions.archive": defineHostDaemonCommandDescriptor({
+    type: "provider.native_sessions.archive",
+    schema: providerNativeSessionsArchiveCommandSchema,
+    resultSchema: emptyCommandResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

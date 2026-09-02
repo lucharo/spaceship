@@ -27,7 +27,7 @@ import { NativeSessionThreadList } from "./NativeCodexSidebar";
 vi.mock("@/lib/sdk", () => ({
   sdk: {
     providers: { nativeSessions: vi.fn() },
-    threads: { adoptNative: vi.fn(), archiveAll: vi.fn() },
+    threads: { adoptNative: vi.fn(), archiveNative: vi.fn() },
   },
 }));
 
@@ -378,13 +378,9 @@ describe("NativeSessionThreadList", () => {
     expect(sdk.threads.adoptNative).not.toHaveBeenCalled();
   });
 
-  it("archives a native thread through the provider-backed thread lifecycle", async () => {
+  it("archives a native thread without adopting it", async () => {
     vi.mocked(sdk.providers.nativeSessions).mockResolvedValue(nativeSessions);
-    vi.mocked(sdk.threads.adoptNative).mockResolvedValue(adoptedThread);
-    vi.mocked(sdk.threads.archiveAll).mockResolvedValue({
-      ok: true,
-      archivedThreadIds: [adoptedThread.thread.id],
-    });
+    vi.mocked(sdk.threads.archiveNative).mockResolvedValue({ ok: true });
 
     renderSidebar();
     await screen.findByText("Recover a native session");
@@ -393,10 +389,13 @@ describe("NativeSessionThreadList", () => {
     );
 
     await waitFor(() =>
-      expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
-        threadId: adoptedThread.thread.id,
+      expect(sdk.threads.archiveNative).toHaveBeenCalledWith({
+        hostId: "host_primary",
+        providerId: "codex",
+        providerThreadId: "native-thread-1",
       }),
     );
+    expect(sdk.threads.adoptNative).not.toHaveBeenCalled();
   });
 
   it("paints cached native metadata before the live refresh completes", async () => {

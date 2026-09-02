@@ -514,7 +514,7 @@ const codexErrorInfoSchema = z.union([
 ]);
 export type CodexErrorInfo = z.infer<typeof codexErrorInfoSchema>;
 
-const codexTurnErrorSchema = z
+export const codexTurnErrorSchema = z
   .object({
     message: z.string(),
     codexErrorInfo: codexErrorInfoSchema.nullish(),

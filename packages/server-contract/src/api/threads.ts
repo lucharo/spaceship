@@ -184,6 +184,17 @@ export type AdoptNativeThreadRequest = z.infer<
   typeof adoptNativeThreadRequestSchema
 >;
 
+export const archiveNativeThreadRequestSchema = z
+  .object({
+    hostId: z.string().min(1),
+    providerId: z.string().min(1),
+    providerThreadId: z.string().min(1),
+  })
+  .strict();
+export type ArchiveNativeThreadRequest = z.infer<
+  typeof archiveNativeThreadRequestSchema
+>;
+
 const agentOnlyPromptInputSchema = promptInputSchema.and(
   z.object({ visibility: z.literal("agent-only") }),
 );

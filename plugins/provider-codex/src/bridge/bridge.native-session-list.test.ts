@@ -197,6 +197,56 @@ it("reads native history only when explicitly requested", async () => {
   expect(readdirSync(recordingDir)).toEqual([]);
 });
 
+it("preserves the native error on a historical failed turn", async () => {
+  const scriptPath = join(codexHomeDir, "failed-history-script.json");
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      historicalTurnStatus: "failed",
+      historicalTurnError: {
+        message: "Synthetic provider failure",
+        codexErrorInfo: "other",
+        additionalDetails: null,
+      },
+    }),
+  );
+  vi.stubEnv(
+    "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
+    JSON.stringify([fakeAppServerPath, scriptPath]),
+  );
+
+  harness.sendRequest(1, "initialize", {
+    protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+    client: { name: "test", version: "1" },
+    grammarVersions: [3, 3],
+  });
+  await harness.waitForResponse(1);
+
+  harness.sendRequest(2, "native/session/history", {
+    providerThreadId: "codex-native-1",
+  });
+
+  await expect(harness.waitForResponse(2)).resolves.toMatchObject({
+    result: {
+      turns: [
+        {
+          providerTurnId: "private-turn",
+          deltas: [
+            { kind: "turn.open" },
+            { kind: "input.provider" },
+            { kind: "item.close" },
+            {
+              kind: "turn.boundary",
+              status: "failed",
+              error: { message: "Synthetic provider failure" },
+            },
+          ],
+        },
+      ],
+    },
+  });
+});
+
 it("reads a resumed turn from a fresh app-server process", async () => {
   const historyStatePath = join(codexHomeDir, "native-history.ndjson");
   const scriptPath = join(codexHomeDir, "native-history-script.json");

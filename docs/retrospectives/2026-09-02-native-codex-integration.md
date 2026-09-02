@@ -27,7 +27,17 @@ The landing review caught the remaining boundary failures: native history needed
 
 The exact-head review then caught two small but important violations of that same rule. Removing the last Codex id check had accidentally exposed compatibility providers in the default new-thread picker, so native-session eligibility is now provider-declared metadata projected through the generic provider contract. It also found that a `$` query with only slash-command matches could open an empty menu; the composer now suppresses the menu from the provider-filtered result, with a mutation-proven regression test.
 
+The final convergence pass found three deeper native-boundary defects. Archive still adopted an unprojected session first, which could fail for sessions without a current working directory and created state merely to perform provider maintenance. Native history correctly owned the transcript but accidentally displaced local goals, context usage, and pending user requests. Finally, an item whose semantic phase became known only at completion could leave buffered output stranded at turn or process shutdown, and failed historical turns could lose their native error. The fixes make archive a direct provider RPC, overlay local control state without duplicating transcript rows, key pending items by native thread and turn identity, and flush or clear deferred output at every terminal boundary.
+
 It also exposed two existing macOS test assumptions: Linux process supervision expected `/proc`, and temporary paths could compare as `/tmp` versus `/private/tmp`. Those checks now use portable behaviour. The Electron window smoke itself cannot be torn down by this agent host because macOS denies signalling the spawned process; that test remains a runtime-environment exception rather than a product assertion.
+
+## Lessons worth keeping
+
+- Native-first is an authority boundary, not just a source label. Maintenance actions should reach the provider directly when no local projection is otherwise needed.
+- Provider-owned history and local UI state can coexist, but the merge must be explicit and deterministic. Replacing either side wholesale loses information.
+- Streaming translators need a distinct “seen but not yet classifiable” state. Empty buffered text is still state, and terminal events must flush or clear it.
+- A wire change is incomplete until command registration, response unions, fixtures, dispatch, SDK exposure, and protocol version all move together.
+- Exact provider and app tests caught semantic failures that typechecking could not; the live visual pass remained necessary for interaction and presentation confidence.
 
 ## What remains intentionally open
 
@@ -37,7 +47,7 @@ Spaceship's short name is `sp`. `ss` is deliberately not used.
 
 ## Question audit
 
-The session contained 18 durable product questions. Twelve now have concise, source-linked answers in the [Spaceship FAQ](../faq/README.md); the FAQ also records two operational edge cases found during landing review. Four questions are represented by current feature specifications or tracker issues because their answer is intentionally incomplete. Two comparative questions about unrelated external projects were left out because this repository cannot verify them as durable Spaceship facts.
+The session contained 18 durable Spaceship product questions. Fifteen now have concise, source-linked answers in the [Spaceship FAQ](../faq/README.md); three are represented by current feature specifications or tracker issues because their answer is intentionally incomplete. Two additional comparative questions about unrelated external projects were left out because this repository cannot verify them as durable Spaceship facts.
 
 ---
 

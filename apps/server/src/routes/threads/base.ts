@@ -60,7 +60,10 @@ import {
 } from "../../services/lib/entity-lookup.js";
 import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
 import { requireBridgeLaunchForProviderId } from "../../services/system/provider-bridge-launch.js";
-import { readProviderNativeSession } from "../../services/system/native-sessions.js";
+import {
+  archiveProviderNativeSession,
+  readProviderNativeSession,
+} from "../../services/system/native-sessions.js";
 import { dispatchThreadRenameCommand } from "../../services/threads/thread-commands.js";
 import {
   finalizeStoppedThread,
@@ -81,6 +84,7 @@ import {
   emitPluginThreadCreated,
   emitPluginThreadDeleted,
 } from "../../services/plugins/plugin-thread-events.js";
+import { archiveThreadAndChildren } from "../../services/threads/thread-archive.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
   const includes = new Set<ThreadIncludeOption>();
@@ -511,6 +515,17 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       },
       200,
     );
+  });
+
+  post(routes.archiveNative, async (context, payload) => {
+    requireNonDestroyedHostWithStatus(deps, payload.hostId);
+    const existing = findThreadByNativeIdentity(deps.db, payload);
+    if (existing !== null) {
+      archiveThreadAndChildren(deps, { parentThread: existing });
+      return context.json({ ok: true as const });
+    }
+    await archiveProviderNativeSession(deps, payload);
+    return context.json({ ok: true as const });
   });
 
   post(routes.fork, async (context, payload) => {

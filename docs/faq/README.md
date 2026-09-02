@@ -69,12 +69,25 @@ _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02 · Scope/ver
 
 **Short answer:** Active sessions appear in the main thread list, archived sessions are separated, and archiving delegates to Codex app-server.
 
-Existing local projections can recover through native unarchive. A direct unarchive action in the archived catalogue, plus rename and fork parity, remains tracked rather than being emulated in Spaceship.
+Archiving a native row does not adopt it, create a Spaceship thread, or require a working directory. Existing local projections can recover through native unarchive. A direct unarchive action in the archived catalogue, plus rename and fork parity, remains tracked rather than being emulated in Spaceship.
 
 ### Sources
 
 - [Native session architecture](../spaceship-native-sessions.md) — current lifecycle limits.
 - [Lifecycle parity issue](https://github.com/lucharo/spaceship/issues/4) — remaining direct unarchive, rename, and fork work.
+
+_Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
+
+## What does Spaceship keep locally for an opened native thread?
+
+**Short answer:** A lightweight identity and control projection, never a second copy of the provider transcript.
+
+Codex remains authoritative for messages, turns, errors, and continuation. Spaceship overlays local interface state such as goals, context usage, pending user requests, navigation, and unread state when it renders native history.
+
+### Sources
+
+- [Native session architecture](../spaceship-native-sessions.md) — authority and projection boundary.
+- [Thread timeline route](../../apps/server/src/routes/threads/data.ts) — native history plus local control-state overlay.
 
 _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
 

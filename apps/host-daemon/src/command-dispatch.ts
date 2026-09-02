@@ -659,6 +659,18 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       providerThreadId: command.providerThreadId,
     });
   },
+  "provider.native_sessions.archive": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    await options.archiveNativeSession({
+      providerId: command.providerId,
+      bridgeLaunch,
+      providerThreadId: command.providerThreadId,
+    });
+    return {};
+  },
   "provider.native_sessions.history": async (command, options) => {
     if (options.readNativeSessionHistory === undefined) {
       throw new Error("Native session history is unavailable");

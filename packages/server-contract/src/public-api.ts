@@ -56,6 +56,7 @@ import type {
   CreateThreadRequest,
   AdoptNativeThreadRequest,
   AdoptNativeThreadResponse,
+  ArchiveNativeThreadRequest,
   EditMessageRequest,
   EditMessageResponse,
   ForkThreadRequest,
@@ -234,6 +235,7 @@ import {
   updateQueuedMessageRequestSchema,
   createThreadRequestSchema,
   adoptNativeThreadRequestSchema,
+  archiveNativeThreadRequestSchema,
   forkThreadRequestSchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
@@ -909,6 +911,14 @@ export const publicApiRoutes = {
         adoptNativeThreadRequestSchema,
       ),
       response: jsonResponse<AdoptNativeThreadResponse>(),
+    }),
+    archiveNative: defineRoute({
+      path: "/threads/archive-native",
+      method: "post",
+      request: jsonRequest<EmptyInput, ArchiveNativeThreadRequest>(
+        archiveNativeThreadRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
     }),
     list: defineRoute({
       path: "/threads",
