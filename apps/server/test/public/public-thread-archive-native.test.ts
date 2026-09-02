@@ -9,6 +9,7 @@ import {
 import { readJson } from "../helpers/json.js";
 import {
   seedHostSession,
+  seedThread,
   seedThreadFixture,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
@@ -99,6 +100,103 @@ describe("public native thread archive", () => {
       const response = await responsePromise;
       expect(response.status).toBe(200);
       expect(await readJson(response)).toEqual({ ok: true });
+      expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
+      expect(
+        listQueuedCommands(harness, "provider.native_sessions.archive"),
+      ).toHaveLength(1);
+      expect(
+        listQueuedThreadCommands(harness, "thread.archive", thread.id),
+      ).toEqual([]);
+    });
+  });
+
+  it("preflights every local projection before archiving the provider", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, project, environment, thread } = seedThreadFixture(
+        harness,
+        {
+          session: { id: "host-native-archive-preflight" },
+        },
+      );
+      const providerThreadId = "native-thread-preflight";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+      const child = seedThread(harness.deps, {
+        environmentId: null,
+        parentThreadId: thread.id,
+        projectId: project.id,
+        status: "starting",
+      });
+
+      const response = await harness.app.request(
+        "/api/v1/threads/archive-native",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            hostId: host.id,
+            providerId: "codex",
+            providerThreadId,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(409);
+      expect(getThread(harness.db, thread.id)?.archivedAt).toBeNull();
+      expect(getThread(harness.db, child.id)?.archivedAt).toBeNull();
+      expect(
+        listQueuedCommands(harness, "provider.native_sessions.archive"),
+      ).toEqual([]);
+    });
+  });
+
+  it("does not archive an active provider session twice after stop settles", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, environment, thread } = seedThreadFixture(harness, {
+        session: { id: "host-native-archive-active" },
+        thread: { status: "active" },
+      });
+      const providerThreadId = "native-thread-active";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+
+      const responsePromise = harness.app.request(
+        "/api/v1/threads/archive-native",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            hostId: host.id,
+            providerId: "codex",
+            providerThreadId,
+          }),
+        },
+      );
+      const archive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.archive" &&
+          command.providerThreadId === providerThreadId,
+      );
+      await reportQueuedCommandSuccess(harness, archive as never, {} as never);
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      const stop = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === thread.id,
+      );
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: null,
+      });
+
       expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
       expect(
         listQueuedCommands(harness, "provider.native_sessions.archive"),

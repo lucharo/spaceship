@@ -22,6 +22,7 @@ import { emitPluginThreadArchived } from "../plugins/plugin-thread-events.js";
 import {
   dispatchSettledArchivedThreadProviderArchiveCommand,
   requestActiveRuntimeThreadStopIfNeeded,
+  suppressSettledArchivedThreadProviderArchiveCommand,
 } from "./thread-lifecycle.js";
 import { archiveThreadAndReleaseChildren } from "./thread-ownership.js";
 import { requireThreadHostCommandEnvironment } from "./thread-command-environment.js";
@@ -50,6 +51,16 @@ interface ArchiveEnvironmentThreadsArgs {
 interface ArchiveThreadAndChildrenArgs {
   parentThread: Thread;
   skipProviderArchiveThreadId?: string;
+}
+
+interface PreparedArchiveThread {
+  environment: ArchiveThreadEnvironment | null;
+  skipProviderArchive: boolean;
+  thread: ArchiveThreadWithLifecycleEffectsArgs["thread"];
+}
+
+export interface PreparedThreadAndChildrenArchive {
+  threads: PreparedArchiveThread[];
 }
 
 /**
@@ -97,6 +108,9 @@ function archiveThreadWithLifecycleEffects(
   deps.terminalSessions.closeArchivedThreadTerminals({
     threadId: archivedThread.id,
   });
+  if (args.skipProviderArchive) {
+    suppressSettledArchivedThreadProviderArchiveCommand(archivedThread.id);
+  }
   // Archive only stops active runtime work; manual stop is the pre-start
   // provisioning cancellation entrypoint. A thread whose environment row was
   // pruned has no runtime left to stop.
@@ -107,11 +121,9 @@ function archiveThreadWithLifecycleEffects(
       args.environment,
     );
   }
-  if (!args.skipProviderArchive) {
-    dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
-      threadId: archivedThread.id,
-    });
-  }
+  dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
+    threadId: archivedThread.id,
+  });
   resetActiveThreadEventPruningState(archivedThread.id);
   pruneThreadEventHistoryBestEffort(deps, {
     mode: "archived",
@@ -184,10 +196,10 @@ export function archiveEnvironmentThreads(
   return archivedThreadIds;
 }
 
-export function archiveThreadAndChildren(
+export function prepareThreadAndChildrenArchive(
   deps: AppDeps,
   args: ArchiveThreadAndChildrenArgs,
-): string[] {
+): PreparedThreadAndChildrenArchive {
   const childThreads = listUnarchivedAssignedChildThreads(deps.db, {
     parentThreadId: args.parentThread.id,
   });
@@ -203,14 +215,26 @@ export function archiveThreadAndChildren(
   if (args.parentThread.archivedAt === null) {
     threads.push(args.parentThread);
   }
+  return {
+    threads: threads.map((thread) => ({
+      environment: resolveArchiveThreadEnvironment(deps, { thread }),
+      skipProviderArchive: thread.id === args.skipProviderArchiveThreadId,
+      thread,
+    })),
+  };
+}
+
+export function archivePreparedThreadAndChildren(
+  deps: AppDeps,
+  prepared: PreparedThreadAndChildrenArchive,
+): string[] {
   const archivedThreadIds: string[] = [];
   const affectedEnvironmentIds = new Set<string>();
 
-  for (const thread of threads) {
-    const environment = resolveArchiveThreadEnvironment(deps, { thread });
+  for (const { environment, skipProviderArchive, thread } of prepared.threads) {
     const result = archiveThreadWithLifecycleEffects(deps, {
       environment,
-      skipProviderArchive: thread.id === args.skipProviderArchiveThreadId,
+      skipProviderArchive,
       thread,
     });
     if (!result) {
@@ -234,4 +258,14 @@ export function archiveThreadAndChildren(
   }
 
   return archivedThreadIds;
+}
+
+export function archiveThreadAndChildren(
+  deps: AppDeps,
+  args: ArchiveThreadAndChildrenArgs,
+): string[] {
+  return archivePreparedThreadAndChildren(
+    deps,
+    prepareThreadAndChildrenArchive(deps, args),
+  );
 }

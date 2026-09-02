@@ -109,6 +109,8 @@ type ThreadEventAppendArgs = Parameters<
   typeof appendThreadEventsInTransaction
 >[1][number];
 
+const settledProviderArchiveSuppressions = new Set<string>();
+
 type ThreadFailureCommand = ThreadStartCommand | TurnSubmitCommand;
 
 type ThreadFailureResultReport = CommandResultFailureReportForType<
@@ -582,6 +584,17 @@ export function dispatchSettledArchivedThreadProviderArchiveCommand(
   args: DispatchSettledArchivedThreadProviderArchiveCommandArgs,
 ): boolean {
   const thread = getThread(deps.db, args.threadId);
+  if (settledProviderArchiveSuppressions.has(args.threadId)) {
+    if (
+      !thread ||
+      (thread.status !== "active" &&
+        thread.status !== "stopping" &&
+        !hasLiveThreadStartInFlight(args.threadId))
+    ) {
+      settledProviderArchiveSuppressions.delete(args.threadId);
+    }
+    return false;
+  }
   if (!thread || thread.status === "active" || thread.status === "stopping") {
     return false;
   }
@@ -592,6 +605,12 @@ export function dispatchSettledArchivedThreadProviderArchiveCommand(
   return dispatchArchivedThreadProviderArchiveCommand(deps, {
     threadId: thread.id,
   });
+}
+
+export function suppressSettledArchivedThreadProviderArchiveCommand(
+  threadId: string,
+): void {
+  settledProviderArchiveSuppressions.add(threadId);
 }
 
 function getThreadFailureCommandErrorScope(

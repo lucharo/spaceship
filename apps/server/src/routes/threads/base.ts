@@ -84,7 +84,10 @@ import {
   emitPluginThreadCreated,
   emitPluginThreadDeleted,
 } from "../../services/plugins/plugin-thread-events.js";
-import { archiveThreadAndChildren } from "../../services/threads/thread-archive.js";
+import {
+  archivePreparedThreadAndChildren,
+  prepareThreadAndChildrenArchive,
+} from "../../services/threads/thread-archive.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
   const includes = new Set<ThreadIncludeOption>();
@@ -519,13 +522,17 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.archiveNative, async (context, payload) => {
     requireNonDestroyedHostWithStatus(deps, payload.hostId);
-    await archiveProviderNativeSession(deps, payload);
     const existing = findThreadByNativeIdentity(deps.db, payload);
-    if (existing !== null) {
-      archiveThreadAndChildren(deps, {
-        parentThread: existing,
-        skipProviderArchiveThreadId: existing.id,
-      });
+    const preparedLocalArchive =
+      existing === null
+        ? null
+        : prepareThreadAndChildrenArchive(deps, {
+            parentThread: existing,
+            skipProviderArchiveThreadId: existing.id,
+          });
+    await archiveProviderNativeSession(deps, payload);
+    if (preparedLocalArchive !== null) {
+      archivePreparedThreadAndChildren(deps, preparedLocalArchive);
     }
     return context.json({ ok: true as const });
   });
