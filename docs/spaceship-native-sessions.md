@@ -46,8 +46,11 @@ Codex app-server <-> Spaceship provider bridge <-> Spaceship UI
 - The current native-history projection opens the latest complete history;
   bounded older-page loading and full-output hydration are tracked in
   [#12](https://github.com/lucharo/spaceship/issues/12).
-- Archive and unarchive delegate to Codex app-server. Native rename and fork
-  parity remain tracked in [#4](https://github.com/lucharo/spaceship/issues/4).
+- Archiving an active row delegates to Codex app-server. Existing local
+  projections can recover through native unarchive, but the archived catalogue
+  does not yet expose a direct unarchive action. That affordance, native rename,
+  and fork parity remain tracked in
+  [#4](https://github.com/lucharo/spaceship/issues/4).
 - The default new-thread path is Codex-only until another provider has an
   equivalent native adapter; see
   [#5](https://github.com/lucharo/spaceship/issues/5).

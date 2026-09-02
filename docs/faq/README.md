@@ -67,9 +67,9 @@ _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02 · Scope/ver
 
 ## How are active and archived Codex sessions handled?
 
-**Short answer:** Active sessions appear in the main thread list; archived sessions are separated, and archive or unarchive operations are delegated to Codex app-server.
+**Short answer:** Active sessions appear in the main thread list, archived sessions are separated, and archiving delegates to Codex app-server.
 
-Rename and fork parity remain tracked separately rather than being emulated in Spaceship.
+Existing local projections can recover through native unarchive. A direct unarchive action in the archived catalogue, plus rename and fork parity, remains tracked rather than being emulated in Spaceship.
 
 ### Sources
 

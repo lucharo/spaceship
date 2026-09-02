@@ -67,9 +67,10 @@ Hygiene rules (each traces to incident #853):
 ## Versioning and capabilities
 
 `initialize` exchanges `{protocolVersion, capabilities}` in both directions.
-The current version is **2** (the narrow-grammar cutover: `thread/delta`
-replaced `thread/event`); the runtime rejects a bridge answering another
-version with a legible startup error, since a version-1 bridge would
+The current version is **3**. Version 2 was the narrow-grammar cutover where
+`thread/delta` replaced `thread/event`; version 3 adds the required native
+session metadata used for project identity and live status. The runtime rejects
+a bridge answering another version with a legible startup error, since an older bridge would
 otherwise connect and produce a silently empty timeline. The version bumps
 only for breaking changes; everything additive rides capability tolerance:
 unknown methods answer `-32601`, unknown notifications are ignored, unknown
