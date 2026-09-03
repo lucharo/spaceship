@@ -49,6 +49,17 @@ describe("builtin skills copy", () => {
     await expect(
       readFile(path.join(targetPath, "bb-cli", "SKILL.md"), "utf8"),
     ).resolves.toBe(await readBuiltinSkill("bb-cli"));
+    await expect(
+      readFile(
+        path.join(
+          targetPath,
+          "bb-plugin-authoring",
+          "references",
+          "native-provider-sessions.md",
+        ),
+        "utf8",
+      ),
+    ).resolves.toContain("# Native provider sessions");
   });
 
   it("throws when the sentinel skill is missing beside the module", async () => {

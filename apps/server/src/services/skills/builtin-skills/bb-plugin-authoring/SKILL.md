@@ -1321,6 +1321,12 @@ health; bridge failures hide only that provider.
 artifact — the same artifact a host RPC entry ships in, and a plugin may have
 both. Export it by name:
 
+When the provider exposes sessions created outside BB, read
+[`references/native-provider-sessions.md`](references/native-provider-sessions.md)
+before changing the bridge, runtime, server, or UI. It is the compact checklist
+for native history projection, identity and concurrency, protocol propagation,
+event finalisation, metadata caching, and real-runtime verification.
+
 ```ts
 // host.ts (bb.host)
 import { experimental_defineProviderBridge } from "@get-bb/plugin-sdk/provider-bridge";
