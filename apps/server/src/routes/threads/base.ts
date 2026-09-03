@@ -17,6 +17,7 @@ import {
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
   searchThreadsWithPendingInteractionState,
+  setThreadExecutionOverride,
   updateThread,
   unarchiveThread,
   type ThreadSearchResultGroup as DbThreadSearchResultGroup,
@@ -80,7 +81,7 @@ import {
 } from "../../services/threads/thread-runtime-display.js";
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
-import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
+import { resolveThreadExecutionOverrideForThread } from "../../services/threads/thread-execution-override.js";
 import { unmanagedAttachRefusal } from "../../services/threads/workspace-path-claims.js";
 import {
   emitPluginThreadCreated,
@@ -674,12 +675,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   patch(routes.update, async (context, payload) => {
     const update = async () => {
       const thread = requirePublicThread(deps.db, context.req.param("id"));
-      if (payload.parentThreadId) {
-        assertValidParentThread(deps, {
-          childThreadId: thread.id,
-          parentThreadId: payload.parentThreadId,
-        });
-      }
       const validateVisibility = () => {
         if (
           payload.visibility !== "hidden" ||
@@ -701,23 +696,29 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
           );
         }
       };
-      // Sticky execution override (model / reasoning level). Validated and
-      // persisted by a dedicated service — kept off the generic metadata update
-      // because execution config must not flow through `updateThread`.
-      if ("model" in payload || "reasoningLevel" in payload) {
-        await applyThreadExecutionOverride(deps, {
-          thread,
-          patch: {
-            ...("model" in payload ? { model: payload.model } : {}),
-            ...("reasoningLevel" in payload
-              ? { reasoningLevel: payload.reasoningLevel }
-              : {}),
-          },
-          validateBeforePersist: validateVisibility,
+      // Resolve sticky execution config first because model discovery may await
+      // the host. Persist it only after every metadata field has also validated,
+      // so a combined PATCH cannot leave half of its requested state behind.
+      const executionOverride =
+        "model" in payload || "reasoningLevel" in payload
+          ? await resolveThreadExecutionOverrideForThread(deps, {
+              thread,
+              patch: {
+                ...("model" in payload ? { model: payload.model } : {}),
+                ...("reasoningLevel" in payload
+                  ? { reasoningLevel: payload.reasoningLevel }
+                  : {}),
+              },
+            })
+          : null;
+
+      if (payload.parentThreadId) {
+        assertValidParentThread(deps, {
+          childThreadId: thread.id,
+          parentThreadId: payload.parentThreadId,
         });
-      } else {
-        validateVisibility();
       }
+      validateVisibility();
 
       const metadataUpdate: UpdateThreadInput = {};
       if ("title" in payload) {
@@ -736,10 +737,19 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       if ("visibility" in payload) {
         metadataUpdate.visibility = payload.visibility;
       }
-      const updated =
-        Object.keys(metadataUpdate).length > 0
-          ? updateThread(deps.db, deps.hub, thread.id, metadataUpdate)
-          : requirePublicThread(deps.db, thread.id);
+
+      const updated = deps.db.transaction((transaction) => {
+        if (executionOverride !== null) {
+          setThreadExecutionOverride(transaction, {
+            threadId: thread.id,
+            modelOverride: executionOverride.modelOverride,
+            reasoningLevelOverride: executionOverride.reasoningLevelOverride,
+          });
+        }
+        return Object.keys(metadataUpdate).length > 0
+          ? updateThread(transaction, deps.hub, thread.id, metadataUpdate)
+          : getThread(transaction, thread.id);
+      });
       if (!updated) {
         throw new ApiError(404, "thread_not_found", "Thread not found");
       }

@@ -135,4 +135,28 @@ describe("PATCH /threads/:id execution override", () => {
       });
     });
   });
+
+  it("does not persist an execution override when another patch field is invalid", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedProviderThread(harness);
+      stubProviderCatalog(
+        harness,
+        host.id,
+        session.id,
+        "claude-code",
+        "claude-opus-4-8",
+      );
+
+      const response = await patchThread(harness, thread.id, {
+        model: "claude-opus-4-8",
+        sectionId: "missing-section",
+      });
+
+      expect(response.status).toBe(404);
+      expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
+        modelOverride: null,
+        reasoningLevelOverride: null,
+      });
+    });
+  });
 });

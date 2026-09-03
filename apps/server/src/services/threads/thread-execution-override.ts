@@ -46,7 +46,6 @@ interface ResolveThreadExecutionOverrideUpdateArgs {
 interface ApplyThreadExecutionOverrideArgs {
   thread: Thread;
   patch: ThreadExecutionOverridePatch;
-  validateBeforePersist?: () => void;
 }
 
 interface RecoverThreadModelOverrideArgs {
@@ -138,15 +137,14 @@ export function resolveThreadExecutionOverrideUpdate(
 }
 
 /**
- * Validates and persists the sticky thread-level execution override. Loads the
- * thread provider's active model catalog from the daemon to validate, then
- * stores the resolved values. The change takes effect on the next turn via
- * `resolveExecutionOptions` + the runtime's `recordThreadExecutionOptions`.
+ * Resolves a sticky thread-level execution override without persisting it.
+ * Loads the provider's active model catalog from the daemon so callers can
+ * validate every field in a combined update before committing any of them.
  */
-export async function applyThreadExecutionOverride(
+export async function resolveThreadExecutionOverrideForThread(
   deps: LoggedWorkSessionDeps,
   args: ApplyThreadExecutionOverrideArgs,
-): Promise<void> {
+): Promise<ThreadExecutionOverride> {
   const { thread, patch } = args;
 
   const models = await loadThreadProviderModels(deps, thread);
@@ -155,17 +153,23 @@ export async function applyThreadExecutionOverride(
     reasoningLevelOverride: null,
   };
 
-  const next = resolveThreadExecutionOverrideUpdate(deps.providerRegistry, {
+  return resolveThreadExecutionOverrideUpdate(deps.providerRegistry, {
     existing,
     patch,
     models,
     providerId: thread.providerId,
     fallbackModel: resolveFallbackModel(deps, thread),
   });
+}
 
-  args.validateBeforePersist?.();
+export async function applyThreadExecutionOverride(
+  deps: LoggedWorkSessionDeps,
+  args: ApplyThreadExecutionOverrideArgs,
+): Promise<void> {
+  const next = await resolveThreadExecutionOverrideForThread(deps, args);
+
   setThreadExecutionOverride(deps.db, {
-    threadId: thread.id,
+    threadId: args.thread.id,
     modelOverride: next.modelOverride,
     reasoningLevelOverride: next.reasoningLevelOverride,
   });
