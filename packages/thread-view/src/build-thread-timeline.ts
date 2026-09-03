@@ -470,6 +470,16 @@ function relativizeWorkspacePath(
   return path;
 }
 
+function relativizeWorkspacePathsInIdentifier(
+  identifier: string,
+  workspaceRoot: string | null,
+): string {
+  if (!workspaceRoot) return identifier;
+  const normalizedRoot = workspaceRoot.replace(/\/+$/u, "");
+  if (normalizedRoot.length === 0) return identifier;
+  return identifier.replaceAll(`${normalizedRoot}/`, "");
+}
+
 function toTimelineFileChange(
   change: EventProjectionFileEditChange,
   workspaceRoot: string | null,
@@ -653,7 +663,10 @@ function convertMessage(
         const base = buildTimelineRowBase(message, options.rowIdPrefix);
         return {
           ...base,
-          id: `${base.id}:file-change:${index}`,
+          id: `${relativizeWorkspacePathsInIdentifier(
+            base.id,
+            options.workspaceRoot,
+          )}:file-change:${index}`,
           kind: "work",
           workKind: "file-change",
           status: message.status,

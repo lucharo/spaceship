@@ -3003,6 +3003,8 @@ describe("buildThreadTimelineFromEvents", () => {
       path: "src/old.ts",
       movePath: "src/new.ts",
     });
+    expect(rows[0]?.id).toContain("src/new.ts");
+    expect(rows[0]?.id).not.toContain(workspaceRoot);
   });
 
   it("leaves file-change paths outside the workspace root untouched", () => {
