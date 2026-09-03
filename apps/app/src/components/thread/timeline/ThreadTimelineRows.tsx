@@ -470,6 +470,7 @@ const StreamingAssistantMessageIdContext = createContext<string | null>(null);
 const EMPTY_ROW_ID_SET: ReadonlySet<string> = new Set<string>();
 const TimelineSearchExpansionContext =
   createContext<ReadonlySet<string>>(EMPTY_ROW_ID_SET);
+const TimelineNavigationTargetSeqContext = createContext<number | null>(null);
 const TimelineWindowingEnabledContext = createContext(false);
 const TIMELINE_TERMINAL_EXPANSION_RETENTION = 24;
 
@@ -2096,11 +2097,18 @@ function TimelineRowsList({
   const inheritedMeasurements = useContext(
     TimelineWindowingMeasurementsContext,
   );
+  const inheritedNavigationTargetSeq = useContext(
+    TimelineNavigationTargetSeqContext,
+  );
+  const effectiveNavigationTargetSeq =
+    navigationTargetSeq === undefined
+      ? inheritedNavigationTargetSeq
+      : navigationTargetSeq;
   const [standaloneMeasurements] = useState(() => new Map<string, number>());
   const measurements = inheritedMeasurements ?? standaloneMeasurements;
   const searchExpandedRowIds = useTimelineSearchExpansionRowIds(
     rows,
-    navigationTargetSeq,
+    effectiveNavigationTargetSeq,
   );
   const stableSearchExpandedRowIds = useStableReadonlySet(searchExpandedRowIds);
   useScrollToSearchedMessage(rows, threadId, {
@@ -2175,86 +2183,94 @@ function TimelineRowsList({
     [messageColumnWidth],
   );
   return (
-    <TimelineSearchExpansionContext.Provider value={stableSearchExpandedRowIds}>
-      <MessageColumnWidthContext.Provider
-        value={isTopLevelList ? messageColumnWidthValue : null}
+    <TimelineNavigationTargetSeqContext.Provider
+      value={effectiveNavigationTargetSeq}
+    >
+      <TimelineSearchExpansionContext.Provider
+        value={stableSearchExpandedRowIds}
       >
-        <div
-          ref={isTopLevelList ? messageColumnWidthSourceRef : undefined}
-          className={cn(
-            "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
-            timelineRowsListGapClassName(spacing),
-            className,
-          )}
-          data-timeline-row-list={spacing}
+        <MessageColumnWidthContext.Provider
+          value={isTopLevelList ? messageColumnWidthValue : null}
         >
-          <TimelineWindowedItemsLoader
-            enabled={timelineWindowingEnabled}
-            alwaysMountedKeys={alwaysMountedKeys}
-            estimateItemHeight={(index) => {
-              const item = items[index];
-              return item?.kind === "row"
-                ? estimateTimelineWindowedRowHeight(item.row, spacing)
-                : 28;
-            }}
-            gap={spacing === "bundle" ? 0 : 8}
-            getScrollElement={getWindowingScrollElement}
-            itemKeys={itemKeys}
-            measurements={measurements}
-            minItemCount={
-              spacing === "top-level" ? (isCompactViewport ? 40 : 60) : 20
-            }
-            renderItem={(index, windowedState) => {
-              const item = items[index];
-              if (item === undefined) {
-                return null;
+          <div
+            ref={isTopLevelList ? messageColumnWidthSourceRef : undefined}
+            className={cn(
+              "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
+              timelineRowsListGapClassName(spacing),
+              className,
+            )}
+            data-timeline-row-list={spacing}
+          >
+            <TimelineWindowedItemsLoader
+              enabled={timelineWindowingEnabled}
+              alwaysMountedKeys={alwaysMountedKeys}
+              estimateItemHeight={(index) => {
+                const item = items[index];
+                return item?.kind === "row"
+                  ? estimateTimelineWindowedRowHeight(item.row, spacing)
+                  : 28;
+              }}
+              gap={spacing === "bundle" ? 0 : 8}
+              getScrollElement={getWindowingScrollElement}
+              itemKeys={itemKeys}
+              measurements={measurements}
+              minItemCount={
+                spacing === "top-level" ? (isCompactViewport ? 40 : 60) : 20
               }
-              if (item.kind === "unread-divider") {
+              renderItem={(index, windowedState) => {
+                const item = items[index];
+                if (item === undefined) {
+                  return null;
+                }
+                if (item.kind === "unread-divider") {
+                  return (
+                    <div
+                      key={item.id}
+                      ref={windowedState.itemRef}
+                      data-index={windowedState.itemIndex}
+                      data-timeline-window-key={`divider:${item.id}`}
+                      data-timeline-windowed-realized={
+                        windowedState.windowingEnabled
+                          ? String(windowedState.isRealized)
+                          : undefined
+                      }
+                      style={windowedState.itemStyle}
+                    >
+                      {windowedState.isRealized ? (
+                        <TimelineUnreadDivider
+                          autoScroll={unreadDividerAutoScroll}
+                        />
+                      ) : null}
+                    </div>
+                  );
+                }
                 return (
-                  <div
-                    key={item.id}
-                    ref={windowedState.itemRef}
-                    data-index={windowedState.itemIndex}
-                    data-timeline-window-key={`divider:${item.id}`}
-                    data-timeline-windowed-realized={
-                      windowedState.windowingEnabled
-                        ? String(windowedState.isRealized)
-                        : undefined
-                    }
-                    style={windowedState.itemStyle}
+                  <TimelineRowItemWrapper
+                    key={item.row.id}
+                    row={item.row}
+                    spacing={spacing}
+                    windowedState={windowedState}
                   >
                     {windowedState.isRealized ? (
-                      <TimelineUnreadDivider
-                        autoScroll={unreadDividerAutoScroll}
+                      <MemoizedTimelineRowView
+                        activeLatestBundleId={activeLatestBundleId}
+                        row={item.row}
+                        scopeActive={scopeActive}
+                        showAssistantMessageActions={
+                          showAssistantMessageActions
+                        }
+                        spacing={spacing}
+                        compactActivityIntents={compactActivityIntents}
                       />
                     ) : null}
-                  </div>
+                  </TimelineRowItemWrapper>
                 );
-              }
-              return (
-                <TimelineRowItemWrapper
-                  key={item.row.id}
-                  row={item.row}
-                  spacing={spacing}
-                  windowedState={windowedState}
-                >
-                  {windowedState.isRealized ? (
-                    <MemoizedTimelineRowView
-                      activeLatestBundleId={activeLatestBundleId}
-                      row={item.row}
-                      scopeActive={scopeActive}
-                      showAssistantMessageActions={showAssistantMessageActions}
-                      spacing={spacing}
-                      compactActivityIntents={compactActivityIntents}
-                    />
-                  ) : null}
-                </TimelineRowItemWrapper>
-              );
-            }}
-          />
-        </div>
-      </MessageColumnWidthContext.Provider>
-    </TimelineSearchExpansionContext.Provider>
+              }}
+            />
+          </div>
+        </MessageColumnWidthContext.Provider>
+      </TimelineSearchExpansionContext.Provider>
+    </TimelineNavigationTargetSeqContext.Provider>
   );
 }
 

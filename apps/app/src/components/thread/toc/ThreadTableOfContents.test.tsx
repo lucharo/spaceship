@@ -39,6 +39,7 @@ import {
   findActiveItemIds,
   selectTocRailItems,
   ThreadTableOfContents,
+  waitForTimelineRowElement,
   type TocItem,
 } from "./ThreadTableOfContents";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
@@ -114,7 +115,7 @@ function TocHost({
   hostPaddingX?: number;
   hostWidth?: number;
   loadOlderTimelineRows?: () => void | Promise<void>;
-  onNavigateToRow?: (rowId: string, sourceSeq?: number) => void;
+  onNavigateToRow?: (rowId: string, sourceSeq?: number) => void | (() => void);
   threadId?: string;
   timelineRows: readonly TimelineRow[];
 }) {
@@ -358,6 +359,7 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -837,7 +839,8 @@ describe("ThreadTableOfContents", () => {
   it("scrolls straight to a message already loaded in the window", async () => {
     scrollElement.appendChild(timelineRowElement("u2"));
     const loadOlder = vi.fn();
-    const onNavigateToRow = vi.fn();
+    const settleNavigation = vi.fn();
+    const onNavigateToRow = vi.fn(() => settleNavigation);
     setOutline([
       {
         id: "u1",
@@ -873,7 +876,88 @@ describe("ThreadTableOfContents", () => {
 
     await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalledTimes(1));
     expect(onNavigateToRow).toHaveBeenCalledWith("u2", 22);
+    expect(settleNavigation).toHaveBeenCalledTimes(1);
     expect(loadOlder).not.toHaveBeenCalled();
+  });
+
+  it("clears an older pending jump when a loaded replacement is selected", async () => {
+    const settleDeferred = vi.fn();
+    const settleLoaded = vi.fn();
+    const onNavigateToRow = vi.fn((rowId: string) =>
+      rowId === "nested_deferred" ? settleDeferred : settleLoaded,
+    );
+    setOutline([
+      {
+        id: "nested_deferred",
+        sourceSeq: 12,
+        role: "assistant",
+        preview: "Deferred nested answer",
+        attachmentSummary: null,
+      },
+      {
+        id: "loaded_replacement",
+        sourceSeq: 13,
+        role: "assistant",
+        preview: "Loaded replacement answer",
+        attachmentSummary: null,
+      },
+      {
+        id: "u2",
+        role: "user",
+        preview: "Second question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u3",
+        role: "user",
+        preview: "Third question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u4",
+        role: "user",
+        preview: "Fourth question",
+        attachmentSummary: null,
+      },
+    ]);
+
+    render(
+      <TocHost
+        timelineRows={[userConversationRow(12)]}
+        hasOlderTimelineRows
+        onNavigateToRow={onNavigateToRow}
+      />,
+    );
+    openTocPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Agent messages" }));
+    const deferredButton = (
+      await screen.findByText("Deferred nested answer")
+    ).closest("button");
+    fireEvent.click(deferredButton!);
+    expect(deferredButton?.getAttribute("aria-busy")).toBe("true");
+
+    scrollElement.appendChild(timelineRowElement("loaded_replacement"));
+    fireEvent.click(await screen.findByText("Loaded replacement answer"));
+
+    await waitFor(() =>
+      expect(deferredButton?.getAttribute("aria-busy")).toBe("false"),
+    );
+    expect(settleDeferred).toHaveBeenCalledTimes(1);
+    expect(settleLoaded).toHaveBeenCalledTimes(1);
+    expect(scrollElementIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds the wait for an outline destination that never mounts", async () => {
+    const controller = new AbortController();
+
+    await expect(
+      waitForTimelineRowElement({
+        rowId: "missing_nested",
+        scrollElement,
+        signal: controller.signal,
+        timeoutMs: 1,
+      }),
+    ).resolves.toBeNull();
   });
 
   it("waits for a collapsed outline target to mount before scrolling", async () => {
@@ -983,7 +1067,11 @@ describe("ThreadTableOfContents", () => {
     });
     expect(scrollElementIntoView).not.toHaveBeenCalled();
 
-    await act(async () => resolveTurnDetails());
+    await act(async () => {
+      resolveTurnDetails();
+      await turnDetails;
+      await Promise.resolve();
+    });
     await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalledTimes(1));
     expect(onNavigateToRow).toHaveBeenCalledWith("nested_deferred", 12);
   });
@@ -1225,14 +1313,11 @@ describe("ThreadTableOfContents", () => {
   });
 
   it("finds active items with logarithmic row measurements", () => {
-    const allItems = Array.from(
-      { length: 256 },
-      (_, index): TocItem => ({
-        id: `item-${index}`,
-        label: `Message ${index}`,
-        role: index % 2 === 0 ? "user" : "assistant",
-      }),
-    );
+    const allItems = Array.from({ length: 256 }, (_, index): TocItem => ({
+      id: `item-${index}`,
+      label: `Message ${index}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+    }));
     const manyUserItems = allItems.filter((item) => item.role === "user");
     const manyAgentItems = allItems.filter((item) => item.role === "assistant");
     const visibleIndex = 200;

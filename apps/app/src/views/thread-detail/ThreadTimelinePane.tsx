@@ -26,6 +26,7 @@ export function ThreadTimelinePane({
     threadId: string;
     rowId: string;
     sourceSeq?: number;
+    token: symbol;
   } | null>(null);
   const activeTimelineNavigationTarget =
     timelineNavigationTarget?.threadId === surface.threadId
@@ -41,13 +42,20 @@ export function ThreadTimelinePane({
           timelineRows={surface.timelineRows}
           hasOlderTimelineRows={surface.hasOlderTimelineRows}
           loadOlderTimelineRows={surface.onLoadOlderRows}
-          onNavigateToRow={(rowId, sourceSeq) =>
+          onNavigateToRow={(rowId, sourceSeq) => {
+            const token = Symbol(rowId);
             setTimelineNavigationTarget({
               threadId: surface.threadId,
               rowId,
               sourceSeq,
-            })
-          }
+              token,
+            });
+            return () => {
+              setTimelineNavigationTarget((current) =>
+                current?.token === token ? null : current,
+              );
+            };
+          }}
         />
       }
       surface={{

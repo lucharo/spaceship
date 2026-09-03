@@ -40,7 +40,7 @@ interface ThreadTableOfContentsProps {
   /** Loads the next older timeline page; awaited while jumping to an unloaded row. */
   loadOlderTimelineRows: () => void | Promise<void>;
   /** Lets timeline windowing mount an offscreen destination before scrolling. */
-  onNavigateToRow?: (rowId: string, sourceSeq?: number) => void;
+  onNavigateToRow?: (rowId: string, sourceSeq?: number) => void | (() => void);
 }
 
 // Matches `@container scroll-overlay (min-width: 56rem)` in app.css.
@@ -57,6 +57,8 @@ const TOC_ACTIVE_UPDATE_IDLE_MS = 120;
 const TOC_JUMP_MAX_PAGE_LOADS = 1000;
 // Frames to wait for prepended rows to commit before paginating again.
 const TOC_JUMP_RENDER_FRAMES = 6;
+// A failed lazy-details request must not leave the outline busy forever.
+const TOC_JUMP_MOUNT_TIMEOUT_MS = 15_000;
 function toPreviewLabel(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
@@ -388,14 +390,16 @@ function waitForAnimationFrame(): Promise<void> {
   });
 }
 
-function waitForTimelineRowElement({
+export function waitForTimelineRowElement({
   rowId,
   scrollElement,
   signal,
+  timeoutMs = TOC_JUMP_MOUNT_TIMEOUT_MS,
 }: {
   rowId: string;
   scrollElement: HTMLElement | null;
   signal: AbortSignal;
+  timeoutMs?: number;
 }): Promise<HTMLElement | null> {
   const existing = findTimelineRowElement(scrollElement, rowId);
   if (existing || !scrollElement || signal.aborted) {
@@ -404,11 +408,13 @@ function waitForTimelineRowElement({
 
   return new Promise((resolve) => {
     let settled = false;
+    let timeoutId: number | null = null;
     const finish = (row: HTMLElement | null) => {
       if (settled) return;
       settled = true;
       observer.disconnect();
       signal.removeEventListener("abort", handleAbort);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
       resolve(row);
     };
     const handleAbort = () => finish(null);
@@ -419,6 +425,7 @@ function waitForTimelineRowElement({
 
     signal.addEventListener("abort", handleAbort, { once: true });
     observer.observe(scrollElement, { childList: true, subtree: true });
+    timeoutId = window.setTimeout(() => finish(null), timeoutMs);
     // Close the gap between the first lookup and observer registration.
     const mounted = findTimelineRowElement(scrollElement, rowId);
     if (mounted) finish(mounted);
@@ -730,24 +737,24 @@ export function ThreadTableOfContents({
         });
       };
       activeJumpAbortRef.current?.abort();
+      setPendingJump(null);
       const jumpAbort = new AbortController();
       activeJumpAbortRef.current = jumpAbort;
-      onNavigateToRow?.(id, sourceSeq);
+      const settleNavigation = onNavigateToRow?.(id, sourceSeq);
 
       let row = findTimelineRowElement(getScrollElement(), id);
       if (row) {
-        scrollToRow(row);
-        if (activeJumpAbortRef.current === jumpAbort) {
-          activeJumpAbortRef.current = null;
+        try {
+          scrollToRow(row);
+        } finally {
+          settleNavigation?.();
+          if (activeJumpAbortRef.current === jumpAbort) {
+            activeJumpAbortRef.current = null;
+          }
         }
         return;
       }
       setPendingJump({ rowId: id, scope: navigationScope });
-      const mountedRow = waitForTimelineRowElement({
-        rowId: id,
-        scrollElement: getScrollElement(),
-        signal: jumpAbort.signal,
-      });
       try {
         let loads = 0;
         while (!row && !jumpAbort.signal.aborted) {
@@ -760,7 +767,11 @@ export function ThreadTableOfContents({
             !hasOlderRef.current ||
             timelineRowsContainSequence(timelineRowsRef.current, sourceSeq)
           ) {
-            row = await mountedRow;
+            row = await waitForTimelineRowElement({
+              rowId: id,
+              scrollElement: getScrollElement(),
+              signal: jumpAbort.signal,
+            });
             break;
           }
           if (loads >= TOC_JUMP_MAX_PAGE_LOADS) break;
@@ -796,11 +807,16 @@ export function ThreadTableOfContents({
           !jumpAbort.signal.aborted &&
           timelineRowsContainSequence(timelineRowsRef.current, sourceSeq)
         ) {
-          row = await mountedRow;
+          row = await waitForTimelineRowElement({
+            rowId: id,
+            scrollElement: getScrollElement(),
+            signal: jumpAbort.signal,
+          });
         }
         if (row) scrollToRow(row);
       } finally {
         jumpAbort.abort();
+        settleNavigation?.();
         if (activeJumpAbortRef.current === jumpAbort) {
           activeJumpAbortRef.current = null;
           setPendingJump(null);
