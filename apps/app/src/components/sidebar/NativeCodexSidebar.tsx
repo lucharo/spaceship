@@ -114,17 +114,23 @@ function isCodexWorktreePath(cwd: string | null): boolean {
 function getChronologicalGroup(timestamp: number, now: number) {
   const startOfToday = new Date(now);
   startOfToday.setHours(0, 0, 0, 0);
-  const dayMs = 24 * 60 * 60 * 1_000;
-  const start = startOfToday.getTime();
+  const startOfYesterday = new Date(startOfToday);
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+  const startOfPrevious7Days = new Date(startOfToday);
+  startOfPrevious7Days.setDate(startOfPrevious7Days.getDate() - 7);
+  const startOfPrevious30Days = new Date(startOfToday);
+  startOfPrevious30Days.setDate(startOfPrevious30Days.getDate() - 30);
 
-  if (timestamp >= start) return { key: "today", label: "Today" };
-  if (timestamp >= start - dayMs) {
+  if (timestamp >= startOfToday.getTime()) {
+    return { key: "today", label: "Today" };
+  }
+  if (timestamp >= startOfYesterday.getTime()) {
     return { key: "yesterday", label: "Yesterday" };
   }
-  if (timestamp >= start - 7 * dayMs) {
+  if (timestamp >= startOfPrevious7Days.getTime()) {
     return { key: "previous-7-days", label: "Previous 7 days" };
   }
-  if (timestamp >= start - 30 * dayMs) {
+  if (timestamp >= startOfPrevious30Days.getTime()) {
     return { key: "previous-30-days", label: "Previous 30 days" };
   }
   return { key: "older", label: "Older" };

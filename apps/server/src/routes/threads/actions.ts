@@ -50,6 +50,7 @@ import { editThreadMessage } from "../../services/threads/thread-edit-message.js
 import {
   buildExecutionOptions,
   prepareTurnSubmitCommandPayload,
+  runRetainedNativeSessionUnarchiveCommand,
   runThreadProviderArchiveCommand,
   runThreadUnarchiveCommand,
 } from "../../services/threads/thread-commands.js";
@@ -684,6 +685,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         if (providerThreadId && environment) {
           await runThreadUnarchiveCommand(deps, {
             environment,
+            providerThreadId,
+            thread,
+          });
+        } else if (providerThreadId && nativeIdentity !== null) {
+          await runRetainedNativeSessionUnarchiveCommand(deps, {
+            hostId: nativeIdentity.hostId,
+            laneId: nativeSessionMutationKey(nativeIdentity),
             providerThreadId,
             thread,
           });

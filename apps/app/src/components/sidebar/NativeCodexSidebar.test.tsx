@@ -146,6 +146,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("NativeSessionThreadList", () => {
@@ -286,6 +287,42 @@ describe("NativeSessionThreadList", () => {
       screen.getByRole("button", { name: "Collapse spaceship" }).textContent,
     ).toContain("2");
   });
+
+  it.each([
+    {
+      expectedGroup: "Previous 7 days",
+      now: new Date("2026-03-30T12:00:00+01:00").getTime(),
+      sessionTime: new Date("2026-03-28T23:30:00+00:00").getTime(),
+      transition: "spring-forward",
+    },
+    {
+      expectedGroup: "Yesterday",
+      now: new Date("2026-10-26T12:00:00+00:00").getTime(),
+      sessionTime: new Date("2026-10-25T00:30:00+01:00").getTime(),
+      transition: "fall-back",
+    },
+  ])(
+    "uses local calendar boundaries across the $transition transition",
+    async ({ expectedGroup, now, sessionTime }) => {
+      vi.stubEnv("TZ", "Europe/London");
+      vi.spyOn(Date, "now").mockReturnValue(now);
+      vi.mocked(sdk.providers.nativeSessions).mockResolvedValue({
+        ...nativeSessions,
+        sessions: [
+          {
+            ...nativeSessions.sessions[0],
+            updatedAt: Math.floor(sessionTime / 1_000),
+          },
+        ],
+      });
+
+      renderSidebar();
+
+      expect(
+        (await screen.findAllByText(expectedGroup)).length,
+      ).toBeGreaterThan(0);
+    },
+  );
 
   it("groups a native worktree with its project identity", async () => {
     vi.mocked(sdk.providers.nativeSessions).mockResolvedValue({

@@ -53,9 +53,11 @@ Codex app-server <-> Spaceship provider bridge <-> Spaceship UI
   does not need a working directory or a Spaceship projection merely to be
   archived. The same native operation is available as
   `bb provider archive <providerId> <providerThreadId>`. Existing local
-  projections can recover through native unarchive, but the archived catalogue
-  does not yet expose a direct unarchive action. That affordance, native rename,
-  and fork parity remain tracked in
+  projections recover through native unarchive even after workspace pruning:
+  Spaceship routes the request through the retained native host and keeps the
+  projection archived unless Codex accepts it. The archived catalogue does not
+  yet expose a direct unarchive action. That affordance, native rename, and fork
+  parity remain tracked in
   [#4](https://github.com/lucharo/spaceship/issues/4).
 - The default new-thread path is Codex-only until another provider has an
   equivalent native adapter; see

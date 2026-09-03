@@ -1,12 +1,14 @@
 import {
   archiveThread,
   confirmNativeSessionArchive,
+  environments,
   findThreadByNativeIdentity,
   getEnvironment,
   getThread,
   hasNativeSessionArchiveConfirmation,
   unarchiveThread,
 } from "@bb/db";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
   listQueuedCommands,
@@ -756,6 +758,63 @@ describe("public native thread archive", () => {
 
       expect((await responsePromise).status).toBe(502);
       expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
+    });
+  });
+
+  it("unarchives a native projection through its retained host after environment pruning", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, environment, thread } = seedThreadFixture(harness, {
+        session: { id: "host-native-unarchive-pruned" },
+      });
+      const providerThreadId = "native-thread-unarchive-pruned";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+      archiveThread(harness.db, harness.deps.hub, thread.id);
+      confirmNativeSessionArchive(harness.db, {
+        providerThreadId,
+        threadId: thread.id,
+      });
+      harness.db
+        .delete(environments)
+        .where(eq(environments.id, environment.id))
+        .run();
+
+      expect(getThread(harness.db, thread.id)).toMatchObject({
+        archivedAt: expect.any(Number),
+        environmentId: null,
+        nativeSessionHostId: host.id,
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/unarchive`,
+        { method: "POST" },
+      );
+      const providerUnarchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.unarchive" &&
+          command.threadId === thread.id &&
+          command.providerThreadId === providerThreadId,
+      );
+
+      expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
+      await reportQueuedCommandSuccess(
+        harness,
+        providerUnarchive as never,
+        {} as never,
+      );
+
+      expect((await responsePromise).status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.archivedAt).toBeNull();
+      expect(
+        hasNativeSessionArchiveConfirmation(harness.db, {
+          providerThreadId,
+          threadId: thread.id,
+        }),
+      ).toBe(false);
     });
   });
 

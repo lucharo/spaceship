@@ -158,6 +158,13 @@ interface DispatchThreadUnarchiveCommandArgs {
   thread: Thread;
 }
 
+interface RunRetainedNativeSessionUnarchiveCommandArgs {
+  hostId: string;
+  laneId: string;
+  providerThreadId: string;
+  thread: Thread;
+}
+
 interface RunThreadProviderArchiveCommandArgs {
   allowLiveChildren?: boolean;
   environment: Environment;
@@ -728,6 +735,44 @@ export async function runThreadUnarchiveCommand(
     }
     throw error;
   }
+}
+
+/**
+ * Unarchive a projected native session after its workspace environment has
+ * been pruned. The retained native host is authoritative; unlike the legacy
+ * environment path, an unavailable host or bridge must fail before local
+ * archive state is cleared.
+ */
+export async function runRetainedNativeSessionUnarchiveCommand(
+  deps: CommandResultSideEffectsDeps,
+  args: RunRetainedNativeSessionUnarchiveCommandArgs,
+): Promise<boolean> {
+  if (
+    !providerSupportsThreadArchiveForwarding(
+      deps.providerRegistry,
+      args.thread.providerId,
+    )
+  ) {
+    return false;
+  }
+
+  const bridgeLaunch = requireBridgeLaunchForProviderId(
+    deps,
+    args.thread.providerId,
+  );
+  await runLiveHostCommand(deps, {
+    command: {
+      type: "thread.unarchive",
+      environmentId: args.laneId,
+      threadId: args.thread.id,
+      providerId: args.thread.providerId,
+      providerThreadId: args.providerThreadId,
+      bridgeLaunch,
+    },
+    hostId: args.hostId,
+    timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+  });
+  return true;
 }
 
 export function buildThreadStopCommand(
