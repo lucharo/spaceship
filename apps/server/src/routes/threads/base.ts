@@ -11,6 +11,7 @@ import {
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
   getEnvironment,
+  getThread,
   getThreadSectionById,
   listThreadMentionRowsByIds,
   listThreadsWithPendingInteractionState,
@@ -678,6 +679,24 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
           childThreadId: thread.id,
           parentThreadId: payload.parentThreadId,
         });
+      }
+      if (
+        payload.visibility === "hidden" &&
+        thread.visibility !== "hidden" &&
+        thread.sourceThreadId !== null
+      ) {
+        const sourceThread = getThread(deps.db, thread.sourceThreadId);
+        if (
+          sourceThread === null ||
+          sourceThread.archivedAt !== null ||
+          sourceThread.deletedAt !== null
+        ) {
+          throw new ApiError(
+            400,
+            "invalid_request",
+            "Cannot hide a source-derived thread whose source is archived or deleted",
+          );
+        }
       }
 
       // Sticky execution override (model / reasoning level). Validated and

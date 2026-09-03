@@ -540,6 +540,74 @@ describe("public thread parenting routes", () => {
     });
   });
 
+  it("revalidates a hidden source-derived thread after archive-all", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const sourceThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const visibleFork = seedThread(harness.deps, {
+        environmentId: environment.id,
+        originKind: "fork",
+        projectId: project.id,
+        sourceThreadId: sourceThread.id,
+        visibility: "visible",
+      });
+      const providerThreadId = "provider-source-hide-during-archive";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: sourceThread.id,
+      });
+
+      const archiveResponsePromise = harness.app.request(
+        `/api/v1/threads/${sourceThread.id}/archive-all`,
+        { method: "POST" },
+      );
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.archive" &&
+          command.providerThreadId === providerThreadId,
+      );
+
+      let visibilitySettled = false;
+      const visibilityResponsePromise = Promise.resolve(
+        harness.app.request(`/api/v1/threads/${visibleFork.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ visibility: "hidden" }),
+        }),
+      ).then((response) => {
+        visibilitySettled = true;
+        return response;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(visibilitySettled).toBe(false);
+
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+      expect((await archiveResponsePromise).status).toBe(200);
+      expect((await visibilityResponsePromise).status).toBe(400);
+      expect(getThread(harness.db, visibleFork.id)).toMatchObject({
+        archivedAt: null,
+        visibility: "visible",
+      });
+    });
+  });
+
   // Archiving one thread cascades too, not just archive-all: the plugin's
   // `thread.archived` listener used to cover this route.
   it("archives hidden source-derived forks when archiving a single thread", async () => {
