@@ -477,7 +477,18 @@ function relativizeWorkspacePathsInIdentifier(
   if (!workspaceRoot) return identifier;
   const normalizedRoot = workspaceRoot.replace(/\/+$/u, "");
   if (normalizedRoot.length === 0) return identifier;
-  return identifier.replaceAll(`${normalizedRoot}/`, "");
+  const relativeIdentifier = identifier.replaceAll(`${normalizedRoot}/`, "");
+  if (relativeIdentifier === identifier) return identifier;
+
+  // Preserve uniqueness when one provider payload uses an absolute path and
+  // another already uses its workspace-relative spelling. The suffix is
+  // deterministic for reconciliation but does not disclose the source path.
+  let hash = 2_166_136_261;
+  for (let index = 0; index < identifier.length; index += 1) {
+    hash ^= identifier.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return `${relativeIdentifier}:source-${(hash >>> 0).toString(36)}`;
 }
 
 function toTimelineFileChange(

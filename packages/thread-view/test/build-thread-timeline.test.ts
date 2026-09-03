@@ -3032,4 +3032,38 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.change.path).toBe("/etc/hosts");
   });
+
+  it("keeps mixed absolute and relative file-change row ids distinct", () => {
+    const workspaceRoot = "/Users/dev/worktrees/env_x/bb";
+    const rows = collectFileChangeRows(
+      buildTimelineRows(
+        [
+          turnStartedEvent({ seq: 0 }),
+          fileChangeItemEvent({
+            changes: [
+              {
+                path: `${workspaceRoot}/src/a.ts`,
+                kind: "update",
+              },
+              {
+                path: "src/a.ts",
+                kind: "update",
+              },
+            ],
+            seq: 1,
+            type: "item/completed",
+          }),
+        ],
+        "idle",
+        workspaceRoot,
+      ),
+    );
+
+    expect(rows.map((row) => row.change.path)).toEqual([
+      "src/a.ts",
+      "src/a.ts",
+    ]);
+    expect(new Set(rows.map((row) => row.id))).toHaveLength(2);
+    expect(rows.every((row) => !row.id.includes(workspaceRoot))).toBe(true);
+  });
 });
