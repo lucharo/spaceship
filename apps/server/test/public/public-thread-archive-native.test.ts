@@ -454,6 +454,10 @@ describe("public native thread archive", () => {
         threadId: thread.id,
       });
       archiveThread(harness.db, harness.deps.hub, thread.id);
+      confirmNativeSessionArchive(harness.db, {
+        providerThreadId,
+        threadId: thread.id,
+      });
 
       const responsePromise = harness.app.request(
         `/api/v1/threads/${thread.id}/archive`,
@@ -773,6 +777,10 @@ describe("public native thread archive", () => {
         threadId: thread.id,
       });
       archiveThread(harness.db, harness.deps.hub, thread.id);
+      confirmNativeSessionArchive(harness.db, {
+        providerThreadId,
+        threadId: thread.id,
+      });
       harness.hub.unregisterDaemon(session.id);
 
       const response = await harness.app.request(
@@ -788,7 +796,63 @@ describe("public native thread archive", () => {
     });
   });
 
-  it("keeps an attached native projection archived when unarchive is unsupported", async () => {
+  it("locally unarchives an attached projection when provider archive was never confirmed", async () => {
+    await withTestHarness(
+      {
+        seedFirstPartyProviders: false,
+        extraProviders: [
+          {
+            pluginId: "provider-codex",
+            declaration: {
+              id: "codex",
+              displayName: "Codex",
+              maintenance: {
+                health: false,
+                usage: false,
+                installation: false,
+              },
+              capabilities: {
+                supportsServiceTier: false,
+                supportsNativeUserQuestion: false,
+                fork: "none",
+                supportsManualCompaction: false,
+                supportsThreadArchive: false,
+                supportsThreadRename: false,
+                permissionModes: ["full"],
+                reasoningLevels: ["medium"],
+              },
+              composerActions: [],
+            },
+          },
+        ],
+      },
+      async (harness) => {
+        const { environment, thread } = seedThreadFixture(harness, {
+          session: { id: "host-local-unarchive-attached-unsupported" },
+        });
+        const providerThreadId = "local-thread-unarchive-attached-unsupported";
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId,
+          threadId: thread.id,
+        });
+        archiveThread(harness.db, harness.deps.hub, thread.id);
+
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/unarchive`,
+          { method: "POST" },
+        );
+
+        expect(response.status).toBe(200);
+        expect(getThread(harness.db, thread.id)?.archivedAt).toBeNull();
+        expect(
+          listQueuedThreadCommands(harness, "thread.unarchive", thread.id),
+        ).toEqual([]);
+      },
+    );
+  });
+
+  it("keeps an attached provider-archived projection archived when unarchive is unsupported", async () => {
     await withTestHarness(
       {
         seedFirstPartyProviders: false,
@@ -829,6 +893,10 @@ describe("public native thread archive", () => {
           threadId: thread.id,
         });
         archiveThread(harness.db, harness.deps.hub, thread.id);
+        confirmNativeSessionArchive(harness.db, {
+          providerThreadId,
+          threadId: thread.id,
+        });
 
         const response = await harness.app.request(
           `/api/v1/threads/${thread.id}/unarchive`,
@@ -901,7 +969,73 @@ describe("public native thread archive", () => {
     });
   });
 
-  it("keeps a pruned projection archived when native unarchive is unsupported", async () => {
+  it("locally unarchives a pruned projection when provider archive was never confirmed", async () => {
+    await withTestHarness(
+      {
+        seedFirstPartyProviders: false,
+        extraProviders: [
+          {
+            pluginId: "provider-codex",
+            declaration: {
+              id: "codex",
+              displayName: "Codex",
+              maintenance: {
+                health: false,
+                usage: false,
+                installation: false,
+              },
+              capabilities: {
+                supportsServiceTier: false,
+                supportsNativeUserQuestion: false,
+                fork: "none",
+                supportsManualCompaction: false,
+                supportsThreadArchive: false,
+                supportsThreadRename: false,
+                permissionModes: ["full"],
+                reasoningLevels: ["medium"],
+              },
+              composerActions: [],
+            },
+          },
+        ],
+      },
+      async (harness) => {
+        const { host, environment, thread } = seedThreadFixture(harness, {
+          session: { id: "host-local-unarchive-pruned-unsupported" },
+        });
+        const providerThreadId = "local-thread-unarchive-pruned-unsupported";
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId,
+          threadId: thread.id,
+        });
+        archiveThread(harness.db, harness.deps.hub, thread.id);
+        harness.db
+          .delete(environments)
+          .where(eq(environments.id, environment.id))
+          .run();
+
+        expect(getThread(harness.db, thread.id)).toMatchObject({
+          archivedAt: expect.any(Number),
+          environmentId: null,
+          nativeSessionHostId: host.id,
+        });
+
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/unarchive`,
+          { method: "POST" },
+        );
+
+        expect(response.status).toBe(200);
+        expect(getThread(harness.db, thread.id)?.archivedAt).toBeNull();
+        expect(
+          listQueuedThreadCommands(harness, "thread.unarchive", thread.id),
+        ).toEqual([]);
+      },
+    );
+  });
+
+  it("keeps a pruned provider-archived projection archived when native unarchive is unsupported", async () => {
     await withTestHarness(
       {
         seedFirstPartyProviders: false,
@@ -942,6 +1076,10 @@ describe("public native thread archive", () => {
           threadId: thread.id,
         });
         archiveThread(harness.db, harness.deps.hub, thread.id);
+        confirmNativeSessionArchive(harness.db, {
+          providerThreadId,
+          threadId: thread.id,
+        });
         harness.db
           .delete(environments)
           .where(eq(environments.id, environment.id))

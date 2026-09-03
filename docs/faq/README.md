@@ -52,6 +52,32 @@ The adapter must expose discovery and resume operations, and the client must use
 
 _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02 · Scope/version: Spaceship's current provider bridge_
 
+## Why build Spaceship on BB rather than DeepSeek Harness?
+
+**Short answer:** BB already supplied the desktop shell, provider bridge, thread UI, and plugin surfaces needed to add native-session control without creating another harness or importing transcripts.
+
+DeepSeek Harness remains a strong host for explicit import and migration workflows. Spaceship instead optimises for continuing provider-owned sessions in place, which made BB the smaller fit for this project.
+
+### Sources
+
+- [Native Codex integration retrospective](../retrospectives/2026-09-02-native-codex-integration.md) — recorded selection rationale.
+- [Native harness interfaces](../../features/native_harness_interfaces.md) — authority boundary.
+
+_Created: 2026-09-03 · Updated: 2026-09-03 · Verified: 2026-09-03 · Scope/version: Spaceship's initial Codex integration_
+
+## Is AgentsView part of Spaceship?
+
+**Short answer:** No. AgentsView remains a read-first observability layer over native harnesses; Spaceship is the interface that opens, resumes, and manages those native sessions.
+
+The projects can complement each other, but Spaceship does not make AgentsView its store or control plane.
+
+### Sources
+
+- [Native Codex integration retrospective](../retrospectives/2026-09-02-native-codex-integration.md) — product boundary.
+- [Native harness interfaces](../../features/native_harness_interfaces.md) — native provider ownership.
+
+_Created: 2026-09-03 · Updated: 2026-09-03 · Verified: 2026-09-03_
+
 ## What happens when I open a native Codex session?
 
 **Short answer:** Spaceship revalidates the native metadata, reuses or creates one local projection, reads history from Codex, and resumes the same native thread for the next message.
@@ -78,13 +104,26 @@ This is shared native state, not a cloud sync or transcript import. A tool using
 
 _Created: 2026-09-02 · Updated: 2026-09-03 · Verified: 2026-09-03 · Scope/version: conditional on a shared CODEX_HOME_
 
+## Does open-source Codex expose the app-server interface Spaceship uses?
+
+**Short answer:** Yes. Spaceship integrates with the app-server protocol and generated schemas published in the open-source `openai/codex` repository.
+
+The exact protocol evolves with Codex versions, so the provider keeps generated types and explicit protocol handling rather than treating the interface as timeless.
+
+### Sources
+
+- [Codex app-server](../codex-app-server.md) — upstream and generated-schema pointers.
+- [Generated app-server contract](../../plugins/provider-codex/src/generated/codex-app-server/README.md) — versioned local contract.
+
+_Created: 2026-09-03 · Updated: 2026-09-03 · Verified: 2026-09-03 · Scope/version: the Codex contract generated in this repository_
+
 ## How are active and archived Codex sessions handled?
 
 **Short answer:** Active sessions appear in the main thread list, archived sessions are separated, and native-row archive actions delegate to Codex app-server without importing the session.
 
-Archiving a native row does not adopt it, create a Spaceship thread, or require a working directory. When a lightweight local projection already exists, Spaceship archives Codex once and then reconciles that projection without sending a duplicate provider command. Existing local projections recover through native unarchive, including after workspace pruning by using their retained native host identity. A direct unarchive action in the archived catalogue, plus rename and fork parity, remains tracked rather than being emulated in Spaceship.
+Archiving a native row does not adopt it, create a Spaceship thread, or require a working directory. When a lightweight local projection already exists, Spaceship archives Codex once and then reconciles that projection without sending a duplicate provider command. Active and archived metadata caches are partitioned separately, so refreshing one catalogue cannot make stale rows appear in the other. Existing local projections recover through native unarchive, including after workspace pruning by using their retained native host identity. A direct unarchive action in the archived catalogue, plus rename and fork parity, remains tracked rather than being emulated in Spaceship.
 
-Before asking Codex to archive, Spaceship verifies that the matching local projection and every hidden source fork can be reconciled. Native lifecycle operations, ordinary child creation, reparenting, visibility changes, and source-derived operations share one ordering boundary, then use the provider identity and projected thread locks; a concurrent action therefore cannot change an archive cascade while its provider mutation is in flight. A source-derived thread becoming hidden preserves the requested source identity across asynchronous model discovery, revalidates that source after entering the final transaction, and stays visible if the source was archived or deleted while it waited. Projected archive and unarchive use the daemon's ordered environment lane and change local state only after a connected provider accepts the operation. If pruning has removed that environment, unarchive instead routes through the retained native host. Whether the projection is attached or pruned, provider unavailability or missing unarchive support leaves it archived rather than clearing only Spaceship's state. Archiving an already-pruned projection remains local; use the native-session action or `bb provider archive` when the provider itself must be archived. Multi-thread archive reconciles each accepted provider mutation locally before continuing, and workspace cleanup is evaluated after the complete local cascade. BB-assigned child threads represent separate sessions, so they are released rather than archived with the parent. Once recorded, a durable confirmation prevents automatic settlement or process restart from sending the same provider archive command twice. The dedicated native archive endpoint always reaches the provider again because the session may have been unarchived outside Spaceship. Crash recovery between provider success and the local confirmation write remains tracked separately. Unarchiving clears the confirmation.
+Before asking Codex to archive, Spaceship verifies that the matching local projection and every hidden source fork can be reconciled. Native lifecycle operations, ordinary child creation, reparenting, visibility changes, and source-derived operations share one ordering boundary, then use the provider identity and projected thread locks; a concurrent action therefore cannot change an archive cascade while its provider mutation is in flight. A source-derived thread becoming hidden preserves the requested source identity across asynchronous model discovery, revalidates that source after entering the final transaction, and stays visible if the source was archived or deleted while it waited. Projected archive and unarchive use the daemon's ordered environment lane and change local state only after a connected provider accepts the operation. If pruning has removed that environment, unarchive instead routes through the retained native host. A provider-confirmed archive fails closed when the provider is unavailable or lacks unarchive support, whether the projection is attached or pruned. A projection archived only in Spaceship remains locally reversible because no provider state needs changing. Archiving an already-pruned projection remains local; use the native-session action or `bb provider archive` when the provider itself must be archived. Multi-thread archive reconciles each accepted provider mutation locally before continuing, and workspace cleanup is evaluated after the complete local cascade. BB-assigned child threads represent separate sessions, so they are released rather than archived with the parent. Once recorded, a durable confirmation prevents automatic settlement or process restart from sending the same provider archive command twice. The dedicated native archive endpoint always reaches the provider again because the session may have been unarchived outside Spaceship. Crash recovery between provider success and the local confirmation write remains tracked separately. Unarchiving clears the confirmation.
 
 ### Sources
 
@@ -204,6 +243,19 @@ The gate is provider-owned metadata rather than a Codex id check in core, so a f
 
 _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
 
+## Can Spaceship support remote native hosts and providers beyond Codex?
+
+**Short answer:** Yes, through the same host-scoped, capability-declared provider adapter boundary; neither is presented as shipped yet.
+
+Remote hosts must expose clear online state and must not copy transcript bodies automatically. Additional providers appear in the native flow only after their plugins implement native history and continuation semantics.
+
+### Sources
+
+- [Remote native hosts](../../features/remote_native_hosts.md) — planned host boundary and issue.
+- [Codex first](../../features/codex_first.md) — current provider gate.
+
+_Created: 2026-09-03 · Updated: 2026-09-03 · Verified: 2026-09-03 · Scope/version: current implementation and tracked follow-ups_
+
 ## How are long native histories loaded?
 
 **Short answer:** Spaceship returns bounded turn pages with older-page cursors, while Codex remains the source of the underlying history snapshot.
@@ -222,9 +274,9 @@ _Created: 2026-09-02 · Updated: 2026-09-03 · Verified: 2026-09-03_
 
 ## Why is native Codex history more compact than raw provider events?
 
-**Short answer:** Spaceship projects provider events onto native turn boundaries, hides successful hook noise, and keeps final conversation messages readable.
+**Short answer:** Spaceship first preserves complete native turn detail, then projects it onto provider turn boundaries, hides successful hook noise, and keeps final conversation messages readable.
 
-The current projection is intentionally lighter than a raw event log. A thread-wide focus mode and richer expandable detail remain tracked work.
+The shared provider-history projection retains the detail needed by the timeline, lazy expansion, and conversation outline before the UI reduces it. The visible presentation is intentionally lighter than a raw event log; a thread-wide focus mode and richer expandable detail remain tracked work.
 
 ### Sources
 
@@ -232,7 +284,7 @@ The current projection is intentionally lighter than a raw event log. A thread-w
 - [Codex delta translation](../../plugins/provider-codex/src/delta-translation.ts) — event projection rules.
 - [Focus mode issue](https://github.com/lucharo/spaceship/issues/14) — remaining interaction.
 
-_Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
+_Created: 2026-09-02 · Updated: 2026-09-03 · Verified: 2026-09-03_
 
 ## What is Spaceship's short name?
 

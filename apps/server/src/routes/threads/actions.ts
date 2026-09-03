@@ -4,6 +4,7 @@ import {
   getEnvironment,
   getQueuedThreadMessage,
   getThreadNativeSessionHostId,
+  hasNativeSessionArchiveConfirmation,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   pinThread,
   reorderPinnedThread,
@@ -682,7 +683,17 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         const environment = thread.environmentId
           ? getEnvironment(deps.db, thread.environmentId)
           : null;
-        if (providerThreadId && nativeIdentity !== null) {
+        const providerArchiveConfirmed =
+          providerThreadId !== null &&
+          hasNativeSessionArchiveConfirmation(deps.db, {
+            providerThreadId,
+            threadId: thread.id,
+          });
+        if (
+          providerThreadId &&
+          nativeIdentity !== null &&
+          providerArchiveConfirmed
+        ) {
           await runRetainedNativeSessionUnarchiveCommand(deps, {
             hostId: nativeIdentity.hostId,
             laneId: environment?.id ?? nativeSessionMutationKey(nativeIdentity),
