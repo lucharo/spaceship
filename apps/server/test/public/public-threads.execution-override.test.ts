@@ -220,4 +220,72 @@ describe("PATCH /threads/:id execution override", () => {
       });
     });
   });
+
+  it("serializes concurrent partial execution override patches", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedProviderThread(harness);
+      const releases: Array<() => void> = [];
+      let requestCount = 0;
+      let markSecondCatalogRequested!: () => void;
+      const secondCatalogRequested = new Promise<void>((resolve) => {
+        markSecondCatalogRequested = resolve;
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.list_models") {
+            throw new Error(`Unexpected command ${request.command.type}`);
+          }
+          requestCount += 1;
+          if (requestCount === 2) markSecondCatalogRequested();
+          return new Promise<HostRpcHandlerResult>((resolve) => {
+            releases.push(() =>
+              resolve({
+                ok: true,
+                result: {
+                  models: [
+                    {
+                      id: "claude-opus-4-8",
+                      model: "claude-opus-4-8",
+                      displayName: "claude-opus-4-8",
+                      description: "",
+                      supportedReasoningEfforts: [
+                        { reasoningEffort: "high", description: "" },
+                      ],
+                      defaultReasoningEffort: "high",
+                      isDefault: true,
+                    },
+                  ],
+                  selectedOnlyModels: [],
+                },
+              }),
+            );
+          });
+        },
+      });
+
+      const modelResponse = patchThread(harness, thread.id, {
+        model: "claude-opus-4-8",
+      });
+      while (releases.length < 1) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      }
+      const reasoningResponse = patchThread(harness, thread.id, {
+        reasoningLevel: "high",
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(requestCount).toBe(1);
+
+      releases[0]?.();
+      expect((await modelResponse).status).toBe(200);
+      await secondCatalogRequested;
+      releases[1]?.();
+      expect((await reasoningResponse).status).toBe(200);
+      expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
+        modelOverride: "claude-opus-4-8",
+        reasoningLevelOverride: "high",
+      });
+    });
+  });
 });

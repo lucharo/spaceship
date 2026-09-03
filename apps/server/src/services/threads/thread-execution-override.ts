@@ -54,6 +54,28 @@ interface RecoverThreadModelOverrideArgs {
   thread: Thread;
 }
 
+const threadExecutionOverrideMutationChains = new Map<string, Promise<void>>();
+
+export function withThreadExecutionOverrideMutation<T>(
+  threadId: string,
+  mutate: () => Promise<T>,
+): Promise<T> {
+  const previous =
+    threadExecutionOverrideMutationChains.get(threadId) ?? Promise.resolve();
+  const result = previous.then(mutate);
+  const tail = result.then(
+    () => {},
+    () => {},
+  );
+  threadExecutionOverrideMutationChains.set(threadId, tail);
+  void tail.then(() => {
+    if (threadExecutionOverrideMutationChains.get(threadId) === tail) {
+      threadExecutionOverrideMutationChains.delete(threadId);
+    }
+  });
+  return result;
+}
+
 /**
  * Pure resolver for the next override values. Validates a requested model
  * against the active catalog (same-provider + in-catalog), validates an
@@ -166,12 +188,14 @@ export async function applyThreadExecutionOverride(
   deps: LoggedWorkSessionDeps,
   args: ApplyThreadExecutionOverrideArgs,
 ): Promise<void> {
-  const next = await resolveThreadExecutionOverrideForThread(deps, args);
+  await withThreadExecutionOverrideMutation(args.thread.id, async () => {
+    const next = await resolveThreadExecutionOverrideForThread(deps, args);
 
-  setThreadExecutionOverride(deps.db, {
-    threadId: args.thread.id,
-    modelOverride: next.modelOverride,
-    reasoningLevelOverride: next.reasoningLevelOverride,
+    setThreadExecutionOverride(deps.db, {
+      threadId: args.thread.id,
+      modelOverride: next.modelOverride,
+      reasoningLevelOverride: next.reasoningLevelOverride,
+    });
   });
 }
 

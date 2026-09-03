@@ -81,7 +81,10 @@ import {
 } from "../../services/threads/thread-runtime-display.js";
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
-import { resolveThreadExecutionOverrideForThread } from "../../services/threads/thread-execution-override.js";
+import {
+  resolveThreadExecutionOverrideForThread,
+  withThreadExecutionOverrideMutation,
+} from "../../services/threads/thread-execution-override.js";
 import { unmanagedAttachRefusal } from "../../services/threads/workspace-path-claims.js";
 import {
   emitPluginThreadCreated,
@@ -744,13 +747,15 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
           }
         }
 
-        if (executionOverride !== null) {
-          setThreadExecutionOverride(transaction, {
-            threadId: currentThread.id,
-            modelOverride: executionOverride.modelOverride,
-            reasoningLevelOverride: executionOverride.reasoningLevelOverride,
-          });
-        }
+        const executionUpdatedThread =
+          executionOverride !== null
+            ? setThreadExecutionOverride(transaction, {
+                threadId: currentThread.id,
+                modelOverride: executionOverride.modelOverride,
+                reasoningLevelOverride:
+                  executionOverride.reasoningLevelOverride,
+              })
+            : null;
         const updatedThread =
           Object.keys(metadataUpdate).length > 0
             ? updateThread(
@@ -759,7 +764,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
                 currentThread.id,
                 metadataUpdate,
               )
-            : currentThread;
+            : (executionUpdatedThread ?? currentThread);
         return { previousThread: currentThread, updated: updatedThread };
       });
       if (!updated) {
@@ -799,9 +804,13 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         toThreadResponseFromThread(deps, { thread: updated }),
       );
     };
+    const updateExecutionOverride = () =>
+      "model" in payload || "reasoningLevel" in payload
+        ? withThreadExecutionOverrideMutation(context.req.param("id"), update)
+        : update();
     return "parentThreadId" in payload || "visibility" in payload
-      ? withNativeSessionMutation(update)
-      : update();
+      ? withNativeSessionMutation(updateExecutionOverride)
+      : updateExecutionOverride();
   });
 
   del(routes.delete, async (context, payload) => {
