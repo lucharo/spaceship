@@ -477,7 +477,16 @@ function relativizeWorkspacePathsInIdentifier(
   if (!workspaceRoot) return identifier;
   const normalizedRoot = workspaceRoot.replace(/\/+$/u, "");
   if (normalizedRoot.length === 0) return identifier;
-  return identifier.replaceAll(`${normalizedRoot}/`, "workspace-absolute:/");
+  const workspacePrefix = `${normalizedRoot}/`;
+  const parts = identifier.split(workspacePrefix);
+
+  // Tag both source forms so a literal identifier cannot impersonate the
+  // redacted representation of an absolute workspace path.
+  return `workspace-id:${JSON.stringify(
+    parts.length === 1
+      ? ["literal", identifier]
+      : ["workspace-absolute", parts],
+  )}`;
 }
 
 function toTimelineFileChange(

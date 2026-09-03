@@ -3064,9 +3064,34 @@ describe("buildThreadTimelineFromEvents", () => {
       "src/a.ts",
     ]);
     expect(new Set(rows.map((row) => row.id))).toHaveLength(2);
-    expect(rows.some((row) => row.id.includes("workspace-absolute:/"))).toBe(
+    expect(rows.some((row) => row.id.includes('["workspace-absolute",'))).toBe(
       true,
     );
+    expect(rows.every((row) => !row.id.includes(workspaceRoot))).toBe(true);
+  });
+
+  it("keeps reserved-looking literal file-change ids distinct", () => {
+    const workspaceRoot = "/Users/dev/worktrees/env_x/bb";
+    const rows = collectFileChangeRows(
+      buildTimelineRows(
+        [
+          turnStartedEvent({ seq: 0 }),
+          fileChangeItemEvent({
+            changes: [
+              { path: `${workspaceRoot}/src/a.ts`, kind: "update" },
+              { path: "workspace-absolute:/src/a.ts", kind: "update" },
+            ],
+            seq: 1,
+            type: "item/completed",
+          }),
+        ],
+        "idle",
+        workspaceRoot,
+      ),
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((row) => row.id))).toHaveLength(2);
     expect(rows.every((row) => !row.id.includes(workspaceRoot))).toBe(true);
   });
 });
