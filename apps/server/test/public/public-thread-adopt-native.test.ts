@@ -1083,7 +1083,23 @@ describe("public native thread adoption", () => {
         providerId: "codex",
         providerThreadId: "native-thread-pruned-reopen",
       };
-      const firstResponse = await postAdoptNativeThread(harness, request);
+      const managedPath = `/tmp/bb-host-data/${host.id}/worktrees/env_pruned/repo`;
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/native-pruned-source",
+      });
+      const managedEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: managedPath,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+      });
+      const firstResponse = await postAdoptNativeThread(harness, request, {
+        providerThreadId: request.providerThreadId,
+        title: "Recovered managed session",
+        cwd: managedPath,
+      });
       const first = adoptNativeThreadResponseSchema.parse(
         await readJson(firstResponse),
       );
@@ -1091,6 +1107,7 @@ describe("public native thread adoption", () => {
       if (firstEnvironmentId === null) {
         throw new Error("Expected adopted native thread environment");
       }
+      expect(firstEnvironmentId).toBe(managedEnvironment.id);
       harness.db
         .delete(environments)
         .where(eq(environments.id, firstEnvironmentId))
@@ -1100,7 +1117,11 @@ describe("public native thread adoption", () => {
         nativeSessionHostId: host.id,
       });
 
-      const secondResponse = await postAdoptNativeThread(harness, request);
+      const secondResponse = await postAdoptNativeThread(harness, request, {
+        providerThreadId: request.providerThreadId,
+        title: "Recovered managed session",
+        cwd: managedPath,
+      });
 
       expect(secondResponse.status).toBe(200);
       const second = adoptNativeThreadResponseSchema.parse(
@@ -1119,9 +1140,11 @@ describe("public native thread adoption", () => {
         getEnvironment(harness.db, second.thread.environmentId as string),
       ).toMatchObject({
         hostId: host.id,
-        path: "/tmp/native-adoption",
+        path: managedPath,
         projectId: first.thread.projectId,
         status: "ready",
+        managed: false,
+        workspaceProvisionType: "unmanaged",
       });
       expect(getLastStoredProviderThreadId(harness.db, first.thread.id)).toBe(
         request.providerThreadId,

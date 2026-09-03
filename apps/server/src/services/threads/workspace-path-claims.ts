@@ -22,6 +22,12 @@ interface UnmanagedAttachRefusal {
 interface UnmanagedAttachCheckArgs {
   /** Host data directory, for recognizing bb's own workspace roots. */
   dataDir: string | null;
+  /**
+   * A retained native projection proves that this project previously owned
+   * the provider-reported workspace even after cleanup removed its environment
+   * row. Foreign live managed-environment claims are still refused.
+   */
+  allowUnclaimedManagedPathForProject?: boolean;
   /** Set when the request also checks out a branch, which rewrites the tree. */
   checksOutBranch: boolean;
   hostId: string;
@@ -65,6 +71,7 @@ export function unmanagedAttachRefusal(
   if (
     args.dataDir !== null &&
     isBbManagedWorkspacePath({ dataDir: args.dataDir, path: args.path }) &&
+    !args.allowUnclaimedManagedPathForProject &&
     (args.projectId === null ||
       !findProjectOwnsPath(db, {
         hostId: args.hostId,

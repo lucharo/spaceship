@@ -434,6 +434,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
               );
               if (existingEnvironment === null) {
                 const refusal = unmanagedAttachRefusal(deps.db, {
+                  allowUnclaimedManagedPathForProject: true,
                   checksOutBranch: false,
                   dataDir: findHostDataDir(deps, payload.hostId),
                   hostId: payload.hostId,
