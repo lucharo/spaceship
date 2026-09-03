@@ -411,7 +411,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         const existing = findThreadByNativeIdentity(deps.db, payload);
         if (existing) {
           return withThreadArchiveMutation(existing.id, async () => {
-            const current = findThreadByNativeIdentity(deps.db, payload);
+            let current = findThreadByNativeIdentity(deps.db, payload);
             if (current === null || current.id !== existing.id) {
               throw new ApiError(
                 409,
@@ -419,10 +419,44 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
                 "The native session projection changed while it was opening",
               );
             }
-            const existingEnvironment =
+            let existingEnvironment =
               current.environmentId === null
                 ? null
                 : getEnvironment(deps.db, current.environmentId);
+            const needsEnvironmentReattachment =
+              existingEnvironment === null && current.environmentId === null;
+            if (needsEnvironmentReattachment) {
+              existingEnvironment = findProjectEnvironmentByHostPath(
+                deps.db,
+                current.projectId,
+                payload.hostId,
+                inspectedPath,
+              );
+              if (existingEnvironment === null) {
+                const refusal = unmanagedAttachRefusal(deps.db, {
+                  checksOutBranch: false,
+                  dataDir: findHostDataDir(deps, payload.hostId),
+                  hostId: payload.hostId,
+                  path: inspectedPath,
+                  projectId: current.projectId,
+                });
+                if (refusal) {
+                  throw new ApiError(409, "invalid_request", refusal.message);
+                }
+                existingEnvironment = createEnvironment(deps.db, deps.hub, {
+                  projectId: current.projectId,
+                  hostId: payload.hostId,
+                  workspaceProvisionType: "unmanaged",
+                  path: inspectedPath,
+                  managed: false,
+                  isGitRepo: inspection.isGitRepo,
+                  isWorktree: inspection.isWorktree,
+                  branchName: inspection.branchName,
+                  defaultBranch: inspection.defaultBranch,
+                  status: "ready",
+                });
+              }
+            }
             if (
               existingEnvironment === null ||
               existingEnvironment.hostId !== payload.hostId ||
@@ -449,6 +483,19 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
               reopenEnvironment.path === null
             ) {
               throwEnvironmentNotReady(reopenEnvironment);
+            }
+            if (needsEnvironmentReattachment) {
+              const reattached = updateThread(deps.db, deps.hub, current.id, {
+                environmentId: reopenEnvironment.id,
+              });
+              if (reattached === null) {
+                throw new ApiError(
+                  409,
+                  "native_session_projection_changed",
+                  "The native session projection changed while it was opening",
+                );
+              }
+              current = reattached;
             }
             const reconciled =
               current.archivedAt === null

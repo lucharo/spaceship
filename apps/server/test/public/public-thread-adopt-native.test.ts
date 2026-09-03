@@ -1073,6 +1073,62 @@ describe("public native thread adoption", () => {
     });
   });
 
+  it("reattaches a pruned native projection before reopening it", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-native-pruned-reopen",
+      });
+      const request = {
+        hostId: host.id,
+        providerId: "codex",
+        providerThreadId: "native-thread-pruned-reopen",
+      };
+      const firstResponse = await postAdoptNativeThread(harness, request);
+      const first = adoptNativeThreadResponseSchema.parse(
+        await readJson(firstResponse),
+      );
+      const firstEnvironmentId = first.thread.environmentId;
+      if (firstEnvironmentId === null) {
+        throw new Error("Expected adopted native thread environment");
+      }
+      harness.db
+        .delete(environments)
+        .where(eq(environments.id, firstEnvironmentId))
+        .run();
+      expect(getThread(harness.db, first.thread.id)).toMatchObject({
+        environmentId: null,
+        nativeSessionHostId: host.id,
+      });
+
+      const secondResponse = await postAdoptNativeThread(harness, request);
+
+      expect(secondResponse.status).toBe(200);
+      const second = adoptNativeThreadResponseSchema.parse(
+        await readJson(secondResponse),
+      );
+      expect(second).toMatchObject({
+        created: false,
+        thread: {
+          id: first.thread.id,
+          projectId: first.thread.projectId,
+          environmentId: expect.any(String),
+        },
+      });
+      expect(second.thread.environmentId).not.toBe(firstEnvironmentId);
+      expect(
+        getEnvironment(harness.db, second.thread.environmentId as string),
+      ).toMatchObject({
+        hostId: host.id,
+        path: "/tmp/native-adoption",
+        projectId: first.thread.projectId,
+        status: "ready",
+      });
+      expect(getLastStoredProviderThreadId(harness.db, first.thread.id)).toBe(
+        request.providerThreadId,
+      );
+    });
+  });
+
   it("revives a retiring managed environment when reopening a projection", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
