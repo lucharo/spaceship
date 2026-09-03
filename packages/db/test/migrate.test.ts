@@ -707,8 +707,10 @@ function dropEventToolNameColumn(db: DbConnection): void {
 }
 
 function dropEventParentToolCallIdColumn(db: DbConnection): void {
-  // Every rewind before 0103 also rewinds the later generated tool-name column.
+  // Every rewind before 0103 also rewinds the later generated tool-name and
+  // native-session host columns.
   dropEventToolNameColumn(db);
+  dropNativeSessionHostIdColumn(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(events)")
     .all();
@@ -718,6 +720,25 @@ function dropEventParentToolCallIdColumn(db: DbConnection): void {
     );
     db.$client
       .prepare("ALTER TABLE events DROP COLUMN parent_tool_call_id")
+      .run();
+  }
+}
+
+/**
+ * Migration 0111 persists the provider host beside the native session id.
+ * Rewinds before it must remove both the index and column before replaying the
+ * generated ADD COLUMN statement.
+ */
+function dropNativeSessionHostIdColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(threads)")
+    .all();
+  if (columns.some((column) => column.name === "native_session_host_id")) {
+    db.$client.exec(
+      "DROP INDEX IF EXISTS threads_native_session_host_provider_idx",
+    );
+    db.$client
+      .prepare("ALTER TABLE threads DROP COLUMN native_session_host_id")
       .run();
   }
 }
@@ -1495,10 +1516,9 @@ describe("migrate", () => {
 
       expect(
         db.$client
-          .prepare<
-            [],
-            { id: string; root: string | null }
-          >("SELECT id, git_checkout_root AS root FROM plugin_artifacts ORDER BY id")
+          .prepare<[], { id: string; root: string | null }>(
+            "SELECT id, git_checkout_root AS root FROM plugin_artifacts ORDER BY id",
+          )
           .all(),
       ).toEqual([
         { id: "collision", root: `/cache/repo/${commit}` },
@@ -1651,10 +1671,9 @@ describe("migrate", () => {
       ]);
       expect(
         db.$client
-          .prepare<
-            [],
-            { updatedAt: number }
-          >("SELECT updated_at AS updatedAt FROM app_settings_values WHERE key = 'showKeyboardHints'")
+          .prepare<[], { updatedAt: number }>(
+            "SELECT updated_at AS updatedAt FROM app_settings_values WHERE key = 'showKeyboardHints'",
+          )
           .get(),
       ).toEqual({ updatedAt: 1234 });
     } finally {
@@ -1699,16 +1718,44 @@ describe("migrate", () => {
 
       expect(
         db.$client
-          .prepare<[], { pluginId: string; key: string; value: string; updatedAt: number }>(
+          .prepare<
+            [],
+            { pluginId: string; key: string; value: string; updatedAt: number }
+          >(
             "SELECT plugin_id AS pluginId, key, value, updated_at AS updatedAt FROM plugin_settings ORDER BY plugin_id, key",
           )
           .all(),
       ).toEqual([
-        { pluginId: "provider-claude-code", key: "memoryEnabled", value: "false", updatedAt: 99 },
-        { pluginId: "provider-claude-code", key: "subagentsDisabled", value: "false", updatedAt: 14 },
-        { pluginId: "provider-claude-code", key: "workflowsDisabled", value: "true", updatedAt: 15 },
-        { pluginId: "provider-codex", key: "memoryEnabled", value: "false", updatedAt: 11 },
-        { pluginId: "provider-codex", key: "subagentsDisabled", value: "true", updatedAt: 12 },
+        {
+          pluginId: "provider-claude-code",
+          key: "memoryEnabled",
+          value: "false",
+          updatedAt: 99,
+        },
+        {
+          pluginId: "provider-claude-code",
+          key: "subagentsDisabled",
+          value: "false",
+          updatedAt: 14,
+        },
+        {
+          pluginId: "provider-claude-code",
+          key: "workflowsDisabled",
+          value: "true",
+          updatedAt: 15,
+        },
+        {
+          pluginId: "provider-codex",
+          key: "memoryEnabled",
+          value: "false",
+          updatedAt: 11,
+        },
+        {
+          pluginId: "provider-codex",
+          key: "subagentsDisabled",
+          value: "true",
+          updatedAt: 12,
+        },
       ]);
       expect(
         db.$client
@@ -1784,10 +1831,9 @@ describe("migrate", () => {
 
       expect(
         db.$client
-          .prepare<
-            [],
-            { count: number }
-          >("SELECT COUNT(*) AS count FROM app_settings_values")
+          .prepare<[], { count: number }>(
+            "SELECT COUNT(*) AS count FROM app_settings_values",
+          )
           .get(),
       ).toEqual({ count: 0 });
       expect(getAppSettings(db)).toEqual(defaultAppSettings);
@@ -1856,10 +1902,9 @@ describe("migrate", () => {
       runMigrationFile({ db, migrationPath: sideChatPluginOnlyMigrationPath });
 
       const rows = db.$client
-        .prepare<
-          [],
-          MigratedThreadOriginRow
-        >("SELECT id, origin_kind AS originKind, origin_plugin_id AS originPluginId, visibility FROM threads")
+        .prepare<[], MigratedThreadOriginRow>(
+          "SELECT id, origin_kind AS originKind, origin_plugin_id AS originPluginId, visibility FROM threads",
+        )
         .all();
       const byId = new Map(rows.map((row) => [row.id, row]));
 
@@ -4793,10 +4838,9 @@ describe("migrate", () => {
       expect(readTableNames(db)).not.toContain("marketplaces");
       expect(
         db.$client
-          .prepare<
-            [],
-            { source: string }
-          >("SELECT source FROM plugins WHERE id = 'third-party'")
+          .prepare<[], { source: string }>(
+            "SELECT source FROM plugins WHERE id = 'third-party'",
+          )
           .get(),
       ).toEqual({ source: "git:https://example.test/tasks@main" });
     } finally {
@@ -4866,10 +4910,9 @@ describe("migrate", () => {
       });
       expect(
         db.$client
-          .prepare<
-            [],
-            MigrationCountRow
-          >("SELECT COUNT(*) AS count FROM plugin_catalog")
+          .prepare<[], MigrationCountRow>(
+            "SELECT COUNT(*) AS count FROM plugin_catalog",
+          )
           .get(),
       ).toEqual({ count: 0 });
     } finally {
@@ -4916,18 +4959,16 @@ describe("migrate", () => {
       // installs still name the old key would list every entry twice.
       expect(
         db.$client
-          .prepare<
-            [],
-            { name: string }
-          >("SELECT name FROM plugin_marketplaces ORDER BY name")
+          .prepare<[], { name: string }>(
+            "SELECT name FROM plugin_marketplaces ORDER BY name",
+          )
           .all(),
       ).toEqual([{ name: "acme" }, { name: "bb-community" }]);
       expect(
         db.$client
-          .prepare<
-            [],
-            { marketplaceName: string }
-          >("SELECT marketplace_name AS marketplaceName FROM plugin_marketplace_icons ORDER BY marketplace_name")
+          .prepare<[], { marketplaceName: string }>(
+            "SELECT marketplace_name AS marketplaceName FROM plugin_marketplace_icons ORDER BY marketplace_name",
+          )
           .all(),
       ).toEqual([
         { marketplaceName: "acme" },
@@ -4935,10 +4976,9 @@ describe("migrate", () => {
       ]);
       expect(
         db.$client
-          .prepare<
-            [],
-            { id: string; catalogMarketplaceName: string | null }
-          >("SELECT id, catalog_marketplace_name AS catalogMarketplaceName FROM plugins ORDER BY id")
+          .prepare<[], { id: string; catalogMarketplaceName: string | null }>(
+            "SELECT id, catalog_marketplace_name AS catalogMarketplaceName FROM plugins ORDER BY id",
+          )
           .all(),
       ).toEqual([
         { id: "local", catalogMarketplaceName: null },
@@ -4955,7 +4995,9 @@ describe("migrate", () => {
           .prepare<
             [],
             { name: string; etag: string | null; lastModified: string | null }
-          >("SELECT name, etag, last_modified AS lastModified FROM plugin_marketplaces ORDER BY name")
+          >(
+            "SELECT name, etag, last_modified AS lastModified FROM plugin_marketplaces ORDER BY name",
+          )
           .all(),
       ).toEqual([
         {
