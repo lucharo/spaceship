@@ -445,6 +445,9 @@ describe("public native thread adoption", () => {
         "Synthetic follow-up",
         "Synthetic follow-up answer",
       ]);
+      expect(outline.items.map((item) => item.sourceSeq)).toEqual([
+        2, 5, 11, 15,
+      ]);
       const outlineIds = new Set(outline.items.map((item) => item.id));
       const pagedConversationIds: string[] = [];
       const collectConversationIds = (rows: readonly TimelineRow[]): void => {

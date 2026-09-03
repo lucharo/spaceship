@@ -678,6 +678,11 @@ export function ThreadTableOfContents({
       onNavigateToRow?.(id, sourceSeq);
 
       let row = findTimelineRowElement(getScrollElement(), id);
+      for (let frame = 0; frame < TOC_JUMP_RENDER_FRAMES && !row; frame++) {
+        await waitForAnimationFrame();
+        if (!mountedRef.current) return;
+        row = findTimelineRowElement(getScrollElement(), id);
+      }
       if (row) {
         scrollToRow(row);
         return;

@@ -876,6 +876,55 @@ describe("ThreadTableOfContents", () => {
     expect(loadOlder).not.toHaveBeenCalled();
   });
 
+  it("waits for a collapsed outline target to mount before scrolling", async () => {
+    const onNavigateToRow = vi.fn(() => {
+      window.requestAnimationFrame(() => {
+        scrollElement.appendChild(timelineRowElement("nested"));
+      });
+    });
+    setOutline([
+      {
+        id: "nested",
+        sourceSeq: 12,
+        role: "assistant",
+        preview: "Nested answer",
+        attachmentSummary: null,
+      },
+      {
+        id: "u2",
+        role: "user",
+        preview: "Second question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u3",
+        role: "user",
+        preview: "Third question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u4",
+        role: "user",
+        preview: "Fourth question",
+        attachmentSummary: null,
+      },
+    ]);
+
+    render(
+      <TocHost
+        timelineRows={[]}
+        hasOlderTimelineRows={false}
+        onNavigateToRow={onNavigateToRow}
+      />,
+    );
+    openTocPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Agent messages" }));
+    fireEvent.click(await screen.findByText("Nested answer"));
+
+    await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalledTimes(1));
+    expect(onNavigateToRow).toHaveBeenCalledWith("nested", 12);
+  });
+
   it("auto-paginates older pages to reach an unloaded message, then scrolls to it", async () => {
     // The target isn't in the loaded window; loadOlder simulates it paginating
     // in, mirroring the real controller prepending older rows to the DOM.

@@ -34,31 +34,29 @@ const { ThreadTimelinePane } = await import("./ThreadTimelinePane");
 
 afterEach(cleanup);
 
-it("forwards pane callbacks to the timeline and conversation outline", () => {
-  render(
-    <ThreadTimelinePane
-      activeThinking={null}
-      canSpawnChild={false}
-      footer={null}
-      hasOlderTimelineRows={false}
-      isLoadingOlderTimelineRows={false}
-      isStopping={false}
-      isThreadTimelinePending={false}
-      onLoadOlderRows={() => undefined}
-      onOpenPluginPanel={() => true}
-      projectId="proj_1"
-      resolveMentionLink={() => null}
-      showOngoingIndicator={false}
-      stoppingAnchorAt={0}
-      threadId="thr_1"
-      threadRuntimeDisplayStatus="idle"
-      timelineError={false}
-      timelineRows={[]}
-      unreadDividerAutoScroll={false}
-      unreadDividerPlacement={null}
-      workspaceRootPath={undefined}
-    />,
-  );
+it("forwards pane callbacks and scopes outline navigation to one thread", () => {
+  const props = {
+    activeThinking: null,
+    canSpawnChild: false,
+    footer: null,
+    hasOlderTimelineRows: false,
+    isLoadingOlderTimelineRows: false,
+    isStopping: false,
+    isThreadTimelinePending: false,
+    onLoadOlderRows: () => undefined,
+    onOpenPluginPanel: vi.fn(() => true),
+    projectId: "proj_1",
+    resolveMentionLink: () => null,
+    showOngoingIndicator: false,
+    stoppingAnchorAt: 0,
+    threadRuntimeDisplayStatus: "idle" as const,
+    timelineError: false,
+    timelineRows: [],
+    unreadDividerAutoScroll: false,
+    unreadDividerPlacement: null,
+    workspaceRootPath: undefined,
+  };
+  const view = render(<ThreadTimelinePane {...props} threadId="thr_1" />);
 
   expect(screen.getByTestId("plugin-panel-opener").textContent).toBe(
     "available",
@@ -68,4 +66,7 @@ it("forwards pane callbacks to the timeline and conversation outline", () => {
   expect(screen.getByTestId("navigation-target").textContent).toBe(
     "row-target:42",
   );
+
+  view.rerender(<ThreadTimelinePane {...props} threadId="thr_2" />);
+  expect(screen.getByTestId("navigation-target").textContent).toBe("none:none");
 });
