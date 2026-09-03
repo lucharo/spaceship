@@ -18,7 +18,10 @@ import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
  * The built-in skills published to a machine's global agent skill roots so
  * agents running outside bb can drive bb through its CLI.
  */
-const GLOBAL_CLI_SKILL_NAMES: readonly string[] = ["bb-cli"];
+const GLOBAL_CLI_SKILL_NAMES: readonly string[] = [
+  "bb-cli",
+  "bb-plugin-authoring",
+];
 
 /**
  * Status reads are a page-load nicety, so they give up well before the install

@@ -11,28 +11,39 @@ import { seedHost, seedHostSession } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import { resolveServerOwnedSkillCatalogEntries } from "../../src/services/skills/injected-skills.js";
 
-async function writeBuiltinCliSkill(harness: TestAppHarness): Promise<void> {
-  const skillDirectory = join(
-    harness.deps.config.builtinSkillsRootPath,
-    "bb-cli",
-  );
-  await mkdir(skillDirectory, { recursive: true });
-  await writeFile(
-    join(skillDirectory, "SKILL.md"),
-    "---\nname: bb-cli\ndescription: Control bb from the CLI.\n---\n",
+const GLOBAL_CLI_SKILLS = ["bb-cli", "bb-plugin-authoring"] as const;
+
+async function writeBuiltinCliSkills(harness: TestAppHarness): Promise<void> {
+  await Promise.all(
+    GLOBAL_CLI_SKILLS.map(async (name) => {
+      const skillDirectory = join(
+        harness.deps.config.builtinSkillsRootPath,
+        name,
+      );
+      await mkdir(skillDirectory, { recursive: true });
+      await writeFile(
+        join(skillDirectory, "SKILL.md"),
+        `---\nname: ${name}\ndescription: Test ${name}.\n---\n`,
+      );
+    }),
   );
 }
 
 /** The hash the server would install, read from its own registered tree. */
-function expectedCliSkillTreeHash(harness: TestAppHarness): string {
+function expectedCliSkillTreeHash(
+  harness: TestAppHarness,
+  skillName: (typeof GLOBAL_CLI_SKILLS)[number],
+): string {
   const entry = resolveServerOwnedSkillCatalogEntries({
     builtinSkillsRootPath: harness.deps.config.builtinSkillsRootPath,
     dataDir: harness.deps.config.dataDir,
     logger: harness.deps.logger,
     skillTreeRegistry: harness.deps.skillTreeRegistry,
-  }).find(({ runtimeSource }) => runtimeSource.name === "bb-cli");
+  }).find(({ runtimeSource }) => runtimeSource.name === skillName);
   if (entry?.runtimeSource.kind !== "tree") {
-    throw new Error("The built-in bb-cli skill did not resolve to a tree");
+    throw new Error(
+      `The built-in ${skillName} skill did not resolve to a tree`,
+    );
   }
   return entry.runtimeSource.treeHash;
 }
@@ -46,9 +57,9 @@ function installRequest(hostIds: string[]): Request {
 }
 
 describe("install cli skills", () => {
-  it("installs the built-in bb-cli tree on every requested machine", async () => {
+  it("installs the global built-in skill trees on every requested machine", async () => {
     await withTestHarness(async (harness) => {
-      await writeBuiltinCliSkill(harness);
+      await writeBuiltinCliSkills(harness);
       const laptop = seedHostSession(harness.deps, { id: "host-laptop" });
       const studio = seedHostSession(harness.deps, { id: "host-studio" });
       const responders = [laptop, studio].map(({ host, session }) =>
@@ -56,16 +67,27 @@ describe("install cli skills", () => {
           hostId: host.id,
           sessionId: session.id,
           handle: (request) => {
-            expect(request.command).toMatchObject({
-              type: "host.install_global_skills",
-              skills: [{ name: "bb-cli", entryPath: "SKILL.md" }],
-            });
+            expect(request.command.type).toBe("host.install_global_skills");
+            if (request.command.type !== "host.install_global_skills") {
+              throw new Error("Expected a global skill install request");
+            }
+            expect(request.command.skills).toHaveLength(2);
+            expect(request.command.skills).toEqual(
+              expect.arrayContaining(
+                GLOBAL_CLI_SKILLS.map((name) => ({
+                  name,
+                  entryPath: "SKILL.md",
+                  treeHash: expect.any(String),
+                })),
+              ),
+            );
             return {
               ok: true,
               result: {
-                installations: [
-                  { name: "bb-cli", path: `/home/${host.id}/.agents/skills` },
-                ],
+                installations: GLOBAL_CLI_SKILLS.map((name) => ({
+                  name,
+                  path: `/home/${host.id}/.agents/skills/${name}`,
+                })),
               },
             };
           },
@@ -91,7 +113,7 @@ describe("install cli skills", () => {
 
   it("reports a failing machine without dropping the one that worked", async () => {
     await withTestHarness(async (harness) => {
-      await writeBuiltinCliSkill(harness);
+      await writeBuiltinCliSkills(harness);
       const laptop = seedHostSession(harness.deps, { id: "host-laptop" });
       const studio = seedHostSession(harness.deps, { id: "host-studio" });
       registerHostRpcResponder(harness, {
@@ -129,7 +151,7 @@ describe("install cli skills", () => {
 
   it("rejects an unknown machine", async () => {
     await withTestHarness(async (harness) => {
-      await writeBuiltinCliSkill(harness);
+      await writeBuiltinCliSkills(harness);
 
       const response = await harness.app.request(installRequest(["host-gone"]));
       expect(response.status).toBe(404);
@@ -138,7 +160,7 @@ describe("install cli skills", () => {
 
   it("rejects an empty machine list", async () => {
     await withTestHarness(async (harness) => {
-      await writeBuiltinCliSkill(harness);
+      await writeBuiltinCliSkills(harness);
 
       const response = await harness.app.request(installRequest([]));
       expect(response.status).toBe(400);
@@ -147,35 +169,43 @@ describe("install cli skills", () => {
 
   it("maps each machine's reported hashes to a product status", async () => {
     await withTestHarness(async (harness) => {
-      await writeBuiltinCliSkill(harness);
+      await writeBuiltinCliSkills(harness);
       const current = seedHostSession(harness.deps, { id: "host-current" });
       const stale = seedHostSession(harness.deps, { id: "host-stale" });
       const empty = seedHostSession(harness.deps, { id: "host-empty" });
-      const expectedHash = expectedCliSkillTreeHash(harness);
-      const hashByHostId: Record<string, string | null> = {
-        "host-current": expectedHash,
-        "host-stale": "b".repeat(64),
-        "host-empty": null,
+      const expectedHashes = Object.fromEntries(
+        GLOBAL_CLI_SKILLS.map((name) => [
+          name,
+          expectedCliSkillTreeHash(harness, name),
+        ]),
+      );
+      const hashesByHostId: Record<string, Record<string, string | null>> = {
+        "host-current": expectedHashes,
+        "host-stale": {
+          ...expectedHashes,
+          "bb-plugin-authoring": "b".repeat(64),
+        },
+        "host-empty": Object.fromEntries(
+          GLOBAL_CLI_SKILLS.map((name) => [name, null]),
+        ),
       };
       for (const { host, session } of [current, stale, empty]) {
         registerHostRpcResponder(harness, {
           hostId: host.id,
           sessionId: session.id,
           handle: (request) => {
-            expect(request.command).toMatchObject({
+            expect(request.command).toEqual({
               type: "host.global_skills_status",
-              names: ["bb-cli"],
+              names: GLOBAL_CLI_SKILLS,
             });
             return {
               ok: true,
               result: {
-                entries: [
-                  {
-                    name: "bb-cli",
-                    path: `/home/${host.id}/.agents/skills/bb-cli`,
-                    treeHash: hashByHostId[host.id] ?? null,
-                  },
-                ],
+                entries: GLOBAL_CLI_SKILLS.map((name) => ({
+                  name,
+                  path: `/home/${host.id}/.agents/skills/${name}`,
+                  treeHash: hashesByHostId[host.id]?.[name] ?? null,
+                })),
               },
             };
           },
@@ -201,7 +231,7 @@ describe("install cli skills", () => {
 
   it("reports a machine with no daemon session as unknown", async () => {
     await withTestHarness(async (harness) => {
-      await writeBuiltinCliSkill(harness);
+      await writeBuiltinCliSkills(harness);
       seedHost(harness.deps, { id: "host-offline" });
 
       const response = await harness.app.request("/api/v1/system/cli-skills");
