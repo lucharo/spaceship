@@ -35,6 +35,8 @@ The landing review then tightened the failure paths. Migration rewind fixtures n
 
 The final native-history review found that the retained host identity was not yet used by timeline reads after environment pruning, and that the conversation outline still projected only local events. Native timeline and outline reads now share one provider-history projection: routing uses the retained native host, provider metadata supplies the workspace root when the environment is gone, and the complete outline reuses the same stable row IDs as paginated timeline pages.
 
+The last interaction review caught a subtler consequence of lazy native history. Opening a collapsed turn can start an asynchronous detail request, so counting render frames was not a reliable way to decide that an outline destination was unavailable. Outline jumps now observe the actual timeline subtree until the target mounts, cancel that observer when the user changes thread or chooses another destination, and scope the pending indicator to one visit so an A→B→A navigation cannot revive stale busy state. Both failures have mutation-proven regressions.
+
 It also exposed two existing macOS test assumptions: Linux process supervision expected `/proc`, and temporary paths could compare as `/tmp` versus `/private/tmp`. Those checks now use portable behaviour. The Electron window smoke itself cannot be torn down by this agent host because macOS denies signalling the spawned process; that test remains a runtime-environment exception rather than a product assertion.
 
 ## Lessons worth keeping
@@ -46,6 +48,7 @@ It also exposed two existing macOS test assumptions: Linux process supervision e
 - Any migration changed after a branch build may already exist in a real database. Make the SQL replay-safe and register the previous content hash before landing it.
 - An awaited provider mutation creates a concurrency boundary. Preflight the complete local cascade first, then serialize conflicting local actions until reconciliation finishes.
 - Native routing identity must outlive disposable workspace state, and every derived view of provider-owned history must use the same projection rather than quietly falling back to partial local data.
+- Navigation into lazy provider history must wait for the destination itself, not an assumed number of renders, and every wait needs an explicit ownership and cancellation boundary.
 - Exact provider and app tests caught semantic failures that typechecking could not; the live visual pass remained necessary for interaction and presentation confidence.
 
 ## What remains intentionally open
