@@ -8,10 +8,12 @@ import {
   threadListResponseSchema,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
+import { availableModelFixture } from "../helpers/available-models.js";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
+import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -600,6 +602,99 @@ describe("public thread parenting routes", () => {
         {} as never,
       );
       expect((await archiveResponsePromise).status).toBe(200);
+      expect((await visibilityResponsePromise).status).toBe(400);
+      expect(getThread(harness.db, visibleFork.id)).toMatchObject({
+        archivedAt: null,
+        visibility: "visible",
+      });
+    });
+  });
+
+  it("revalidates a hidden source-derived thread after model discovery", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const sourceThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const visibleFork = seedThread(harness.deps, {
+        environmentId: environment.id,
+        originKind: "fork",
+        projectId: project.id,
+        sourceThreadId: sourceThread.id,
+        visibility: "visible",
+      });
+
+      let markCatalogRequested!: () => void;
+      const catalogRequested = new Promise<void>((resolve) => {
+        markCatalogRequested = resolve;
+      });
+      let releaseCatalog!: () => void;
+      const catalogResult = new Promise<{
+        ok: true;
+        result: {
+          models: ReturnType<typeof availableModelFixture>[];
+          selectedOnlyModels: never[];
+        };
+      }>((resolve) => {
+        releaseCatalog = () =>
+          resolve({
+            ok: true,
+            result: {
+              models: [
+                availableModelFixture({
+                  model: "gpt-5.6-sol",
+                  reasoningLevels: ["medium"],
+                }),
+              ],
+              selectedOnlyModels: [],
+            },
+          });
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.list_models") {
+            throw new Error(`Unexpected command ${request.command.type}`);
+          }
+          markCatalogRequested();
+          return catalogResult;
+        },
+      });
+
+      const visibilityResponsePromise = harness.app.request(
+        `/api/v1/threads/${visibleFork.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "gpt-5.6-sol",
+            visibility: "hidden",
+          }),
+        },
+      );
+      await catalogRequested;
+
+      const deleteResponse = await harness.app.request(
+        `/api/v1/threads/${sourceThread.id}`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ childThreadsConfirmed: false }),
+        },
+      );
+      expect(deleteResponse.status).toBe(200);
+
+      releaseCatalog();
+
       expect((await visibilityResponsePromise).status).toBe(400);
       expect(getThread(harness.db, visibleFork.id)).toMatchObject({
         archivedAt: null,
