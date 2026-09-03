@@ -33,6 +33,8 @@ The exact-head archive review found five final consistency hazards. A local unar
 
 The landing review then tightened the failure paths. Migration rewind fixtures now remove the new native-host column before replay. Legacy projections whose environment disappeared before that migration are deliberately not auto-attached because no immutable host provenance remains; issue #18 tracks explicit recovery rather than risking a cross-host collision. Multi-thread archive writes each successful provider result back to its local projection before attempting the next session, so a later rejection cannot leave earlier provider state hidden behind active local rows. Cleanup is decided after the complete hidden-fork cascade, including idempotent re-archives, and an ordinary archive of a projection with no remaining environment stays local because direct provider unarchive is not yet available there. The deliberately conservative process-wide lifecycle lock remains safe but unnecessarily serial; issue #17 tracks replacing it with deterministic keyed locking rather than weakening the release fix.
 
+The final native-history review found that the retained host identity was not yet used by timeline reads after environment pruning, and that the conversation outline still projected only local events. Native timeline and outline reads now share one provider-history projection: routing uses the retained native host, provider metadata supplies the workspace root when the environment is gone, and the complete outline reuses the same stable row IDs as paginated timeline pages.
+
 It also exposed two existing macOS test assumptions: Linux process supervision expected `/proc`, and temporary paths could compare as `/tmp` versus `/private/tmp`. Those checks now use portable behaviour. The Electron window smoke itself cannot be torn down by this agent host because macOS denies signalling the spawned process; that test remains a runtime-environment exception rather than a product assertion.
 
 ## Lessons worth keeping
@@ -43,6 +45,7 @@ It also exposed two existing macOS test assumptions: Linux process supervision e
 - A wire change is incomplete until command registration, response unions, fixtures, dispatch, SDK exposure, and protocol version all move together.
 - Any migration changed after a branch build may already exist in a real database. Make the SQL replay-safe and register the previous content hash before landing it.
 - An awaited provider mutation creates a concurrency boundary. Preflight the complete local cascade first, then serialize conflicting local actions until reconciliation finishes.
+- Native routing identity must outlive disposable workspace state, and every derived view of provider-owned history must use the same projection rather than quietly falling back to partial local data.
 - Exact provider and app tests caught semantic failures that typechecking could not; the live visual pass remained necessary for interaction and presentation confidence.
 
 ## What remains intentionally open

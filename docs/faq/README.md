@@ -210,13 +210,15 @@ _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
 
 Codex app-server currently supplies `thread/read` as a complete snapshot. Provider-side incremental history reads and full-output hydration remain tracked in issue #12.
 
+The conversation outline is built from that same complete native projection, not from Spaceship's local event rows or only the currently loaded page. Its row IDs therefore stay aligned with paginated timeline rows. If a retired workspace environment has been pruned, Spaceship routes the read through the native host identity retained on the projection and uses provider metadata for workspace-relative paths.
+
 ### Sources
 
 - [Native history on demand](../../features/native_history_on_demand.md) — current paging boundary.
 - [Thread timeline route](../../apps/server/src/routes/threads/data.ts) — native turn pagination.
 - [History pagination issue](https://github.com/lucharo/spaceship/issues/12) — provider-side and output follow-up work.
 
-_Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
+_Created: 2026-09-02 · Updated: 2026-09-03 · Verified: 2026-09-03_
 
 ## Why is native Codex history more compact than raw provider events?
 

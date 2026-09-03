@@ -4,6 +4,7 @@ import {
   getLastStoredProviderThreadId,
   getLatestThreadSequence,
   getLatestStoredConversationOutlineSequence,
+  getThreadNativeSessionHostId,
   listContextWindowUsageRows,
   listLatestThreadStateEventRowsByThreadIds,
   listQueuedThreadMessages,
@@ -17,6 +18,7 @@ import {
   LEGACY_CODEX_GOAL_EXTENSION_KIND,
   PROMPT_HISTORY_ENTRY_LIMIT,
   threadEventTypeSchema,
+  type Thread,
   type ThreadEventType,
 } from "@bb/domain";
 import {
@@ -53,6 +55,7 @@ import { requireThreadStoragePath } from "../../services/threads/thread-storage.
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
   buildThreadConversationOutline,
+  buildThreadConversationOutlineFromRows,
   buildThreadTimelineWithProfile,
   buildTimelineTurnSummaryDetails,
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
@@ -243,6 +246,161 @@ function paginateNativeHistoryRows(
   };
 }
 
+interface NativeThreadHistoryIdentity {
+  hostId: string;
+  providerThreadId: string;
+}
+
+function resolveNativeThreadHistoryIdentity(
+  deps: AppDeps,
+  thread: Thread,
+): NativeThreadHistoryIdentity | null {
+  const firstStoredEvent = listThreadEventRows(deps.db, {
+    threadId: thread.id,
+    limit: 1,
+    order: "asc",
+  })[0];
+  const providerThreadId = getLastStoredProviderThreadId(deps.db, thread.id);
+  if (
+    firstStoredEvent?.type !== "thread/identity" ||
+    providerThreadId === null ||
+    deps.providerRegistry.getServerCapabilities(thread.providerId)
+      ?.supportsNativeSessionHistory !== true
+  ) {
+    return null;
+  }
+  const hostId =
+    getThreadNativeSessionHostId(deps.db, thread.id) ??
+    (thread.environmentId === null
+      ? null
+      : requireEnvironment(deps.db, thread.environmentId).hostId);
+  return hostId === null ? null : { hostId, providerThreadId };
+}
+
+async function readNativeThreadProjection(
+  deps: AppDeps,
+  thread: Thread,
+  identity: NativeThreadHistoryIdentity,
+  localMaxSeq: number,
+) {
+  const history = await readProviderNativeSessionHistory(deps, {
+    hostId: identity.hostId,
+    providerId: thread.providerId,
+    providerThreadId: identity.providerThreadId,
+    threadId: thread.id,
+  });
+  if (history.session.providerThreadId !== identity.providerThreadId) {
+    throw new ApiError(
+      409,
+      "native_session_identity_mismatch",
+      "The provider returned a different native session",
+    );
+  }
+  const nativeEvents = history.events.map(({ createdAt, event }, index) => ({
+    event,
+    meta: {
+      id: `native-history-${index + 1}`,
+      seq: index + 1,
+      createdAt,
+    },
+  }));
+  const localHeadRows = [
+    ...listLatestThreadStateEventRowsByThreadIds(deps.db, {
+      threadIds: [thread.id],
+      kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
+    }),
+    ...listContextWindowUsageRows(deps.db, { threadId: thread.id }),
+  ];
+  const latestClientRequestRow = listStoredEventRows(deps.db, {
+    threadId: thread.id,
+    types: ["client/turn/requested"],
+    order: "desc",
+    limit: 1,
+  })[0];
+  if (latestClientRequestRow) {
+    const latestClientRequest = parseStoredEvent(latestClientRequestRow);
+    if (latestClientRequest.type === "client/turn/requested") {
+      const requestQuery = {
+        afterSequence: latestClientRequestRow.sequence,
+        clientRequestIds: [latestClientRequest.requestId],
+        threadId: thread.id,
+      };
+      const requestIsResolved =
+        listStoredTurnInputAcceptedRowsByClientRequestIds(deps.db, requestQuery)
+          .length > 0 ||
+        listStoredTurnRejectedRowsByClientRequestIds(deps.db, requestQuery)
+          .length > 0;
+      if (!requestIsResolved) {
+        localHeadRows.push(latestClientRequestRow);
+      }
+    }
+  }
+  const localHeadEvents = [
+    ...new Map(localHeadRows.map((row) => [row.id, row])).values(),
+  ]
+    .sort((left, right) => left.sequence - right.sequence)
+    .map((row, index) => ({
+      event: parseStoredEvent(row),
+      meta: {
+        id: `native-local-head-${row.id}`,
+        seq: nativeEvents.length + index + 1,
+        createdAt: row.createdAt,
+      },
+    }));
+  const attachedWorkspaceRoot =
+    thread.environmentId === null
+      ? null
+      : requireEnvironment(deps.db, thread.environmentId).path;
+  return {
+    events: [...nativeEvents, ...localHeadEvents],
+    maxSeq: Math.max(localMaxSeq, history.session.updatedAt),
+    providerUpdatedAt: history.session.updatedAt,
+    workspaceRoot:
+      history.session.workspaceRoot ??
+      history.session.cwd ??
+      attachedWorkspaceRoot,
+  };
+}
+
+function buildNativeThreadTimeline(
+  deps: AppDeps,
+  thread: Thread,
+  projection: Awaited<ReturnType<typeof readNativeThreadProjection>>,
+  options: {
+    includeNestedRows: boolean;
+    includeProviderUnhandledOperations: boolean;
+    isLatestPage: boolean;
+    providerDisplayName: string | undefined;
+    turnMessageDetail: "full" | "summary";
+  },
+) {
+  return buildThreadTimelineFromEvents({
+    acceptedClientRequestContext: {
+      acceptedClientRequestEvents: [],
+      rejectedClientRequestEvents: [],
+    },
+    contextWindowEvents: projection.events,
+    events: projection.events,
+    options: {
+      contextOnlyToolCallIds: new Set(),
+      includeNestedRows: options.includeNestedRows,
+      includeProviderUnhandledOperations:
+        options.includeProviderUnhandledOperations,
+      isLatestPage: options.isLatestPage,
+      planCommand: resolveProviderPlanCommand(
+        deps.providerRegistry,
+        thread.providerId,
+      ),
+      providerDisplayName: options.providerDisplayName,
+      providerId: thread.providerId,
+      threadName: thread.title ?? thread.titleFallback ?? "",
+      threadStatus: thread.status,
+      turnMessageDetail: options.turnMessageDetail,
+      workspaceRoot: projection.workspaceRoot,
+    },
+  });
+}
+
 async function requireThreadStorageTarget(
   deps: WorkSessionDeps,
   args: RequireThreadStorageTargetArgs,
@@ -393,113 +551,23 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     // because the same `maxSeq` names a different set of rows under a
     // different budget and a client only echoes `afterSequence`.
     const eventBudget = deps.config.featureFlags.timelineWindowEventBudget;
-    const firstStoredEvent = listThreadEventRows(deps.db, {
-      threadId: thread.id,
-      limit: 1,
-      order: "asc",
-    })[0];
-    const providerThreadId = getLastStoredProviderThreadId(deps.db, thread.id);
-    if (
-      !summaryOnly &&
-      firstStoredEvent?.type === "thread/identity" &&
-      providerThreadId !== null &&
-      thread.environmentId !== null &&
-      deps.providerRegistry.getServerCapabilities(thread.providerId)
-        ?.supportsNativeSessionHistory === true
-    ) {
-      const environment = requireEnvironment(deps.db, thread.environmentId);
-      const history = await readProviderNativeSessionHistory(deps, {
-        hostId: environment.hostId,
-        providerId: thread.providerId,
-        providerThreadId,
-        threadId: thread.id,
-      });
-      if (history.session.providerThreadId !== providerThreadId) {
-        throw new ApiError(
-          409,
-          "native_session_identity_mismatch",
-          "The provider returned a different native session",
-        );
-      }
-      const nativeEvents = history.events.map(
-        ({ createdAt, event }, index) => ({
-          event,
-          meta: {
-            id: `native-history-${index + 1}`,
-            seq: index + 1,
-            createdAt,
-          },
-        }),
+    const nativeHistoryIdentity = resolveNativeThreadHistoryIdentity(
+      deps,
+      thread,
+    );
+    if (!summaryOnly && nativeHistoryIdentity !== null) {
+      const projection = await readNativeThreadProjection(
+        deps,
+        thread,
+        nativeHistoryIdentity,
+        maxSeq,
       );
-      const localHeadRows = [
-        ...listLatestThreadStateEventRowsByThreadIds(deps.db, {
-          threadIds: [thread.id],
-          kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
-        }),
-        ...listContextWindowUsageRows(deps.db, { threadId: thread.id }),
-      ];
-      const latestClientRequestRow = listStoredEventRows(deps.db, {
-        threadId: thread.id,
-        types: ["client/turn/requested"],
-        order: "desc",
-        limit: 1,
-      })[0];
-      if (latestClientRequestRow) {
-        const latestClientRequest = parseStoredEvent(latestClientRequestRow);
-        if (latestClientRequest.type === "client/turn/requested") {
-          const requestQuery = {
-            afterSequence: latestClientRequestRow.sequence,
-            clientRequestIds: [latestClientRequest.requestId],
-            threadId: thread.id,
-          };
-          const requestIsResolved =
-            listStoredTurnInputAcceptedRowsByClientRequestIds(
-              deps.db,
-              requestQuery,
-            ).length > 0 ||
-            listStoredTurnRejectedRowsByClientRequestIds(deps.db, requestQuery)
-              .length > 0;
-          if (!requestIsResolved) {
-            localHeadRows.push(latestClientRequestRow);
-          }
-        }
-      }
-      const localHeadEvents = [
-        ...new Map(localHeadRows.map((row) => [row.id, row])).values(),
-      ]
-        .sort((left, right) => left.sequence - right.sequence)
-        .map((row, index) => ({
-          event: parseStoredEvent(row),
-          meta: {
-            id: `native-local-head-${row.id}`,
-            seq: nativeEvents.length + index + 1,
-            createdAt: row.createdAt,
-          },
-        }));
-      const events = [...nativeEvents, ...localHeadEvents];
-      const timeline = buildThreadTimelineFromEvents({
-        acceptedClientRequestContext: {
-          acceptedClientRequestEvents: [],
-          rejectedClientRequestEvents: [],
-        },
-        contextWindowEvents: events,
-        events,
-        options: {
-          contextOnlyToolCallIds: new Set(),
-          includeNestedRows: true,
-          includeProviderUnhandledOperations,
-          isLatestPage: page.kind === "latest",
-          planCommand: resolveProviderPlanCommand(
-            deps.providerRegistry,
-            thread.providerId,
-          ),
-          providerDisplayName,
-          providerId: thread.providerId,
-          threadName: thread.title ?? thread.titleFallback ?? "",
-          threadStatus: thread.status,
-          turnMessageDetail: includeNestedRows ? "full" : "summary",
-          workspaceRoot: environment.path,
-        },
+      const timeline = buildNativeThreadTimeline(deps, thread, projection, {
+        includeNestedRows: true,
+        includeProviderUnhandledOperations,
+        isLatestPage: page.kind === "latest",
+        providerDisplayName,
+        turnMessageDetail: includeNestedRows ? "full" : "summary",
       });
       const paginated = paginateNativeHistoryRows(timeline.rows, page);
       const response = {
@@ -514,7 +582,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
           hasOlderRows: paginated.hasOlderRows,
           olderCursor: paginated.olderCursor,
         },
-        maxSeq: Math.max(maxSeq, history.session.updatedAt),
+        maxSeq: projection.maxSeq,
       };
       const truncated = truncateTimelineResponseOutputs(
         response,
@@ -592,13 +660,68 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     );
   });
 
-  get(routes.conversationOutline, (context) => {
+  get(routes.conversationOutline, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const maxSeq = getLatestThreadSequence(deps.db, { threadId: thread.id });
     const outlineSequence = getLatestStoredConversationOutlineSequence(
       deps.db,
       { threadId: thread.id },
     );
+    const providerDisplayName = resolveThreadProviderDisplayName(
+      deps,
+      thread.providerId,
+    );
+    const nativeHistoryIdentity = resolveNativeThreadHistoryIdentity(
+      deps,
+      thread,
+    );
+    if (nativeHistoryIdentity !== null) {
+      const projection = await readNativeThreadProjection(
+        deps,
+        thread,
+        nativeHistoryIdentity,
+        maxSeq,
+      );
+      const nativeCacheKey = JSON.stringify([
+        "native",
+        thread.id,
+        nativeHistoryIdentity.hostId,
+        nativeHistoryIdentity.providerThreadId,
+        projection.providerUpdatedAt,
+        outlineSequence,
+        thread.status,
+        thread.title,
+        thread.titleFallback,
+      ]);
+      const cachedNative = conversationOutlineCache.get(nativeCacheKey);
+      if (cachedNative !== undefined) {
+        conversationOutlineCache.delete(nativeCacheKey);
+        conversationOutlineCache.set(nativeCacheKey, cachedNative);
+        return context.json({ items: cachedNative, maxSeq: projection.maxSeq });
+      }
+      const timeline = buildNativeThreadTimeline(deps, thread, projection, {
+        includeNestedRows: false,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        providerDisplayName,
+        turnMessageDetail: "summary",
+      });
+      const response = buildThreadConversationOutlineFromRows(
+        timeline.rows,
+        projection.maxSeq,
+      );
+      conversationOutlineCache.set(nativeCacheKey, response.items);
+      while (
+        conversationOutlineCache.size > CONVERSATION_OUTLINE_CACHE_MAX_ENTRIES
+      ) {
+        const oldest = conversationOutlineCache.keys().next().value;
+        if (oldest === undefined) {
+          break;
+        }
+        conversationOutlineCache.delete(oldest);
+      }
+      return context.json(response);
+    }
     const cacheKey = JSON.stringify([
       thread.id,
       outlineSequence,
@@ -615,10 +738,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     }
     const response = buildThreadConversationOutline(deps.db, thread, {
       maxSeq,
-      providerDisplayName: resolveThreadProviderDisplayName(
-        deps,
-        thread.providerId,
-      ),
+      providerDisplayName,
     });
     conversationOutlineCache.set(cacheKey, response.items);
     while (

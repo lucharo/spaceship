@@ -1,5 +1,7 @@
+import { eq } from "drizzle-orm";
 import {
   archiveThread,
+  environments,
   getEnvironment,
   getLastStoredProviderThreadId,
   getLatestThreadSequence,
@@ -18,6 +20,7 @@ import {
 } from "@bb/domain";
 import {
   adoptNativeThreadResponseSchema,
+  threadConversationOutlineResponseSchema,
   threadTimelineResponseSchema,
   type TimelineRow,
 } from "@bb/server-contract";
@@ -306,6 +309,28 @@ describe("public native thread adoption", () => {
               },
             },
           },
+          {
+            createdAt: 1_777_000_023_000,
+            event: {
+              type: "item/completed",
+              threadId: adopted.thread.id,
+              providerThreadId,
+              scope: turnScope("native-turn-2"),
+              item: {
+                type: "fileChange",
+                id: "native-file-2",
+                changes: [
+                  {
+                    path: "/tmp/native-adoption/src/native.ts",
+                    kind: "update",
+                    diff: "@@ -1 +1 @@\n-old\n+new",
+                  },
+                ],
+                status: "completed",
+                approvalStatus: null,
+              },
+            },
+          },
         ],
       };
 
@@ -372,6 +397,92 @@ describe("public native thread adoption", () => {
         hasOlderRows: false,
         olderCursor: null,
       });
+
+      const environmentId = adopted.thread.environmentId;
+      if (environmentId === null) {
+        throw new Error("Expected adopted native thread environment");
+      }
+      harness.db
+        .delete(environments)
+        .where(eq(environments.id, environmentId))
+        .run();
+      expect(getThread(harness.db, adopted.thread.id)).toMatchObject({
+        environmentId: null,
+        nativeSessionHostId: host.id,
+      });
+
+      const outlineResponsePromise = harness.app.request(
+        `/api/v1/threads/${adopted.thread.id}/conversation-outline`,
+      );
+      const outlineHistory = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.history" &&
+          command.providerThreadId === providerThreadId,
+      );
+      expect(outlineHistory.row.hostId).toBe(host.id);
+      await reportQueuedCommandSuccess(
+        harness,
+        outlineHistory as never,
+        nativeHistory as never,
+      );
+      const outlineResponse = await outlineResponsePromise;
+      expect(outlineResponse.status).toBe(200);
+      const outline = threadConversationOutlineResponseSchema.parse(
+        await readJson(outlineResponse),
+      );
+      expect(outline.items.map((item) => item.preview)).toEqual([
+        "Synthetic question",
+        "Synthetic answer",
+        "Synthetic follow-up",
+        "Synthetic follow-up answer",
+      ]);
+      const outlineIds = new Set(outline.items.map((item) => item.id));
+      const pagedConversationIds: string[] = [];
+      const collectConversationIds = (rows: readonly TimelineRow[]): void => {
+        for (const row of rows) {
+          if (row.kind === "conversation") {
+            pagedConversationIds.push(row.id);
+          } else if (row.kind === "turn") {
+            collectConversationIds(row.children ?? []);
+          } else if (row.kind === "work" && row.workKind === "delegation") {
+            collectConversationIds(row.childRows);
+          }
+        }
+      };
+      collectConversationIds([...timeline.rows, ...olderTimeline.rows]);
+      expect(pagedConversationIds).toHaveLength(4);
+      for (const id of pagedConversationIds) {
+        expect(outlineIds.has(id)).toBe(true);
+      }
+
+      const prunedTimelineResponsePromise = harness.app.request(
+        `/api/v1/threads/${adopted.thread.id}/timeline?includeNestedRows=true&segmentLimit=1`,
+      );
+      const prunedTimelineHistory = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.history" &&
+          command.providerThreadId === providerThreadId,
+      );
+      expect(prunedTimelineHistory.row.hostId).toBe(host.id);
+      await reportQueuedCommandSuccess(
+        harness,
+        prunedTimelineHistory as never,
+        nativeHistory as never,
+      );
+      const prunedTimelineResponse = await prunedTimelineResponsePromise;
+      expect(prunedTimelineResponse.status).toBe(200);
+      const prunedTimeline = threadTimelineResponseSchema.parse(
+        await readJson(prunedTimelineResponse),
+      );
+      expect(prunedTimeline.nativeHistoryProjection).toBe(true);
+      expect(JSON.stringify(prunedTimeline)).toContain(
+        '"path":"src/native.ts"',
+      );
+      expect(JSON.stringify(prunedTimeline)).not.toContain(
+        "/tmp/native-adoption/src/native.ts",
+      );
 
       const storedEventsResponse = await harness.app.request(
         `/api/v1/threads/${adopted.thread.id}/events?limit=100&order=asc`,

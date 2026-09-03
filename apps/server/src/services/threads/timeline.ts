@@ -1929,22 +1929,37 @@ export function buildThreadConversationOutline(
         workspaceRoot: resolveThreadWorkspaceRoot(db, thread),
       },
     });
-    const items: ThreadConversationOutlineItem[] = [];
-    for (const row of timeline.rows) {
-      if (row.kind !== "conversation") {
-        continue;
-      }
-      items.push({
-        id: row.id,
-        role: row.role,
-        preview: toConversationOutlinePreview(row.text),
-        attachmentSummary: toConversationOutlineAttachmentSummary(
-          row.attachments,
-        ),
-      });
-    }
-    return { items, maxSeq: options.maxSeq };
+    return buildThreadConversationOutlineFromRows(
+      timeline.rows,
+      options.maxSeq,
+    );
   });
+}
+
+/**
+ * Reduces a complete timeline projection to the lightweight outline contract.
+ * Native histories use this path after projecting provider-owned events so
+ * outline row IDs stay identical to the paginated timeline rows.
+ */
+export function buildThreadConversationOutlineFromRows(
+  rows: readonly TimelineRow[],
+  maxSeq: number,
+): ThreadConversationOutlineResponse {
+  const items: ThreadConversationOutlineItem[] = [];
+  for (const row of rows) {
+    if (row.kind !== "conversation") {
+      continue;
+    }
+    items.push({
+      id: row.id,
+      role: row.role,
+      preview: toConversationOutlinePreview(row.text),
+      attachmentSummary: toConversationOutlineAttachmentSummary(
+        row.attachments,
+      ),
+    });
+  }
+  return { items, maxSeq };
 }
 
 export function buildTimelineTurnSummaryDetails(
@@ -2084,8 +2099,7 @@ export function buildTimelineTurnSummaryDetails(
   // route actually holds, so the parent expansion spends what is left rather
   // than a pre-closure estimate of it. The subtraction may go negative, which
   // is the safe direction: the parent fetch then stays inside its bounds.
-  const detailsEventDataBytes =
-    byteLengthOfStoredEventRows(wholeItemEventRows);
+  const detailsEventDataBytes = byteLengthOfStoredEventRows(wholeItemEventRows);
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     maxInlineOutputChars: detailsInlineOutputLimit,
     outOfBoundsChildDataByteLimit:
