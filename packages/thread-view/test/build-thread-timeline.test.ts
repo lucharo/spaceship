@@ -3064,6 +3064,9 @@ describe("buildThreadTimelineFromEvents", () => {
       "src/a.ts",
     ]);
     expect(new Set(rows.map((row) => row.id))).toHaveLength(2);
+    expect(rows.some((row) => row.id.includes("workspace-absolute:/"))).toBe(
+      true,
+    );
     expect(rows.every((row) => !row.id.includes(workspaceRoot))).toBe(true);
   });
 });
