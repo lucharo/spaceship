@@ -2,7 +2,7 @@ import type {
   SystemNativeSessionsQuery,
   SystemNativeSessionsResponse,
 } from "@bb/server-contract";
-import { findOrRepairThreadsByNativeIdentities } from "@bb/db";
+import { findThreadsByNativeIdentities } from "@bb/db";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { AppDeps } from "../../types.js";
 import {
@@ -42,7 +42,7 @@ export async function listProviderNativeSessions(
         : {}),
     },
   });
-  const localThreads = findOrRepairThreadsByNativeIdentities(deps.db, {
+  const localThreads = findThreadsByNativeIdentities(deps.db, {
     hostId,
     providerId,
     providerThreadIds: result.sessions.map(

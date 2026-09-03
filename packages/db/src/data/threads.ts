@@ -40,7 +40,6 @@ import {
   events,
   nativeSessionArchiveConfirmations,
   pendingInteractions,
-  projectSources,
   projects,
   threadSearchSegments,
   threads,
@@ -433,7 +432,7 @@ export function findThreadByNativeIdentity(
   identity: NativeThreadIdentity,
 ): ThreadRow | null {
   return (
-    findOrRepairThreadsByNativeIdentities(db, {
+    findThreadsByNativeIdentities(db, {
       hostId: identity.hostId,
       providerId: identity.providerId,
       providerThreadIds: [identity.providerThreadId],
@@ -493,120 +492,6 @@ export function findThreadsByNativeIdentities(
     }
   }
   return byProviderThreadId;
-}
-
-/**
- * Repair projections created before native host identity was persisted only
- * when the project's durable source metadata proves a single original host.
- * Ambiguous legacy matches remain untouched rather than guessing.
- */
-export function findOrRepairThreadsByNativeIdentities(
-  db: ThreadWriteConnection,
-  identities: NativeThreadIdentities,
-): ReadonlyMap<string, ThreadRow> {
-  const matches = new Map(findThreadsByNativeIdentities(db, identities));
-  const missingProviderThreadIds = identities.providerThreadIds.filter(
-    (providerThreadId) => !matches.has(providerThreadId),
-  );
-  if (missingProviderThreadIds.length === 0) {
-    return matches;
-  }
-
-  const latestProviderIdentities = db
-    .select({
-      threadId: events.threadId,
-      latestSequence: max(events.sequence).as("latest_sequence"),
-    })
-    .from(events)
-    .where(isNotNull(events.providerThreadId))
-    .groupBy(events.threadId)
-    .as("latest_legacy_provider_identities");
-  const legacyMatches = db
-    .select({
-      providerThreadId: events.providerThreadId,
-      thread: getTableColumns(threads),
-    })
-    .from(threads)
-    .innerJoin(events, eq(events.threadId, threads.id))
-    .innerJoin(
-      latestProviderIdentities,
-      and(
-        eq(latestProviderIdentities.threadId, threads.id),
-        eq(latestProviderIdentities.latestSequence, events.sequence),
-      ),
-    )
-    .where(
-      and(
-        isNull(threads.nativeSessionHostId),
-        eq(threads.providerId, identities.providerId),
-        inArray(events.providerThreadId, missingProviderThreadIds),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .orderBy(desc(threads.updatedAt))
-    .all();
-
-  const candidatesByProviderThreadId = new Map<string, ThreadRow[]>();
-  for (const legacyMatch of legacyMatches) {
-    if (legacyMatch.providerThreadId === null) continue;
-    const candidates =
-      candidatesByProviderThreadId.get(legacyMatch.providerThreadId) ?? [];
-    if (!candidates.some((candidate) => candidate.id === legacyMatch.thread.id)) {
-      candidates.push(legacyMatch.thread);
-    }
-    candidatesByProviderThreadId.set(legacyMatch.providerThreadId, candidates);
-  }
-
-  const candidateProjectIds = [
-    ...new Set(
-      legacyMatches.map((legacyMatch) => legacyMatch.thread.projectId),
-    ),
-  ];
-  const sourceHostIdsByProjectId = new Map<string, Set<string>>();
-  if (candidateProjectIds.length > 0) {
-    const sourceHosts = db
-      .select({
-        hostId: projectSources.hostId,
-        projectId: projectSources.projectId,
-      })
-      .from(projectSources)
-      .where(inArray(projectSources.projectId, candidateProjectIds))
-      .all();
-    for (const sourceHost of sourceHosts) {
-      if (sourceHost.hostId === null) continue;
-      const hostIds =
-        sourceHostIdsByProjectId.get(sourceHost.projectId) ?? new Set<string>();
-      hostIds.add(sourceHost.hostId);
-      sourceHostIdsByProjectId.set(sourceHost.projectId, hostIds);
-    }
-  }
-
-  for (const [providerThreadId, candidates] of candidatesByProviderThreadId) {
-    if (candidates.length !== 1) continue;
-    const sourceHostIds = sourceHostIdsByProjectId.get(candidates[0].projectId);
-    if (
-      sourceHostIds?.size !== 1 ||
-      !sourceHostIds.has(identities.hostId)
-    ) {
-      continue;
-    }
-    const repaired = db
-      .update(threads)
-      .set({ nativeSessionHostId: identities.hostId })
-      .where(
-        and(
-          eq(threads.id, candidates[0].id),
-          isNull(threads.nativeSessionHostId),
-        ),
-      )
-      .returning()
-      .get();
-    if (repaired !== undefined) {
-      matches.set(providerThreadId, repaired);
-    }
-  }
-
-  return matches;
 }
 
 export function getThread(db: ThreadWriteConnection, id: string) {
