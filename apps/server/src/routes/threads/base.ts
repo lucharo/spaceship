@@ -67,9 +67,14 @@ import {
   archiveProviderNativeSession,
   readProviderNativeSession,
 } from "../../services/system/native-sessions.js";
-import { dispatchThreadRenameCommand } from "../../services/threads/thread-commands.js";
+import {
+  dispatchThreadRenameCommand,
+  waitForPendingThreadProviderArchiveCommand,
+} from "../../services/threads/thread-commands.js";
 import {
   finalizeStoppedThread,
+  hasLiveThreadStartInFlight,
+  hasLiveThreadStopInFlight,
   requestActiveRuntimeThreadStopIfNeeded,
 } from "../../services/threads/thread-lifecycle.js";
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
@@ -364,6 +369,36 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       withThreadArchiveMutation(nativeSessionMutationKey(payload), async () => {
         requireNonDestroyedHostWithStatus(deps, payload.hostId);
         requireBridgeLaunchForProviderId(deps, payload.providerId);
+        const existingBeforeRead = findThreadByNativeIdentity(deps.db, payload);
+        if (
+          existingBeforeRead !== null &&
+          existingBeforeRead.archivedAt !== null
+        ) {
+          if (
+            existingBeforeRead.status === "active" ||
+            existingBeforeRead.status === "stopping" ||
+            hasLiveThreadStartInFlight(existingBeforeRead.id) ||
+            hasLiveThreadStopInFlight(existingBeforeRead.id)
+          ) {
+            throw new ApiError(
+              409,
+              "native_session_archived",
+              "Wait for the native session archive to finish before reopening it",
+            );
+          }
+          const archiveSettled =
+            await waitForPendingThreadProviderArchiveCommand(
+              existingBeforeRead.id,
+              COMMAND_TIMEOUT_MS,
+            );
+          if (!archiveSettled) {
+            throw new ApiError(
+              409,
+              "native_session_archived",
+              "Wait for the native session archive to finish before reopening it",
+            );
+          }
+        }
         const nativeSession = await readProviderNativeSession(deps, payload);
         if (nativeSession.providerThreadId !== payload.providerThreadId) {
           throw new ApiError(

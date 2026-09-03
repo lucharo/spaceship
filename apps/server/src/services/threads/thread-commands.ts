@@ -615,7 +615,7 @@ export function dispatchArchivedThreadProviderArchiveCommand(
   if (!environment) {
     return false;
   }
-  if (environment.status !== "ready") {
+  if (environment.status !== "ready" && environment.status !== "retiring") {
     return false;
   }
 
@@ -675,8 +675,28 @@ const pendingThreadProviderArchiveCommands = new Map<string, Promise<void>>();
 
 export async function waitForPendingThreadProviderArchiveCommand(
   threadId: string,
-): Promise<void> {
-  await pendingThreadProviderArchiveCommands.get(threadId);
+  timeoutMs?: number,
+): Promise<boolean> {
+  const pending = pendingThreadProviderArchiveCommands.get(threadId);
+  if (!pending) {
+    return true;
+  }
+  if (timeoutMs === undefined) {
+    await pending;
+    return true;
+  }
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const settled = await Promise.race([
+    pending.then(() => true),
+    new Promise<boolean>((resolve) => {
+      timeout = setTimeout(() => resolve(false), timeoutMs);
+    }),
+  ]);
+  if (timeout !== undefined) {
+    clearTimeout(timeout);
+  }
+  return settled;
 }
 
 export function dispatchThreadUnarchiveCommand(

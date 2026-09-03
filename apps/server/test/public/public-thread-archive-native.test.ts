@@ -355,6 +355,76 @@ describe("public native thread archive", () => {
     });
   });
 
+  it("rejects adoption while an active environment archive is still settling", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, environment, thread } = seedThreadFixture(harness, {
+        session: { id: "host-active-environment-archive-adopt" },
+        environment: {
+          managed: true,
+          workspaceProvisionType: "managed-worktree",
+        },
+        thread: { status: "active" },
+      });
+      const providerThreadId = "native-thread-active-environment-archive-adopt";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+
+      const archiveResponse = await harness.app.request(
+        `/api/v1/environments/${environment.id}/archive-threads`,
+        { method: "POST" },
+      );
+      expect(archiveResponse.status).toBe(200);
+      const stop = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.stop" && command.threadId === thread.id,
+      );
+
+      const adoptionResponse = await harness.app.request(
+        "/api/v1/threads/adopt-native",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            hostId: host.id,
+            providerId: "codex",
+            providerThreadId,
+          }),
+        },
+      );
+
+      expect(adoptionResponse.status).toBe(409);
+      expect(
+        listQueuedCommands(harness, "provider.native_sessions.read"),
+      ).toEqual([]);
+
+      await reportQueuedCommandSuccess(harness, stop, {
+        providerCheckpointId: null,
+      });
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.archive" && command.threadId === thread.id,
+      );
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+
+      expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
+      expect(
+        hasNativeSessionArchiveConfirmation(harness.db, {
+          providerThreadId,
+          threadId: thread.id,
+        }),
+      ).toBe(true);
+    });
+  });
+
   it("starts managed-environment cleanup after native archive reconciliation", async () => {
     await withTestHarness(async (harness) => {
       const { host, environment, thread } = seedThreadFixture(harness, {

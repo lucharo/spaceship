@@ -31,11 +31,7 @@ import {
 import { runLiveCommandAndWait } from "../services/hosts/live-command-wait.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { generateCommitMessage } from "../services/ai/commit-message.js";
-import {
-  archiveEnvironmentThreads,
-  withNativeSessionMutation,
-} from "../services/threads/thread-archive.js";
-import { waitForPendingThreadProviderArchiveCommand } from "../services/threads/thread-commands.js";
+import { archiveEnvironmentThreads } from "../services/threads/thread-archive.js";
 import {
   normalizeBranchQuery,
   parseBranchListLimit,
@@ -325,7 +321,7 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
     return context.json(updated);
   });
 
-  post(routes.archiveThreads, async (context) => {
+  post(routes.archiveThreads, (context) => {
     const environment = requireEnvironment(deps.db, context.req.param("id"));
     if (!isWorktreeEnvironment(environment)) {
       throw new ApiError(
@@ -335,17 +331,10 @@ export function registerEnvironmentRoutes(app: Hono, deps: AppDeps): void {
       );
     }
 
-    return withNativeSessionMutation(async () => {
-      const archivedThreadIds = archiveEnvironmentThreads(deps, {
-        environment,
-      });
-      await Promise.all(
-        archivedThreadIds.map(waitForPendingThreadProviderArchiveCommand),
-      );
-      return context.json({
-        ok: true,
-        archivedThreadIds,
-      });
+    const archivedThreadIds = archiveEnvironmentThreads(deps, { environment });
+    return context.json({
+      ok: true,
+      archivedThreadIds,
     });
   });
 
