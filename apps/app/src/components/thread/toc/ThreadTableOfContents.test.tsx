@@ -925,6 +925,126 @@ describe("ThreadTableOfContents", () => {
     expect(onNavigateToRow).toHaveBeenCalledWith("nested", 12);
   });
 
+  it("waits for deferred turn details before scrolling to a nested outline target", async () => {
+    let resolveTurnDetails!: () => void;
+    const turnDetails = new Promise<void>((resolve) => {
+      resolveTurnDetails = resolve;
+    });
+    const onNavigateToRow = vi.fn(() => {
+      void turnDetails.then(() => {
+        scrollElement.appendChild(timelineRowElement("nested_deferred"));
+      });
+    });
+    setOutline([
+      {
+        id: "nested_deferred",
+        sourceSeq: 12,
+        role: "assistant",
+        preview: "Deferred nested answer",
+        attachmentSummary: null,
+      },
+      {
+        id: "u2",
+        role: "user",
+        preview: "Second question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u3",
+        role: "user",
+        preview: "Third question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u4",
+        role: "user",
+        preview: "Fourth question",
+        attachmentSummary: null,
+      },
+    ]);
+
+    render(
+      <TocHost
+        timelineRows={[userConversationRow(12)]}
+        hasOlderTimelineRows
+        onNavigateToRow={onNavigateToRow}
+      />,
+    );
+    openTocPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Agent messages" }));
+    fireEvent.click(await screen.findByText("Deferred nested answer"));
+
+    await act(async () => {
+      for (let frame = 0; frame < 8; frame += 1) {
+        await new Promise<void>((resolve) =>
+          window.requestAnimationFrame(() => resolve()),
+        );
+      }
+    });
+    expect(scrollElementIntoView).not.toHaveBeenCalled();
+
+    await act(async () => resolveTurnDetails());
+    await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalledTimes(1));
+    expect(onNavigateToRow).toHaveBeenCalledWith("nested_deferred", 12);
+  });
+
+  it("cancels a deferred outline jump when the thread changes", async () => {
+    const onNavigateToRow = vi.fn();
+    setOutline([
+      {
+        id: "old_nested",
+        sourceSeq: 12,
+        role: "assistant",
+        preview: "Old nested answer",
+        attachmentSummary: null,
+      },
+      {
+        id: "u2",
+        role: "user",
+        preview: "Second question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u3",
+        role: "user",
+        preview: "Third question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u4",
+        role: "user",
+        preview: "Fourth question",
+        attachmentSummary: null,
+      },
+    ]);
+
+    const view = render(
+      <TocHost
+        threadId="thr_old"
+        timelineRows={[userConversationRow(12)]}
+        hasOlderTimelineRows
+        onNavigateToRow={onNavigateToRow}
+      />,
+    );
+    openTocPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Agent messages" }));
+    fireEvent.click(await screen.findByText("Old nested answer"));
+
+    view.rerender(
+      <TocHost
+        threadId="thr_new"
+        timelineRows={[userConversationRow(12)]}
+        hasOlderTimelineRows
+        onNavigateToRow={onNavigateToRow}
+      />,
+    );
+    await act(async () => {
+      scrollElement.appendChild(timelineRowElement("old_nested"));
+    });
+
+    expect(scrollElementIntoView).not.toHaveBeenCalled();
+  });
+
   it("auto-paginates older pages to reach an unloaded message, then scrolls to it", async () => {
     // The target isn't in the loaded window; loadOlder simulates it paginating
     // in, mirroring the real controller prepending older rows to the DOM.
@@ -1088,11 +1208,14 @@ describe("ThreadTableOfContents", () => {
   });
 
   it("finds active items with logarithmic row measurements", () => {
-    const allItems = Array.from({ length: 256 }, (_, index): TocItem => ({
-      id: `item-${index}`,
-      label: `Message ${index}`,
-      role: index % 2 === 0 ? "user" : "assistant",
-    }));
+    const allItems = Array.from(
+      { length: 256 },
+      (_, index): TocItem => ({
+        id: `item-${index}`,
+        label: `Message ${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+      }),
+    );
     const manyUserItems = allItems.filter((item) => item.role === "user");
     const manyAgentItems = allItems.filter((item) => item.role === "assistant");
     const visibleIndex = 200;

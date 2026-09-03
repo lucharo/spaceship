@@ -388,6 +388,55 @@ function waitForAnimationFrame(): Promise<void> {
   });
 }
 
+function waitForTimelineRowElement({
+  rowId,
+  scrollElement,
+  signal,
+}: {
+  rowId: string;
+  scrollElement: HTMLElement | null;
+  signal: AbortSignal;
+}): Promise<HTMLElement | null> {
+  const existing = findTimelineRowElement(scrollElement, rowId);
+  if (existing || !scrollElement || signal.aborted) {
+    return Promise.resolve(existing);
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (row: HTMLElement | null) => {
+      if (settled) return;
+      settled = true;
+      observer.disconnect();
+      signal.removeEventListener("abort", handleAbort);
+      resolve(row);
+    };
+    const handleAbort = () => finish(null);
+    const observer = new MutationObserver(() => {
+      const row = findTimelineRowElement(scrollElement, rowId);
+      if (row) finish(row);
+    });
+
+    signal.addEventListener("abort", handleAbort, { once: true });
+    observer.observe(scrollElement, { childList: true, subtree: true });
+    // Close the gap between the first lookup and observer registration.
+    const mounted = findTimelineRowElement(scrollElement, rowId);
+    if (mounted) finish(mounted);
+  });
+}
+
+function timelineRowsContainSequence(
+  rows: readonly TimelineRow[],
+  sourceSeq: number | undefined,
+): boolean {
+  return (
+    sourceSeq !== undefined &&
+    rows.some(
+      (row) => row.sourceSeqStart <= sourceSeq && sourceSeq <= row.sourceSeqEnd,
+    )
+  );
+}
+
 function isScrollElementNearBottom(scrollElement: HTMLElement): boolean {
   return (
     scrollElement.scrollHeight -
@@ -585,17 +634,17 @@ export function ThreadTableOfContents({
   hasOlderRef.current = hasOlderTimelineRows;
   const loadOlderRef = useRef(loadOlderTimelineRows);
   loadOlderRef.current = loadOlderTimelineRows;
-  const jumpInProgressRef = useRef(false);
-  // Switching threads remounts this component (PageShell is keyed by threadId).
-  // The jump loop checks this after each await so it stops paginating a thread
-  // the user has already left instead of firing requests against a stale closure.
-  const mountedRef = useRef(true);
+  const timelineRowsRef = useRef(timelineRows);
+  timelineRowsRef.current = timelineRows;
+  const activeJumpAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
-    mountedRef.current = true;
+    activeJumpAbortRef.current?.abort();
+    activeJumpAbortRef.current = null;
+    setPendingJumpId(null);
     return () => {
-      mountedRef.current = false;
+      activeJumpAbortRef.current?.abort();
     };
-  }, []);
+  }, [threadId]);
 
   useEffect(() => {
     if (!tocVisible) return;
@@ -675,27 +724,41 @@ export function ThreadTableOfContents({
           options: { block: "start", inline: "nearest" },
         });
       };
+      activeJumpAbortRef.current?.abort();
+      const jumpAbort = new AbortController();
+      activeJumpAbortRef.current = jumpAbort;
       onNavigateToRow?.(id, sourceSeq);
 
       let row = findTimelineRowElement(getScrollElement(), id);
-      for (let frame = 0; frame < TOC_JUMP_RENDER_FRAMES && !row; frame++) {
-        await waitForAnimationFrame();
-        if (!mountedRef.current) return;
-        row = findTimelineRowElement(getScrollElement(), id);
-      }
       if (row) {
         scrollToRow(row);
+        if (activeJumpAbortRef.current === jumpAbort) {
+          activeJumpAbortRef.current = null;
+        }
         return;
       }
-      // The target message hasn't been paginated into the loaded window yet.
-      // Page older windows in until it appears (or history is exhausted), then
-      // scroll to it.
-      if (jumpInProgressRef.current) return;
-      jumpInProgressRef.current = true;
       setPendingJumpId(id);
+      const mountedRow = waitForTimelineRowElement({
+        rowId: id,
+        scrollElement: getScrollElement(),
+        signal: jumpAbort.signal,
+      });
       try {
         let loads = 0;
-        while (!row && hasOlderRef.current && loads < TOC_JUMP_MAX_PAGE_LOADS) {
+        while (!row && !jumpAbort.signal.aborted) {
+          // A nested row can require an asynchronous turn-summary-details
+          // request after its collapsed ancestor opens. Once its source
+          // sequence is in the loaded window, observe the DOM until that row
+          // actually mounts instead of guessing how many render frames it
+          // needs. The observer is cancelled by another jump or thread change.
+          if (
+            !hasOlderRef.current ||
+            timelineRowsContainSequence(timelineRowsRef.current, sourceSeq)
+          ) {
+            row = await mountedRow;
+            break;
+          }
+          if (loads >= TOC_JUMP_MAX_PAGE_LOADS) break;
           loads += 1;
           try {
             await Promise.resolve(loadOlderRef.current());
@@ -707,24 +770,36 @@ export function ThreadTableOfContents({
             // call as an unhandled rejection.
             break;
           }
-          if (!mountedRef.current) return;
+          if (jumpAbort.signal.aborted) return;
           // Wait for the prepended rows to commit, retrying across a few frames
-          // before deciding the row is in an even older page.
+          // before deciding the target sequence is in an even older page. Once
+          // its containing row is loaded, the DOM observer owns the remaining
+          // lazy-details wait.
           for (let frame = 0; frame < TOC_JUMP_RENDER_FRAMES && !row; frame++) {
             await waitForAnimationFrame();
-            if (!mountedRef.current) return;
+            if (jumpAbort.signal.aborted) return;
             row = findTimelineRowElement(getScrollElement(), id);
+            if (
+              timelineRowsContainSequence(timelineRowsRef.current, sourceSeq)
+            ) {
+              break;
+            }
           }
         }
-        // If the row still isn't loaded after exhausting older pages the jump is
-        // a no-op. Outline ids are projected by the same builder as timeline
-        // rows, so a visible-but-unreachable entry is effectively impossible; we
-        // fail silently rather than surface an error for a row the user sees.
-        if (!row) row = findTimelineRowElement(getScrollElement(), id);
+        if (
+          !row &&
+          !jumpAbort.signal.aborted &&
+          timelineRowsContainSequence(timelineRowsRef.current, sourceSeq)
+        ) {
+          row = await mountedRow;
+        }
         if (row) scrollToRow(row);
       } finally {
-        jumpInProgressRef.current = false;
-        setPendingJumpId(null);
+        jumpAbort.abort();
+        if (activeJumpAbortRef.current === jumpAbort) {
+          activeJumpAbortRef.current = null;
+          setPendingJumpId(null);
+        }
       }
     },
     [bottomAnchor, onNavigateToRow],
