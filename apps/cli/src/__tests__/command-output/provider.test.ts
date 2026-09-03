@@ -94,6 +94,176 @@ describe("bb provider command output", () => {
     ]);
   });
 
+  it("bb provider sessions lists metadata without transcript content", async () => {
+    const get = vi.fn(async () => ({
+      sessions: [
+        {
+          providerThreadId: "native-1",
+          title: "Release checklist",
+          cwd: "/workspace",
+          createdAt: 1,
+          updatedAt: 2,
+          archived: false,
+          source: "cli",
+        },
+      ],
+      nextCursor: "next-page",
+      backwardsCursor: null,
+    }));
+    stubServerApi({
+      "v1.system.providers.:id.native-sessions.$get": get,
+    });
+
+    await runCommand(["provider", "sessions", "codex"], register);
+
+    expect(get).toHaveBeenCalledWith({
+      param: { id: "codex" },
+      query: { archived: "false", limit: "50" },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "native-1",
+    );
+    expect(collectLogPayloads(vi.mocked(console.log))).toContain(
+      "Next cursor: next-page",
+    );
+  });
+
+  it("rejects a malformed native-session limit", async () => {
+    const get = vi.fn(async () => ({
+      sessions: [],
+      nextCursor: null,
+      backwardsCursor: null,
+    }));
+    stubServerApi({
+      "v1.system.providers.:id.native-sessions.$get": get,
+    });
+
+    await expect(
+      runCommand(
+        ["provider", "sessions", "codex", "--limit", "10abc"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(console.error).toHaveBeenCalledWith(
+      "Error: --limit must be an integer from 1 to 100",
+    );
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("bb provider adopt links a known native session on a selected machine", async () => {
+    const adopt = vi.fn(async () => ({
+      created: true,
+      thread: { id: "thr_adopted", projectId: "prj_adopted" },
+    }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-remote",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          lastRejectedProtocolVersion: null,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+      "v1.threads.adopt-native.$post": adopt,
+    });
+
+    await runCommand(
+      [
+        "provider",
+        "adopt",
+        "codex",
+        "native-1",
+        "--machine",
+        "builder",
+        "--json",
+      ],
+      register,
+    );
+
+    expect(adopt).toHaveBeenCalledWith({
+      json: {
+        hostId: "host-remote",
+        providerId: "codex",
+        providerThreadId: "native-1",
+      },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      JSON.stringify(
+        {
+          created: true,
+          thread: { id: "thr_adopted", projectId: "prj_adopted" },
+        },
+        null,
+        2,
+      ),
+    ]);
+  });
+
+  it("bb provider adopt defaults to the server primary host", async () => {
+    const adopt = vi.fn(async () => ({
+      created: false,
+      thread: { id: "thr_existing", projectId: "prj_existing" },
+    }));
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        primaryHostId: "host-primary",
+      })),
+      "v1.threads.adopt-native.$post": adopt,
+    });
+
+    await runCommand(
+      ["provider", "adopt", "codex", "native-1", "--json"],
+      register,
+    );
+
+    expect(adopt).toHaveBeenCalledWith({
+      json: {
+        hostId: "host-primary",
+        providerId: "codex",
+        providerThreadId: "native-1",
+      },
+    });
+  });
+
+  it("bb provider archive archives a native session on a selected machine", async () => {
+    const archive = vi.fn(async () => ({ ok: true }));
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => [
+        {
+          id: "host-remote",
+          name: "builder",
+          type: "persistent",
+          status: "connected",
+          lastSeenAt: 1,
+          lastRejectedProtocolVersion: null,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ]),
+      "v1.threads.archive-native.$post": archive,
+    });
+
+    await runCommand(
+      ["provider", "archive", "codex", "native-1", "--machine", "builder"],
+      register,
+    );
+
+    expect(archive).toHaveBeenCalledWith({
+      json: {
+        hostId: "host-remote",
+        providerId: "codex",
+        providerThreadId: "native-1",
+      },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Archived native session native-1",
+    ]);
+  });
+
   it("bb provider models includes a matching selected-only model", async () => {
     const get = vi.fn(async () => ({
       providers: [],

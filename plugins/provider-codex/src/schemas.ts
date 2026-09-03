@@ -8,7 +8,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 
-const codexTurnStatusSchema = z.enum([
+export const codexTurnStatusSchema = z.enum([
   "completed",
   "failed",
   "interrupted",
@@ -69,6 +69,18 @@ const codexUserInputSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("localImage"),
+      path: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("audio"),
+      url: z.string(),
+    })
+    .passthrough(),
+  z
+    .object({
+      type: z.literal("localAudio"),
       path: z.string(),
     })
     .passthrough(),
@@ -348,6 +360,7 @@ export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
       type: z.literal("agentMessage"),
       id: z.string(),
       text: z.string(),
+      phase: z.enum(["commentary", "final_answer"]).nullable().optional(),
     })
     .passthrough(),
   z
@@ -501,7 +514,7 @@ const codexErrorInfoSchema = z.union([
 ]);
 export type CodexErrorInfo = z.infer<typeof codexErrorInfoSchema>;
 
-const codexTurnErrorSchema = z
+export const codexTurnErrorSchema = z
   .object({
     message: z.string(),
     codexErrorInfo: codexErrorInfoSchema.nullish(),
@@ -814,11 +827,48 @@ export const codexHandledEventSchema = z.discriminatedUnion("method", [
       .passthrough(),
   ),
   createCodexEventSchema(
+    "hook/started",
+    z
+      .object({
+        threadId: z.string(),
+        turnId: z.string().nullable(),
+        run: z.object({ id: z.string() }).passthrough(),
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
     "turn/completed",
     z
       .object({
         threadId: z.string(),
         turn: codexTurnSchema,
+      })
+      .passthrough(),
+  ),
+  createCodexEventSchema(
+    "hook/completed",
+    z
+      .object({
+        threadId: z.string(),
+        turnId: z.string().nullable(),
+        run: z
+          .object({
+            id: z.string(),
+            status: z.enum([
+              "running",
+              "completed",
+              "failed",
+              "blocked",
+              "stopped",
+            ]),
+            statusMessage: z.string().nullable().optional(),
+            entries: z
+              .array(
+                z.object({ kind: z.string(), text: z.string() }).passthrough(),
+              )
+              .optional(),
+          })
+          .passthrough(),
       })
       .passthrough(),
   ),

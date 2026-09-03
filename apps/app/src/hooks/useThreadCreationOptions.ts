@@ -188,6 +188,11 @@ type InitialReadyProviderResolution =
   | { status: "unresolved" }
   | { status: "resolved"; providerId: string | null };
 
+interface ProviderProbeFallback {
+  requestedProviderId: string;
+  providerId: string;
+}
+
 function sanitizeStoredEnvironmentValue(stored: string): string {
   // Legacy guard: earlier iterations briefly persisted `reuse:<envId>` to
   // localStorage. Treat any persisted reuse value as absent so the picker
@@ -211,6 +216,7 @@ export function useThreadCreationOptions(
   options?: UsePromptModelReasoningOptions,
 ): UseThreadCreationOptionsResult<ScopedExecutionInputSources> {
   const {
+    allowedProviderIds,
     enabled = true,
     environmentId,
     environmentHostId,
@@ -256,6 +262,8 @@ export function useThreadCreationOptions(
     );
   const [initialReadyProvider, setInitialReadyProvider] =
     useState<InitialReadyProviderResolution>({ status: "unresolved" });
+  const [providerProbeFallback, setProviderProbeFallback] =
+    useState<ProviderProbeFallback | null>(null);
   const localProviderSelectionsRef = useRef<
     Map<string, ModelReasoningSelection>
   >(new Map());
@@ -267,6 +275,13 @@ export function useThreadCreationOptions(
   );
   const usesLocalThreadSelections = scope !== "new-thread";
   const usesStoredCreateSelections = scope === "new-thread";
+  const allowedProviderIdSet = useMemo(
+    () =>
+      allowedProviderIds === undefined
+        ? null
+        : new Set<string>(allowedProviderIds),
+    [allowedProviderIds],
+  );
   const nextThreadSelections = useMemo(
     () =>
       getInitialThreadPromptSelections({
@@ -309,9 +324,14 @@ export function useThreadCreationOptions(
     usesLocalThreadSelections,
   ]);
 
-  const selectedProviderIdBeforeReadyFallback = usesStoredCreateSelections
+  const selectedProviderIdFromPreferences = usesStoredCreateSelections
     ? storedProviderId || renderedThreadSelections.selectedProviderId
     : renderedThreadSelections.selectedProviderId;
+  const selectedProviderIdBeforeReadyFallback =
+    allowedProviderIdSet === null ||
+    allowedProviderIdSet.has(selectedProviderIdFromPreferences)
+      ? selectedProviderIdFromPreferences
+      : (allowedProviderIds?.[0] ?? "");
   const rawServiceTier = usesStoredCreateSelections
     ? storedServiceTier || renderedThreadSelections.serviceTier
     : renderedThreadSelections.serviceTier;
@@ -357,7 +377,10 @@ export function useThreadCreationOptions(
   });
   const queriedReadyProviderId = shouldResolveReadyProvider
     ? providerStatesQuery.data?.providers.find(
-        (provider) => provider.status === "ready",
+        (provider) =>
+          provider.status === "ready" &&
+          (allowedProviderIdSet === null ||
+            allowedProviderIdSet.has(provider.providerId)),
       )?.providerId
     : undefined;
   const readyProviderId =
@@ -386,10 +409,14 @@ export function useThreadCreationOptions(
   ]);
   const rawSelectedProviderId =
     selectedProviderIdBeforeReadyFallback || readyProviderId || "";
+  const fallbackProbeProviderId =
+    providerProbeFallback?.requestedProviderId === rawSelectedProviderId
+      ? providerProbeFallback.providerId
+      : null;
   // Omission delegates the no-selection fallback to the server, whose product
   // default comes from the same provider catalog that orders the picker.
   const executionOptionsProviderId = executionOptionsQueryEnabled
-    ? rawSelectedProviderId || undefined
+    ? fallbackProbeProviderId || rawSelectedProviderId || undefined
     : undefined;
   const executionOptionsQuery = useSystemExecutionOptions({
     enabled: executionOptionsQueryEnabled,
@@ -398,7 +425,16 @@ export function useThreadCreationOptions(
   });
   const hostsQuery = useHosts();
   const systemConfig = useSystemConfig();
-  const providers = executionOptionsQuery.data?.providers ?? EMPTY_PROVIDERS;
+  const providers = useMemo(
+    () =>
+      (executionOptionsQuery.data?.providers ?? EMPTY_PROVIDERS).filter(
+        (provider) =>
+          provider.available !== false &&
+          (allowedProviderIdSet === null ||
+            allowedProviderIdSet.has(provider.id)),
+      ),
+    [allowedProviderIdSet, executionOptionsQuery.data?.providers],
+  );
   const isLoadingModels =
     executionOptionsQueryEnabled &&
     (executionOptionsQuery.isLoading ||
@@ -422,6 +458,51 @@ export function useThreadCreationOptions(
     !executionOptionsQuery.isPlaceholderData &&
     !executionOptionsQuery.isError;
   const hasMultipleProviders = providers.length >= 2;
+
+  // A selected provider can disappear between the cached picker roster and the
+  // live routed probe. The first response tells us which provider is actually
+  // available, but its model payload still belongs to the unavailable request.
+  // Re-probe the fallback provider before treating that model catalog as live.
+  useEffect(() => {
+    if (
+      executionOptionsQuery.data === undefined ||
+      executionOptionsQuery.isPlaceholderData ||
+      executionOptionsQuery.isError ||
+      rawSelectedProviderId.length === 0
+    ) {
+      return;
+    }
+    const rawProviderIsAvailable = providers.some(
+      (provider) => provider.id === rawSelectedProviderId,
+    );
+    if (rawProviderIsAvailable) {
+      if (
+        providerProbeFallback?.requestedProviderId === rawSelectedProviderId
+      ) {
+        setProviderProbeFallback(null);
+      }
+      return;
+    }
+    const providerId = providers[0]?.id;
+    if (
+      providerId !== undefined &&
+      executionOptionsProviderId === rawSelectedProviderId &&
+      providerProbeFallback?.providerId !== providerId
+    ) {
+      setProviderProbeFallback({
+        requestedProviderId: rawSelectedProviderId,
+        providerId,
+      });
+    }
+  }, [
+    executionOptionsProviderId,
+    executionOptionsQuery.data,
+    executionOptionsQuery.isError,
+    executionOptionsQuery.isPlaceholderData,
+    providerProbeFallback,
+    providers,
+    rawSelectedProviderId,
+  ]);
 
   // Resolve the effective provider: use selectedProviderId if it matches a known
   // provider, otherwise fall back to the first provider in the list.

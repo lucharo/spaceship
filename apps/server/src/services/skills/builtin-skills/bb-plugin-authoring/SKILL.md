@@ -1210,6 +1210,9 @@ bb.providers.register({
   // supported: false for one id.
   maintenance: { health: false, usage: false, installation: false },
   capabilities: {
+    // Enables provider-neutral native-first surfaces when the bridge can
+    // project existing native history without importing it into bb.
+    experimental_supportsNativeSessionHistory: false,
     supportsServiceTier: false,
     supportsNativeUserQuestion: false,
     fork: "none", // "none" | "tip" | "checkpoint"
@@ -1224,6 +1227,7 @@ bb.providers.register({
   reasoningLevels: [{ id: "medium", label: "Medium" }],
   serviceTiers: undefined, // e.g. [{ id: "fast", label: "Fast" }]
   composerActions: [], // skills typeahead is implicit; ["plan"] opts into plan mode
+  experimental_skillCommandAliases: ["$"], // optional extra skills triggers
   // Cold-cache fallback models: shown only until the first model/list probe
   // completes, or when a probe fails transiently. Exactly one isDefault.
   // `scope` says how far one model/list answer travels: "host" when the
@@ -1352,7 +1356,7 @@ plugin could not resolve them.
 The bridge speaks the canonical Provider Bridge Protocol — line-delimited
 JSON-RPC 2.0 over stdio, documented in `docs/provider-bridge-protocol.md`.
 Minimum correct surface: the `initialize` handshake
-(`{protocolVersion, capabilities}`, protocol version 2 — the runtime rejects
+(`{protocolVersion, capabilities}`, protocol version 3 — the runtime rejects
 any other version at spawn), `thread/start` / `thread/resume` answering
 `{providerThreadId}` after a `thread/identity` notification and then a
 `session.reset` delta (every session construction is a provider id-space
@@ -2128,6 +2132,14 @@ className?, leadingContent?, messageActions? }` —
   host owns timeline loading, streaming, drafts, send/queue/steer/stop,
   attachments, execution controls, pending interactions, and read tracking —
   do not proxy thread data through your own RPC or rebuild the composer.
+- `experimental_NativeSessionThreadList` — bb's host-rendered catalogue for a
+  provider's native sessions. Props:
+  `{ providerId, providerLabel, onNavigate? }`. The host owns native discovery,
+  caching, adoption, lifecycle actions, and routing; the provider plugin only
+  supplies its identity and label. Use this in an
+  `experimental_threadList` replacement when native sessions should appear in
+  bb's ordinary Threads sidebar without copying them into bb's session store.
+  Alias it on import for JSX. Reference: `plugins/provider-codex/app.tsx`.
 - `experimental_ProviderModelPicker` — bb's controlled provider, model, and
   reasoning picker. Props:
   `{ value: { providerId, model, reasoningLevel, serviceTier? }, onChange,

@@ -1693,6 +1693,36 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("refetches thread detail when a turn completes", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const threadKey = threadQueryKey("thr_1");
+    const threadQueryFn = vi.fn(async () => ({ id: "thr_1", status: "idle" }));
+    queryClient.setQueryData(threadKey, { id: "thr_1", status: "active" });
+    const observer = new QueryObserver(queryClient, {
+      queryKey: threadKey,
+      queryFn: threadQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    threadQueryFn.mockClear();
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["turn/completed"], projectId: "project-1" },
+      changes: ["events-appended"],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(threadQueryFn).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    effects.dispose();
+  });
+
   it("invalidates thread detail when background activity starts or settles", () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
@@ -1912,6 +1942,29 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(promptHistoryKey)?.isInvalidated).toBe(
       true,
     );
+
+    effects.dispose();
+  });
+
+  it("invalidates native-session catalogues when a thread identity is appended", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const activeKey = ["native-sessions", "codex", "host-1", false, ""];
+    const archivedKey = ["native-sessions", "codex", "host-1", true, ""];
+    queryClient.setQueryData(activeKey, { sessions: [] });
+    queryClient.setQueryData(archivedKey, { sessions: [] });
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: { eventTypes: ["thread/identity"] },
+      changes: ["events-appended"],
+    });
+    vi.advanceTimersByTime(50);
+
+    expect(queryClient.getQueryState(activeKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(archivedKey)?.isInvalidated).toBe(true);
 
     effects.dispose();
   });

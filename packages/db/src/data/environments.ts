@@ -100,6 +100,26 @@ export interface FindForeignManagedEnvironmentAtHostPathArgs {
   projectId: string;
 }
 
+export function findManagedEnvironmentAtHostPath(
+  db: DbConnection,
+  args: { hostId: string; path: string },
+) {
+  return (
+    db
+      .select()
+      .from(environments)
+      .where(
+        and(
+          eq(environments.hostId, args.hostId),
+          eq(environments.path, args.path),
+          eq(environments.managed, true),
+          ne(environments.status, "destroyed"),
+        ),
+      )
+      .get() ?? null
+  );
+}
+
 /**
  * A live bb-managed workspace at this directory owned by another project.
  * The environment claim is project-scoped, but the directory is physical:

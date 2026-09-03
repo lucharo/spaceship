@@ -331,13 +331,48 @@
 // replaces the owning turn retains it. The wire shape is unchanged, but the
 // server-to-daemon payload semantics differ.
 //
+// Version 181 adds provider.native_sessions.archive so unprojected native
+// sessions can be archived without first creating a local thread or resolving
+// a workspace path. Older daemons cannot answer the command.
+//
+// Version 180 preserves unsupported Codex history items and defers native
+// agent-message classification until the provider supplies its phase. The
+// translated timeline semantics cross the server-to-daemon boundary, so
+// enrolled hosts must update with the server.
+//
+// Version 179 confines a directly symlinked SKILL.md to that one resolved file.
+// Older daemons expose the target directory as the logical skill root.
+//
+// Version 177 adds nullable skill source provenance to host.list_skills results:
+// sourceRepository and sourceRelativePath. The strict result schema makes this
+// incompatible with older daemons in both directions, so enrolled hosts must
+// update before the server can group installed skills by their real source.
+//
+// Version 176 carries provider-owned native-session project identity and
+// runtime status so clients can group worktrees and show live activity.
+//
+// Version 175 adds provider.native_sessions.history so the server can project
+// provider-owned history without copying it into bb's event store.
+//
+// Version 174 makes project.inspect require an existing directory and return
+// its real path. This keeps native-session workspace validation identical on
+// every connected host, including symlink and deleted-directory handling.
+//
+// Version 173 adds the retryable provider.native_sessions.read RPC so adoption
+// resolves metadata from the provider rather than trusting a client copy.
+// Older daemons cannot answer it, so connected hosts update.
+//
+// Version 172 adds the retryable provider.native_sessions.list RPC. It carries
+// metadata only; transcript previews, rollout paths, and turns never cross the
+// daemon boundary. Older daemons cannot answer it, so connected hosts update.
+//
 // Version 171 normalizes Claude model context-window reports against the
 // capacity implied by each model id. The usage event meaning changed across
 // the daemon boundary, so enrolled daemons must update with the server.
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 171 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 181 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

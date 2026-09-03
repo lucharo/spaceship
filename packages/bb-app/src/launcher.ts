@@ -94,6 +94,7 @@ const SET_COMMAND = "set";
 const REMOVE_COMMAND = "remove";
 const CONFIG_UNSET_COMMAND = "unset";
 const CONFIG_LIST_COMMAND = "list";
+const NODE_USE_SYSTEM_CA_ARG = "--use-system-ca";
 const CONFIG_REFRESH_COMMAND = "refresh";
 
 type ManagedConfigValueKey = BbAppManagedConfigKey;
@@ -118,10 +119,8 @@ const STARTUP_ONLY_MANAGED_ENV_KEYS = new Set<string>([
   "BB_INHERITED_SKILLS_ROOTS",
   "BB_LOG_LEVEL",
   "BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD",
-  "BB_POSTHOG_API_KEY",
   "BB_SERVER_BIND_HOST",
   "BB_SERVER_PORT",
-  "BB_TELEMETRY",
   "BB_TRANSCRIPTION",
 ]);
 const PORTABLE_ENV_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/u;
@@ -218,7 +217,6 @@ interface WorktreeRuntimePolicy {
   inheritedSkillsRoots: string;
   serverBindHost: ServerBindHost;
   serverPort: number;
-  telemetry: false;
 }
 
 interface ResolveWorktreeRuntimePolicyArgs {
@@ -862,7 +860,6 @@ export function resolveWorktreeRuntimePolicy(
       name: "BB_SERVER_PORT",
       rawPort: rawServerPort,
     }),
-    telemetry: false,
   };
 }
 
@@ -877,7 +874,6 @@ function applyWorktreeRuntimePolicy(
     BB_INHERITED_SKILLS_ROOTS: policy.inheritedSkillsRoots,
     BB_SERVER_BIND_HOST: policy.serverBindHost,
     BB_SERVER_PORT: String(policy.serverPort),
-    BB_TELEMETRY: String(policy.telemetry),
   };
   delete nextEnv.BB_DEV_APP_PORT;
   return nextEnv;
@@ -1559,8 +1555,8 @@ Startup-only server and launcher keys:
   BB_APP_SURFACE, BB_APP_URL, BB_DATA_DIR, BB_DEV_APP_PORT,
   BB_EXTERNAL_URL, BB_HOST_DAEMON_PORT, BB_INFERENCE,
   BB_INFERENCE_FALLBACK, BB_INHERITED_SKILLS_ROOTS, BB_LOG_LEVEL,
-  BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD, BB_POSTHOG_API_KEY,
-  BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TELEMETRY, BB_TRANSCRIPTION,
+  BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD,
+  BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TRANSCRIPTION,
   and BB_FF_* feature flags.
   Changes require a full bb-app restart with bb-app stop && bb-app start,
   or a desktop app restart. BB_APP_URL, BB_INFERENCE,
@@ -2612,10 +2608,9 @@ function createSharedEnv(args: CreateSharedEnvArgs): NodeJS.ProcessEnv {
 }
 
 /**
- * Surface the server reports for telemetry. The desktop shell spawns this
+ * Surface the server uses for surface-specific behaviour. The desktop shell spawns this
  * launcher with `BB_APP_SURFACE=desktop`, so an inherited (or env.json) value
- * wins; a plain `bb-app` start has none and is the web surface. Overwriting
- * this with `web` unconditionally made every desktop launch report `web`.
+ * wins; a plain `bb-app` start has none and is the web surface.
  */
 function resolveServerAppSurface(env: NodeJS.ProcessEnv): AppSurface {
   return parseAppSurface(env[APP_SURFACE_ENV_NAME]) ?? APP_SURFACE_WEB;
@@ -2859,14 +2854,18 @@ Usage:
   }
   assertBbAppArtifacts(runtime.context);
 
-  const childProcess = spawn(process.execPath, [runtime.context.serverEntry], {
-    cwd: process.cwd(),
-    env: createServerEnv({
-      context: runtime.context,
-      env: runtime.serverEnv,
-    }),
-    stdio: "inherit",
-  });
+  const childProcess = spawn(
+    process.execPath,
+    createServerProcessArgs(runtime.context.serverEntry),
+    {
+      cwd: process.cwd(),
+      env: createServerEnv({
+        context: runtime.context,
+        env: runtime.serverEnv,
+      }),
+      stdio: "inherit",
+    },
+  );
   process.exitCode = toExitCode(await waitForProcessExit(childProcess));
 }
 
@@ -3079,7 +3078,7 @@ export async function startFullStackServerProcess(
   // Fresh per spawn: the probe must match this child, not any earlier one.
   const launchId = randomUUID();
   const serverRun = spawnNamedManagedProcess({
-    args: [args.context.serverEntry],
+    args: createServerProcessArgs(args.context.serverEntry),
     command: process.execPath,
     env: { ...args.env, BB_SERVER_LAUNCH_ID: launchId },
     outputBuffer: args.outputBuffer,
@@ -3107,6 +3106,10 @@ export async function startFullStackServerProcess(
       `Server failed to become healthy: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
+}
+
+export function createServerProcessArgs(serverEntry: string): string[] {
+  return [NODE_USE_SYSTEM_CA_ARG, serverEntry];
 }
 
 async function startFullStackDaemonProcess(

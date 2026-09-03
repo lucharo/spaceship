@@ -65,19 +65,7 @@ jobs:
       - name: Build web (production)
         env:
           CLOUDFLARE_ENV: production
-          VITE_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
         run: pnpm exec turbo run build --filter=@bb/web --cache-dir=.turbo/cache --output-logs=new-only
-
-      - name: Sync marketing analytics secret
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          LANDING_POSTHOG_KEY: ${{ secrets.VITE_POSTHOG_KEY }}
-        run: |
-          if [ -z "$LANDING_POSTHOG_KEY" ]; then
-            echo "VITE_POSTHOG_KEY is required for download tracking."
-            exit 1
-          fi
-          printf '%s' "$LANDING_POSTHOG_KEY" | pnpm --filter @bb/web exec wrangler secret put LANDING_POSTHOG_KEY --name bb-web
 
       - name: Sync email signup secret
         env:

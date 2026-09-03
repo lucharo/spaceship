@@ -47,6 +47,9 @@ import {
   THREAD_DELTA_NOTIFICATION_METHOD,
   initializeParamsSchema,
   modelListParamsSchema,
+  nativeSessionHistoryParamsSchema,
+  nativeSessionListParamsSchema,
+  nativeSessionReadParamsSchema,
   providerInstallationRunParamsSchema,
   providerInstallationStatusParamsSchema,
   providerMaintenanceParamsSchema,
@@ -108,6 +111,12 @@ import {
   type CodexEventTranslator,
 } from "../translator.js";
 import {
+  createCodexEventTranslationState,
+  translateCodexHistoryItemToDeltas,
+} from "../delta-translation.js";
+import { codexTurnErrorSchema } from "../schemas.js";
+import { readCodexThreadWorkspaceRootHints } from "../native-session-metadata.js";
+import {
   createCodexAppServerConnection,
   CodexAppServerExitedError,
   type CodexAppServerConnection,
@@ -131,6 +140,18 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
     params: initializeParamsSchema,
   }),
   z.object({ method: z.literal("model/list"), params: modelListParamsSchema }),
+  z.object({
+    method: z.literal("native/session/list"),
+    params: nativeSessionListParamsSchema,
+  }),
+  z.object({
+    method: z.literal("native/session/read"),
+    params: nativeSessionReadParamsSchema,
+  }),
+  z.object({
+    method: z.literal("native/session/history"),
+    params: nativeSessionHistoryParamsSchema,
+  }),
   z.object({
     method: z.literal("provider/health"),
     params: providerMaintenanceParamsSchema,
@@ -922,6 +943,14 @@ function handleChildExit(
   // here (and settles turns as interrupted, not failed).
   const openTurnIds = [...session.openCodexTurnIds];
   const message = `codex app-server exited unexpectedly (code ${info.code ?? "null"}, signal ${info.signal ?? "null"})${info.stderrTail ? `: ${info.stderrTail}` : ""}`;
+  if (session.codexThreadId !== null) {
+    sendThreadDeltas(
+      session,
+      session.translator.clearExitedChildThreadState({
+        providerThreadId: session.codexThreadId,
+      }),
+    );
+  }
   sendThreadDeltas(
     session,
     openTurnIds.map((codexTurnId) => ({
@@ -939,18 +968,9 @@ function handleChildExit(
       : {}),
     message,
   });
-  // Nothing runs behind a dead child, so drop its live state and settle every
-  // delegation it still had open as failed: open delegations are open work
-  // for the runtime's reaper, and without the closes the thread would never
-  // be idle-reaped.
-  if (session.codexThreadId !== null) {
-    sendThreadDeltas(
-      session,
-      session.translator.clearExitedChildThreadState({
-        providerThreadId: session.codexThreadId,
-      }),
-    );
-  }
+  // Nothing runs behind a dead child. Its item and delegation closes were sent
+  // before the turn boundaries above so the canonical timeline never receives
+  // content after a terminal turn.
   // The session entry stays (with its identity) so the next turn/start can
   // restore the thread from its rollout via session/replaced.
 }
@@ -962,6 +982,7 @@ function handleChildExit(
 function spawnChildConnection(callbacks: {
   /** The bb thread the child serves (record-mode scope); null when none. */
   recordThreadId: string | null;
+  recordProviderIo?: boolean;
   onNotification: (method: string, params: unknown) => void;
   onRequest: (
     method: string,
@@ -981,6 +1002,66 @@ function spawnChildConnection(callbacks: {
 }
 
 const ignoredChildResultSchema = z.unknown();
+
+const codexThreadSummarySchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().nullable(),
+    cwd: z.string().nullable(),
+    projectId: z.string().nullable(),
+    gitInfo: z
+      .object({ originUrl: z.string().nullable() })
+      .passthrough()
+      .nullable(),
+    status: z.discriminatedUnion("type", [
+      z.object({ type: z.literal("notLoaded") }),
+      z.object({ type: z.literal("idle") }),
+      z.object({ type: z.literal("systemError") }),
+      z.object({ type: z.literal("active") }).passthrough(),
+    ]),
+    createdAt: z.number().int().nonnegative(),
+    updatedAt: z.number().int().nonnegative(),
+    source: z.unknown(),
+  })
+  .passthrough();
+
+type CodexThreadSummary = z.infer<typeof codexThreadSummarySchema>;
+
+const codexThreadListResultSchema = z
+  .object({
+    data: z.array(codexThreadSummarySchema),
+    nextCursor: z.string().nullable(),
+    backwardsCursor: z.string().nullable(),
+  })
+  .passthrough();
+
+const codexThreadReadResultSchema = z
+  .object({ thread: codexThreadSummarySchema })
+  .passthrough();
+
+const codexThreadHistoryResultSchema = z
+  .object({
+    thread: codexThreadSummarySchema.extend({
+      turns: z.array(
+        z
+          .object({
+            id: z.string().min(1),
+            status: z.enum([
+              "completed",
+              "failed",
+              "interrupted",
+              "inProgress",
+            ]),
+            error: codexTurnErrorSchema.nullable().optional(),
+            items: z.array(z.unknown()),
+            startedAt: z.number().int().nonnegative().nullable(),
+            completedAt: z.number().int().nonnegative().nullable(),
+          })
+          .passthrough(),
+      ),
+    }),
+  })
+  .passthrough();
 
 async function initializeChild(
   connection: CodexAppServerConnection,
@@ -1322,9 +1403,11 @@ async function rebuildThreadSession(
  */
 async function withMaintenanceChild<T>(
   fn: (connection: CodexAppServerConnection) => Promise<T>,
+  options: { recordProviderIo?: boolean } = {},
 ): Promise<T> {
   const connection = spawnChildConnection({
     recordThreadId: null,
+    ...options,
     onNotification: () => {},
     onRequest: (_method, _params, responder) => {
       responder.error(
@@ -1462,9 +1545,287 @@ function handleInitialize(id: string | number): void {
       grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
       steerMode: "inject",
       skills: { configure: true },
+      nativeSessions: { list: true, read: true, history: true },
     },
   };
   sendResult(id, result);
+}
+
+function codexSessionSourceLabel(source: unknown): string | null {
+  if (typeof source === "string") {
+    return source;
+  }
+  if (typeof source !== "object" || source === null) {
+    return null;
+  }
+  const custom = (source as { custom?: unknown }).custom;
+  if (typeof custom === "string" && custom.length > 0) {
+    return `custom:${custom}`;
+  }
+  if ("subAgent" in source) {
+    return "subAgent";
+  }
+  return null;
+}
+
+export function sanitizeRepositoryUrl(
+  repositoryUrl: string | null | undefined,
+): string | null {
+  const trimmed = repositoryUrl?.trim();
+  if (!trimmed) return null;
+
+  try {
+    const parsed = new URL(trimmed);
+    parsed.username = "";
+    parsed.password = "";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/$/u, "");
+  } catch {
+    return trimmed.replace(/[?#].*$/u, "").replace(/^[^@/]+@(?=[^:]+:)/u, "");
+  }
+}
+
+async function handleNativeSessionList(
+  id: string | number,
+  params: z.infer<typeof nativeSessionListParamsSchema>,
+): Promise<void> {
+  try {
+    const result = await withMaintenanceChild(
+      (connection) =>
+        connection.request({
+          method: "thread/list",
+          params: {
+            archived: params.archived,
+            sortKey: "recency_at",
+            sortDirection: "desc",
+            useStateDbOnly: true,
+            ...(params.cursor !== undefined ? { cursor: params.cursor } : {}),
+            ...(params.limit !== undefined ? { limit: params.limit } : {}),
+            ...(params.cwd !== undefined ? { cwd: params.cwd } : {}),
+            ...(params.searchTerm !== undefined
+              ? { searchTerm: params.searchTerm }
+              : {}),
+          },
+          resultSchema: codexThreadListResultSchema,
+          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+        }),
+      { recordProviderIo: false },
+    );
+    const workspaceRootHints = await readCodexThreadWorkspaceRootHints();
+    sendResult(id, {
+      sessions: result.data.map((thread) =>
+        toNativeSessionSummary(thread, params.archived, workspaceRootHints),
+      ),
+      nextCursor: result.nextCursor,
+      backwardsCursor: result.backwardsCursor,
+    });
+  } catch (error) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      error instanceof CodexAppServerExitedError && error.spawnFailed
+        ? describeCodexLaunchError(error)
+        : "Could not list native Codex sessions",
+    );
+  }
+}
+
+function toNativeSessionSummary(
+  thread: CodexThreadSummary,
+  archived: boolean,
+  workspaceRootHints: ReadonlyMap<string, string>,
+) {
+  return {
+    providerThreadId: thread.id,
+    title: thread.name,
+    cwd: thread.cwd,
+    projectId: thread.projectId,
+    workspaceRoot: workspaceRootHints.get(thread.id) ?? thread.cwd,
+    repositoryUrl: sanitizeRepositoryUrl(thread.gitInfo?.originUrl),
+    status: thread.status.type === "systemError" ? "error" : thread.status.type,
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+    archived,
+    source: codexSessionSourceLabel(thread.source),
+  };
+}
+
+async function findNativeSessionInCatalogue(
+  connection: CodexAppServerConnection,
+  thread: CodexThreadSummary,
+  archived: boolean,
+): Promise<CodexThreadSummary | null> {
+  let cursor: string | undefined;
+  const seenCursors = new Set<string>();
+  for (;;) {
+    const page = await connection.request({
+      method: "thread/list",
+      params: {
+        archived,
+        limit: 100,
+        sortKey: "recency_at",
+        sortDirection: "desc",
+        useStateDbOnly: true,
+        ...(cursor !== undefined ? { cursor } : {}),
+        ...(thread.cwd !== null ? { cwd: thread.cwd } : {}),
+      },
+      resultSchema: codexThreadListResultSchema,
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    });
+    const match = page.data.find((candidate) => candidate.id === thread.id);
+    if (match !== undefined) {
+      return match;
+    }
+    if (page.nextCursor === null || seenCursors.has(page.nextCursor)) {
+      return null;
+    }
+    seenCursors.add(page.nextCursor);
+    cursor = page.nextCursor;
+  }
+}
+
+async function handleNativeSessionRead(
+  id: string | number,
+  params: z.infer<typeof nativeSessionReadParamsSchema>,
+): Promise<void> {
+  try {
+    const workspaceRootHints = await readCodexThreadWorkspaceRootHints();
+    const session = await withMaintenanceChild(
+      async (connection) => {
+        const result = await connection.request({
+          method: "thread/read",
+          params: {
+            threadId: params.providerThreadId,
+            includeTurns: false,
+          },
+          resultSchema: codexThreadReadResultSchema,
+          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+        });
+        const active = await findNativeSessionInCatalogue(
+          connection,
+          result.thread,
+          false,
+        );
+        if (active !== null) {
+          return toNativeSessionSummary(active, false, workspaceRootHints);
+        }
+        const archived = await findNativeSessionInCatalogue(
+          connection,
+          result.thread,
+          true,
+        );
+        return archived === null
+          ? null
+          : toNativeSessionSummary(archived, true, workspaceRootHints);
+      },
+      { recordProviderIo: false },
+    );
+    if (session === null) {
+      sendError(
+        id,
+        BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+        "native Codex session is missing or archived",
+      );
+      return;
+    }
+    sendResult(id, session);
+  } catch (error) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      error instanceof CodexAppServerExitedError && error.spawnFailed
+        ? describeCodexLaunchError(error)
+        : "Could not read native Codex session metadata",
+    );
+  }
+}
+
+async function handleNativeSessionHistory(
+  id: string | number,
+  params: z.infer<typeof nativeSessionHistoryParamsSchema>,
+): Promise<void> {
+  try {
+    const workspaceRootHints = await readCodexThreadWorkspaceRootHints();
+    const result = await withMaintenanceChild(
+      async (connection) => {
+        const read = await connection.request({
+          method: "thread/read",
+          params: {
+            threadId: params.providerThreadId,
+            includeTurns: true,
+          },
+          resultSchema: codexThreadHistoryResultSchema,
+          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+        });
+        const active = await findNativeSessionInCatalogue(
+          connection,
+          read.thread,
+          false,
+        );
+        const archived =
+          active === null
+            ? await findNativeSessionInCatalogue(connection, read.thread, true)
+            : null;
+        const catalogueThread = active ?? archived;
+        if (catalogueThread === null) return null;
+        return {
+          archived: active === null,
+          thread: read.thread,
+          catalogueThread,
+        };
+      },
+      { recordProviderIo: false },
+    );
+    if (result === null) {
+      sendError(
+        id,
+        BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+        "native Codex session is missing",
+      );
+      return;
+    }
+
+    const translationState = createCodexEventTranslationState();
+    sendResult(id, {
+      session: toNativeSessionSummary(
+        result.catalogueThread,
+        result.archived,
+        workspaceRootHints,
+      ),
+      turns: result.thread.turns.map((turn) => ({
+        providerTurnId: turn.id,
+        startedAt: turn.startedAt,
+        completedAt: turn.completedAt,
+        deltas: [
+          { kind: "turn.open", providerTurnId: turn.id },
+          ...turn.items.flatMap((item) =>
+            translateCodexHistoryItemToDeltas(item, translationState, turn.id),
+          ),
+          ...(turn.status === "inProgress"
+            ? []
+            : [
+                {
+                  kind: "turn.boundary" as const,
+                  providerTurnId: turn.id,
+                  status: turn.status,
+                  ...(turn.error?.message
+                    ? { error: { message: turn.error.message } }
+                    : {}),
+                },
+              ]),
+        ],
+      })),
+    });
+  } catch (error) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      error instanceof CodexAppServerExitedError && error.spawnFailed
+        ? describeCodexLaunchError(error)
+        : "Could not read native Codex session history",
+    );
+  }
 }
 
 async function handleModelList(id: string | number): Promise<void> {
@@ -1846,6 +2207,13 @@ async function handleThreadStop(
     INTERRUPT_SETTLEMENT_TIMEOUT_MS,
   );
   if (!settled) {
+    sendThreadDeltas(
+      session,
+      session.translator.clearExitedChildThreadState({
+        pendingMessageStatus: "interrupted",
+        providerThreadId: session.codexThreadId,
+      }),
+    );
     sendThreadDeltas(session, [
       {
         kind: "turn.boundary",
@@ -1858,12 +2226,14 @@ async function handleThreadStop(
   // thread, so neither may the bridge. Open delegations die with the child
   // and are settled first (they are open work for the runtime's reaper);
   // the rollout on disk keeps the session resumable.
-  sendThreadDeltas(
-    session,
-    session.translator.clearExitedChildThreadState({
-      providerThreadId: session.codexThreadId,
-    }),
-  );
+  if (settled) {
+    sendThreadDeltas(
+      session,
+      session.translator.clearExitedChildThreadState({
+        providerThreadId: session.codexThreadId,
+      }),
+    );
+  }
   releaseSession(session);
   sendResult(id, { ok: true });
 }
@@ -2039,6 +2409,15 @@ async function handleRequest(
       break;
     case "model/list":
       await handleModelList(request.id);
+      break;
+    case "native/session/list":
+      await handleNativeSessionList(request.id, request.params);
+      break;
+    case "native/session/read":
+      await handleNativeSessionRead(request.id, request.params);
+      break;
+    case "native/session/history":
+      await handleNativeSessionHistory(request.id, request.params);
       break;
     case "provider/health":
       sendResult(request.id, await getCodexProviderHealth());

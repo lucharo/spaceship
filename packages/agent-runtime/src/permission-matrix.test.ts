@@ -38,7 +38,10 @@ import type {
   PermissionMode,
   RuntimePermissionPolicy,
 } from "@bb/domain";
-import { bridgeCapabilitiesSchema } from "@bb/provider-bridge-protocol";
+import {
+  bridgeCapabilitiesSchema,
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+} from "@bb/provider-bridge-protocol";
 import {
   parseJsonRpcLine,
   shouldAutoDenyInteractiveRequest,
@@ -356,7 +359,7 @@ function adapterFor(enforcer: Enforcer): BridgeProtocolAdapter {
     throw new Error("bridge adapter exposes no initialize handshake");
   }
   initialize.onResult({
-    protocolVersion: 2,
+    protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
     capabilities: { grammarVersions: [3, 3], approvalEnforcedBy: enforcer },
   });
   if (adapter.approvalEnforcedBy !== enforcer) {

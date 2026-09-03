@@ -419,6 +419,14 @@ export const skillSummarySchema = z.object({
   pluginId: z.string().min(1).nullable(),
   /** Absolute path to the SKILL.md. */
   filePath: z.string(),
+  /** Resolved file identity used for de-duplication and safe read-only access. */
+  canonicalFilePath: z.string().optional(),
+  /** Resolved skill directory, or the resolved file for a direct SKILL.md symlink. */
+  canonicalRootPath: z.string().optional(),
+  /** Canonical source repository slug when host discovery can prove one. */
+  sourceRepository: z.string().min(1).nullable(),
+  /** Path to SKILL.md inside sourceRepository; null when provenance is unknown. */
+  sourceRelativePath: z.string().min(1).nullable(),
   /** `true` when the skill is user-owned and its full lifecycle is manageable. */
   manageable: z.boolean(),
   /** Exact registry entry that installed this skill; `null` for every other source. */

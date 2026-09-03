@@ -129,20 +129,32 @@ function compareSkillSummaries(
 
 /**
  * Assemble the per-provider daemon results into the listing: map each record to
- * its product scope and de-dupe by absolute `filePath` so a bb skill discovered
- * under both providers is listed once. Output is sorted by scope then name.
+ * its product scope and de-dupe by canonical file identity so provider-specific
+ * symlink views of one shared skill are listed once. Output is sorted by scope
+ * then name.
  */
 export function assembleSkillList(
   perProvider: readonly ProviderSkillDiscovery[],
 ): SkillSummary[] {
-  const byPath = new Map<string, SkillSummary>();
+  const byPath = new Map<
+    string,
+    { skill: DiscoveredSkill; provider: SkillProvider }
+  >();
   for (const { provider, skills } of perProvider) {
     for (const skill of skills) {
-      if (byPath.has(skill.filePath)) {
+      const existing = byPath.get(skill.canonicalFilePath);
+      const skillIsShared = skill.rootKind.startsWith("shared-");
+      const existingIsShared = existing?.skill.rootKind.startsWith("shared-");
+      if (existing !== undefined && (!skillIsShared || existingIsShared)) {
         continue;
       }
+      byPath.set(skill.canonicalFilePath, { skill, provider });
+    }
+  }
+  return [...byPath.values()]
+    .map(({ skill, provider }) => {
       const mapped = mapSkillScope(provider, skill.rootKind, skill.filePath);
-      byPath.set(skill.filePath, {
+      return {
         id: skill.id,
         name: skill.name,
         description: skill.description,
@@ -153,12 +165,15 @@ export function assembleSkillList(
             ? (skill.name.split(":", 1)[0] ?? skill.name)
             : null,
         filePath: skill.filePath,
+        canonicalFilePath: skill.canonicalFilePath,
+        canonicalRootPath: skill.canonicalRootPath,
+        sourceRepository: skill.sourceRepository,
+        sourceRelativePath: skill.sourceRelativePath,
         manageable: mapped.manageable && !skill.linked,
         registrySkillId: null,
-      });
-    }
-  }
-  return [...byPath.values()].sort(compareSkillSummaries);
+      } satisfies SkillSummary;
+    })
+    .sort(compareSkillSummaries);
 }
 
 function skillId(identitySeed: string, logicalPath: string): string {
@@ -193,6 +208,10 @@ function listServerOwnedSkills(deps: AppDeps): SkillSummary[] {
         scope: builtin ? "bb-builtin" : "bb-user",
         pluginId: null,
         filePath: path.join(rootPath, runtimeSource.entryPath),
+        canonicalFilePath: path.join(rootPath, runtimeSource.entryPath),
+        canonicalRootPath: rootPath,
+        sourceRepository: null,
+        sourceRelativePath: null,
         manageable: !builtin,
         registrySkillId: builtin ? null : readRegistrySkillProvenance(rootPath),
       };
@@ -219,6 +238,10 @@ function listBbPluginSkills(deps: AppDeps): SkillSummary[] {
         scope: "plugin",
         pluginId: provenance.pluginId,
         filePath: path.join(rootPath, runtimeSource.entryPath),
+        canonicalFilePath: path.join(rootPath, runtimeSource.entryPath),
+        canonicalRootPath: rootPath,
+        sourceRepository: null,
+        sourceRelativePath: null,
         manageable: false,
         registrySkillId: null,
       };
@@ -408,7 +431,15 @@ export async function listProjectSkillFiles(
   if (isServerOwnedSkill(deps, skill)) {
     return listServerSkillFiles(skill);
   }
-  const rootPath = hostPathDirname(skill.filePath);
+  if (
+    skill.canonicalFilePath !== undefined &&
+    skill.canonicalRootPath === skill.canonicalFilePath
+  ) {
+    return { files: [SKILL_FILE_NAME], truncated: false };
+  }
+  const rootPath =
+    skill.canonicalRootPath ??
+    hostPathDirname(skill.canonicalFilePath ?? skill.filePath);
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,
@@ -450,7 +481,29 @@ export async function readProjectSkill(
       revision: createHash("sha256").update(contents).digest("hex"),
     };
   }
-  const rootPath = hostPathDirname(skill.filePath);
+  if (
+    skill.canonicalFilePath !== undefined &&
+    skill.canonicalRootPath === skill.canonicalFilePath
+  ) {
+    if (args.path !== SKILL_FILE_NAME) {
+      throw new ApiError(404, "not_found", "Skill file not found");
+    }
+    const result = await callHostRetryableOnlineRpc(deps, {
+      hostId: args.workspace.hostId,
+      timeoutMs: COMMAND_TIMEOUT_MS,
+      command: { type: "host.read_file", path: skill.canonicalFilePath },
+    });
+    return {
+      content:
+        result.contentEncoding === "utf8"
+          ? result.content
+          : Buffer.from(result.content, "base64").toString("utf8"),
+      revision: result.sha256,
+    };
+  }
+  const rootPath =
+    skill.canonicalRootPath ??
+    hostPathDirname(skill.canonicalFilePath ?? skill.filePath);
   const result = await callHostRetryableOnlineRpc(deps, {
     hostId: args.workspace.hostId,
     timeoutMs: COMMAND_TIMEOUT_MS,

@@ -2,95 +2,78 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/e40bda56-54a4-47f8-a417-6bbadf2e5b40">
     <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/4d9d02fb-c179-449b-a38a-041955143232">
-    <img alt="bb" src="https://github.com/user-attachments/assets/4d9d02fb-c179-449b-a38a-041955143232" width="128">
+    <img alt="Spaceship" src="https://github.com/user-attachments/assets/4d9d02fb-c179-449b-a38a-041955143232" width="128">
   </picture>
 </p>
 
-# bb
+# Spaceship
 
-[![npm version](https://img.shields.io/npm/v/bb-app.svg)](https://www.npmjs.com/package/bb-app)
-[![Join Discord](https://img.shields.io/badge/Discord-Join%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/kvBU6tJhcJ)
+Spaceship is a desktop control layer over native coding-agent harnesses, built
+from [BB](https://github.com/get-bb/bb). It is not another canonical harness:
+Codex, Claude, Pi, OpenCode, and future providers keep ownership of their own
+sessions while Spaceship supplies one deliberate interface and safer defaults.
 
-bb is an agentic IDE that builds itself. It can control, customize, and automate
-itself, laying the groundwork for your own software factory.
+The short name is **sp**.
 
-Every surface — the desktop app, web app, CLI, and HTTP API — is a first-class
-way to drive bb. Work runs in threads you can follow live, steer at any point,
-or hand off to another agent.
+The first native integration is Codex. Spaceship lists Codex session metadata
+through Codex app-server, adopts a selected native thread idempotently, and
+continues it using the same native session ID. It does not duplicate the thread
+into a second provider history.
+
+The inherited BB internals, package names, and `bb` development CLI remain while
+the fork is established.
 
 > [!NOTE]
-> bb is in active development. Core architecture is stable, but workflows
-> and surfaces are still evolving.
+> Spaceship is early-stage. Native Codex catalogue and continuation support are
+> under active development.
 
 <p align="center">
-  <img alt="bb desktop app showing a code review thread, dispatch panel, and task board" src="assets/app-screenshot.png" width="800">
+  <img alt="Spaceship desktop app showing a code review thread, dispatch panel, and task board" src="assets/app-screenshot.png" width="800">
 </p>
 
-## Use bb
+## Native Codex sessions
 
-### Download the desktop app
+Active Codex sessions appear directly in the main sidebar. Search and paging
+query Codex app-server's native catalogue without reading transcript bodies.
+The clock action opens the active/archived catalogue. Selecting a session
+creates a lightweight Spaceship projection keyed by the native Codex thread ID;
+selecting it again opens the same projection.
 
-The recommended way to start using bb is the desktop app:
+The thread opens its existing Codex history on demand, and the first new
+message resumes Codex through its native bridge. Large-history pagination and
+full-output hydration remain tracked in
+[#12](https://github.com/lucharo/spaceship/issues/12).
 
-**[Download the latest desktop app](https://github.com/get-bb/bb/releases/tag/desktop-latest)**
+See [Native session architecture](docs/spaceship-native-sessions.md) for the
+authority and privacy model.
 
-The desktop app supports macOS on Apple Silicon (arm64). The Linux x64 AppImage
-is alpha: expect problems, and please report them. Intel Mac users should run bb
-with `npx` instead. On Windows, run bb inside
-[WSL2 (Windows Subsystem for Linux)](https://learn.microsoft.com/windows/wsl/install):
-install WSL2 first, then run the same `npx` command below from your WSL2 (Linux)
-shell. Native Windows PowerShell and CMD are not supported.
+## Core features
 
-Early adopters can install
-**[bb Nightly](https://github.com/get-bb/bb/releases/tag/desktop-nightly)**
-alongside the stable desktop app. It has a separate application identity,
-yellow icon, and auto-update feed.
+Short product specs live in [`features/`](features/README.md). They define what
+Spaceship should expose by default and which provider-owned state must remain
+authoritative.
 
-### Or run it anywhere with npx
+## Use Spaceship
 
-```bash
-npx bb-app@latest
-```
-
-Then open `http://localhost:38886`.
-
-To run the newest automated build instead:
+Packaged Spaceship releases are not published yet. Run the inherited BB app
+from source while the desktop distribution is established:
 
 ```bash
-npx bb-app@nightly
+pnpm dev
 ```
 
-npm 12 and later block dependency install scripts by default. bb needs those
-scripts to build its native add-ons. If your npm version is 12 or later, allow
-the scripts for the install:
+The launcher prints the local URL. Spaceship uses the provider CLI you already
+have authenticated.
 
-```bash
-npx --allow-scripts=better-sqlite3,node-pty,@parcel/watcher bb-app@latest
-```
-
-Or set the policy once for all global installs:
-
-```bash
-npm config set allow-scripts=better-sqlite3,node-pty,@parcel/watcher --location=user
-```
-
-bb uses the provider CLI you already have authenticated.
-
-For install requirements, provider setup, configuration, and package-focused
-docs, start with
+For the inherited install requirements, provider setup, configuration, and
+package-focused docs, start with
 [`packages/bb-app`](./packages/bb-app/README.md).
 
-### Telemetry
+### Privacy
 
-Production runs (the desktop app and `npx bb-app`) send anonymous usage
-telemetry (app starts, thread creation counts, user message counts, and plugin
-installs) to help us understand adoption. Identification is a random per-install
-id stored in your data dir — no user, host, project, workspace, or message
-content is ever attached. Plugin install events name only public plugins
-(bundled plugins and `bb-community` marketplace entries); installs from a local
-path, a private git or npm source, or a third-party marketplace report no name. Development/source runs never send. Opt out any run with
-`BB_TELEMETRY=false`. See
-[`apps/server/src/services/system/telemetry.ts`](./apps/server/src/services/system/telemetry.ts).
+Spaceship does not send product analytics or usage telemetry. Provider-native
+session data stays in the provider's own local store unless you explicitly use a
+provider operation that sends it elsewhere.
 
 ## Development
 
@@ -119,7 +102,7 @@ This builds the same optimized frontend and runtime artifacts as `pnpm start`,
 then serves the app from the BB server on the checkout-specific dev server port.
 It keeps the normal checkout-specific dev data directory and host-daemon port.
 There is no Vite dev server or hot reload in this mode; rerun the command after
-source changes. As with `pnpm dev`, worktree starts do not send telemetry.
+source changes.
 
 To run that same source dev server with the Electron desktop shell:
 
@@ -215,6 +198,8 @@ See [System overview](docs/system-overview.md) for runtime architecture, data mo
 ## Further Reading
 
 - [Vision](docs/VISION.md)
+- [FAQ](docs/faq/README.md)
+- [Retrospectives](docs/retrospectives/README.md)
 - [Platform support](docs/platform-support.md)
 - [Configuration](docs/configuration.md)
 - [Using bb on multiple devices](docs/multiple-devices.md)

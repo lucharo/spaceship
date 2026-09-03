@@ -226,7 +226,10 @@ function withDeltaParentRef(
 const codexProviderThreadIdParamsSchema = z
   .object({
     threadId: z.string().min(1).optional(),
-    thread: z.object({ id: z.string().min(1) }).passthrough().optional(),
+    thread: z
+      .object({ id: z.string().min(1) })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 
@@ -566,17 +569,9 @@ export function createCodexEventTranslator(
     if (!paramsResult.success) {
       return [];
     }
-    const closed = clearExitedChildThreadState({
+    return clearExitedChildThreadState({
       providerThreadId: paramsResult.data.threadId,
     });
-    clearCodexEventTranslationThreadState(
-      eventTranslationState,
-      paramsResult.data.threadId,
-    );
-    clearGitWritableRootsByProviderThreadId({
-      providerThreadId: paramsResult.data.threadId,
-    });
-    return closed;
   }
 
   /**
@@ -589,11 +584,22 @@ export function createCodexEventTranslator(
    */
   function clearExitedChildThreadState({
     providerThreadId,
+    pendingMessageStatus = "failed",
   }: {
+    pendingMessageStatus?: Exclude<ThreadEventItemStatus, "pending">;
     providerThreadId: string;
   }): ThreadDelta[] {
     rawCommandOutputStateByProviderThreadId.delete(providerThreadId);
-    return clearCodexDelegationParentState(providerThreadId);
+    const pendingMessageDeltas = clearCodexEventTranslationThreadState(
+      eventTranslationState,
+      providerThreadId,
+      pendingMessageStatus,
+    );
+    clearGitWritableRootsByProviderThreadId({ providerThreadId });
+    return [
+      ...pendingMessageDeltas,
+      ...clearCodexDelegationParentState(providerThreadId),
+    ];
   }
 
   function clearCodexDelegationParentState(
@@ -610,7 +616,9 @@ export function createCodexEventTranslator(
         continue;
       }
       if (isTrackedSubAgentOpen(tracked)) {
-        closes.push(buildCodexSubAgentCloseDelta({ status: "failed", tracked }));
+        closes.push(
+          buildCodexSubAgentCloseDelta({ status: "failed", tracked }),
+        );
       }
       tracked.terminal = true;
       tracked.pendingFollowups = 0;
@@ -1144,7 +1152,10 @@ export function createCodexEventTranslator(
     const completedDeltas: ThreadDelta[] = [];
     for (const delta of deltas) {
       completedDeltas.push(delta);
-      if (delta.kind !== "turn.boundary" || delta.providerTurnId === undefined) {
+      if (
+        delta.kind !== "turn.boundary" ||
+        delta.providerTurnId === undefined
+      ) {
         continue;
       }
       const callId = delegationParentToolCallIdsByTurnId.get(

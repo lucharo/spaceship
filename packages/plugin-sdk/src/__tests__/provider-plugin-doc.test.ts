@@ -80,6 +80,8 @@ const REGISTRATION_FIELDS = {
   planModeCopy: "strings.planModeCopy",
   iconTint: "strings.iconTint",
   capabilities: "capabilities",
+  experimental_supportsNativeSessionHistory:
+    "capabilities.experimental_supportsNativeSessionHistory",
   permissionModes: "capabilities.permissionModes",
   reasoningLevels: "reasoningLevels",
   serviceTiers: "serviceTiers",
@@ -91,6 +93,7 @@ const REGISTRATION_FIELDS = {
   supportsServiceTier: "capabilities.supportsServiceTier",
   maintenance: "maintenance",
   composerActions: "composerActions",
+  experimental_skillCommandAliases: "experimental_skillCommandAliases",
   extensionKinds: "extensionKinds",
   models: "models",
   env: "env",
@@ -98,9 +101,9 @@ const REGISTRATION_FIELDS = {
 } as const satisfies Record<string, DeclarationPath | Gap>;
 
 type DeclarationGapKeys = {
-  [K in keyof typeof REGISTRATION_FIELDS]: (typeof REGISTRATION_FIELDS)[K] extends Gap
-    ? K
-    : never;
+  [
+    K in keyof typeof REGISTRATION_FIELDS
+  ]: (typeof REGISTRATION_FIELDS)[K] extends Gap ? K : never;
 }[keyof typeof REGISTRATION_FIELDS];
 type DeclarationGapsNotLanded = Extract<
   DeclarationGapKeys,
@@ -118,6 +121,7 @@ const HANDSHAKE_FIELDS = {
   approvalEnforcedBy: "approvalEnforcedBy",
   steerMode: "steerMode",
   skills: "skills",
+  nativeSessions: "nativeSessions",
 } as const satisfies Record<
   string,
   keyof z.infer<typeof bridgeCapabilitiesSchema> | Gap
@@ -197,7 +201,10 @@ const TIMELINE_ROW_FIELDS = {
   },
   presentation: "presentation",
 } as const satisfies Record<string, keyof TimelineCommandWorkRow | Gap>;
-type TimelineRowGapsNotLanded = Extract<"payload", keyof TimelineCommandWorkRow>;
+type TimelineRowGapsNotLanded = Extract<
+  "payload",
+  keyof TimelineCommandWorkRow
+>;
 
 /** §5 `app.slots.timelineRenderer` → `PluginAppSlots` (experimental_ until audited). */
 type TimelineRendererSlot = PluginAppSlots["experimental_timelineRenderer"];
@@ -314,7 +321,7 @@ describe("guardrail G10: docs/provider-plugin-api.md matches the contract", () =
       "{ childRef: string, label: string, status: ItemStatus,",
       "presentation: {",
       "TimelineRow { kind: string, payload, presentation }",
-      "app.slots.experimental_timelineRenderer({ kind, component })",
+      "app.slots.experimental_timelineRenderer({ kind, component });",
     ]);
   });
 

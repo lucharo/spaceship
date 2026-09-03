@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import {
   ExtensionsLandingRedirect,
+  LegacyPluginBrowseRedirect,
   LegacySkillDetailRedirect,
   LegacyToolsPathRedirect,
 } from "./App";
@@ -17,6 +18,7 @@ import {
   TOOLS_PLUGIN_DETAIL_ROUTE_PATH,
   TOOLS_PLUGINS_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
+  SKILLS_ROUTE_PATH,
   TOOLS_SKILL_DETAIL_ROUTE_PATH,
 } from "./lib/route-paths";
 
@@ -61,7 +63,7 @@ describe("LegacySkillDetailRedirect", () => {
 describe("ExtensionsLandingRedirect", () => {
   afterEach(cleanup);
 
-  it("opens Extensions on Plugins by default", () => {
+  it("opens Extensions on Skills by default", () => {
     render(
       <MemoryRouter initialEntries={[TOOLS_ROUTE_PATH]}>
         <Routes>
@@ -69,12 +71,12 @@ describe("ExtensionsLandingRedirect", () => {
             path={TOOLS_ROUTE_PATH}
             element={<ExtensionsLandingRedirect />}
           />
-          <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<LocationPath />} />
+          <Route path={SKILLS_ROUTE_PATH} element={<LocationPath />} />
         </Routes>
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(TOOLS_PLUGINS_ROUTE_PATH)).toBeTruthy();
+    expect(screen.getByText(SKILLS_ROUTE_PATH)).toBeTruthy();
   });
 });
 
@@ -118,12 +120,12 @@ describe("LegacyToolsPathRedirect", () => {
             path={TOOLS_ROUTE_PATH}
             element={<ExtensionsLandingRedirect />}
           />
-          <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<LocationPath />} />
+          <Route path={SKILLS_ROUTE_PATH} element={<LocationPath />} />
         </Routes>
       </MemoryRouter>,
     );
 
-    expect(screen.getByText(TOOLS_PLUGINS_ROUTE_PATH)).toBeTruthy();
+    expect(screen.getByText(SKILLS_ROUTE_PATH)).toBeTruthy();
   });
 
   it("loses /tools/automations to that route's own more-specific redirect", () => {
@@ -157,7 +159,7 @@ describe("legacy plugin browse redirect", () => {
         <Routes>
           <Route
             path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
-            element={<ExtensionsLandingRedirect />}
+            element={<LegacyPluginBrowseRedirect />}
           />
           <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<LocationPath />} />
         </Routes>

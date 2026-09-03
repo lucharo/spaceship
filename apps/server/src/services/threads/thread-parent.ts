@@ -1,6 +1,9 @@
-import { getThread, listNonDeletedChildThreads } from "@bb/db";
+import {
+  getThread,
+  listNonDeletedChildThreads,
+  type DbQueryConnection,
+} from "@bb/db";
 import type { Thread } from "@bb/domain";
-import type { AppDeps } from "../../types.js";
 import { throwParentThreadInvalid } from "../lib/lifecycle-api-errors.js";
 
 const MAX_THREAD_HIERARCHY_DEPTH = 4;
@@ -58,6 +61,10 @@ interface ResolveThreadSubtreeDepthArgs {
   visitedThreadIds: Set<string>;
 }
 
+interface ThreadParentDeps {
+  db: DbQueryConnection;
+}
+
 /**
  * A live parent may belong to another project: agents delegate work across
  * repositories, and the child still reports to and inherits policy from it.
@@ -71,7 +78,7 @@ export function isLiveParentThread(args: IsLiveParentThreadArgs): boolean {
 }
 
 function resolveParentDepth(
-  deps: Pick<AppDeps, "db">,
+  deps: ThreadParentDeps,
   args: ResolveParentDepthArgs,
 ): number {
   let depth = 0;
@@ -101,7 +108,7 @@ function resolveParentDepth(
 }
 
 function resolveThreadSubtreeDepth(
-  deps: Pick<AppDeps, "db">,
+  deps: ThreadParentDeps,
   args: ResolveThreadSubtreeDepthArgs,
 ): number {
   if (args.visitedThreadIds.has(args.threadId)) {
@@ -135,7 +142,7 @@ interface CanThreadSpawnChildArgs {
  * exceed the cap. Server-derived policy so clients never recompute the cap.
  */
 export function canThreadSpawnChild(
-  deps: Pick<AppDeps, "db">,
+  deps: ThreadParentDeps,
   args: CanThreadSpawnChildArgs,
 ): boolean {
   const depth = resolveParentDepth(deps, {
@@ -145,7 +152,7 @@ export function canThreadSpawnChild(
 }
 
 export function assertValidParentThread(
-  deps: Pick<AppDeps, "db">,
+  deps: ThreadParentDeps,
   args: AssertValidParentThreadArgs,
 ): Thread {
   const parentThread = getThread(deps.db, args.parentThreadId);

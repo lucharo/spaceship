@@ -9,7 +9,7 @@ import {
   type HostDaemonSessionRow,
 } from "@bb/db";
 import type { Environment, Host } from "@bb/domain";
-import type { DbConnection } from "@bb/db";
+import type { DbConnection, DbQueryConnection } from "@bb/db";
 import type { NotificationHub } from "../../ws/hub.js";
 import { ApiError } from "../../errors.js";
 import {
@@ -169,7 +169,7 @@ export function requireConnectedHostSession(
 }
 
 export function requireProject(
-  db: DbConnection,
+  db: DbQueryConnection,
   projectId: string,
 ): ProjectRow {
   const project = getProject(db, projectId);
@@ -180,7 +180,7 @@ export function requireProject(
 }
 
 export function requirePublicProject(
-  db: DbConnection,
+  db: DbQueryConnection,
   projectId: string,
 ): ProjectRow {
   const project = requireProject(db, projectId);
@@ -194,7 +194,7 @@ export function requirePublicProject(
 }
 
 export function requirePublicStandardProject(
-  db: DbConnection,
+  db: DbQueryConnection,
   projectId: string,
 ): StandardProject {
   const project = requirePublicProject(db, projectId);
@@ -204,7 +204,7 @@ export function requirePublicStandardProject(
   return project;
 }
 
-function requireThread(db: DbConnection, threadId: string): ThreadRow {
+function requireThread(db: DbQueryConnection, threadId: string): ThreadRow {
   const thread = getThread(db, threadId);
   if (!thread) {
     throw new ApiError(404, "thread_not_found", "Thread not found");
@@ -213,7 +213,7 @@ function requireThread(db: DbConnection, threadId: string): ThreadRow {
 }
 
 export function requirePublicThread(
-  db: DbConnection,
+  db: DbQueryConnection,
   threadId: string,
 ): ThreadRow {
   const thread = requireThread(db, threadId);

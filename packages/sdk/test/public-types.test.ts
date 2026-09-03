@@ -326,7 +326,7 @@ type ExpectedProjectsKey =
 type ExpectedProjectSourcesKey = "add" | "delete" | "update";
 type ExpectedProjectAttachmentsKey = "copy" | "read" | "upload";
 
-type ExpectedProvidersKey = "list" | "models";
+type ExpectedProvidersKey = "list" | "models" | "nativeSessions";
 
 type ExpectedStatusKey = "get";
 
@@ -350,6 +350,8 @@ type ExpectedThemeKey = "catalog" | "get" | "set";
 type ExpectedThreadSectionsKey = "create" | "delete" | "list" | "update";
 
 type ExpectedThreadsKey =
+  | "adoptNative"
+  | "archiveNative"
   | "archive"
   | "archiveAll"
   | "cancelPlan"

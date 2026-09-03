@@ -21,6 +21,7 @@ import {
   jsonObjectSchema,
   jsonValueSchema,
   providerNativeRootSetSchema,
+  threadEventSchema,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
   FILE_LIST_LIMIT_MAX,
@@ -39,6 +40,11 @@ import { HOST_ARTIFACT_MAX_BYTES } from "./protocol.js";
 import {
   providerHealthSchema,
   providerHealthResultSchema,
+  nativeSessionListParamsSchema,
+  nativeSessionListResultSchema,
+  nativeSessionSummarySchema,
+  nativeSessionReadParamsSchema,
+  nativeSessionReadResultSchema,
   providerInstallationStatusSchema,
   providerUsageResultSchema,
   providerUsageSchema,
@@ -761,6 +767,14 @@ const discoveredSkillSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   filePath: z.string(),
+  /** Resolved file identity used to collapse provider symlink views. */
+  canonicalFilePath: z.string(),
+  /** Resolved skill directory, or the resolved file for a direct SKILL.md symlink. */
+  canonicalRootPath: z.string().optional(),
+  /** Canonical source repository slug when discovery can prove one. */
+  sourceRepository: z.string().min(1).nullable(),
+  /** Path to SKILL.md inside sourceRepository; null when provenance is unknown. */
+  sourceRelativePath: z.string().min(1).nullable(),
   rootKind: skillRootKindSchema,
   /** True when discovery followed either the skill directory or SKILL.md symlink. */
   linked: z.boolean(),
@@ -943,6 +957,53 @@ const providerListModelsCommandSchema = z.object({
   providerId: z.string().min(1),
   bridgeLaunch: hostDaemonBridgeLaunchSchema,
   cwd: z.string().min(1).optional(),
+});
+
+const providerNativeSessionsListCommandSchema = z
+  .object({
+    type: z.literal("provider.native_sessions.list"),
+    providerId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    ...nativeSessionListParamsSchema.shape,
+  })
+  .strict();
+
+const providerNativeSessionsReadCommandSchema = z
+  .object({
+    type: z.literal("provider.native_sessions.read"),
+    providerId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    ...nativeSessionReadParamsSchema.shape,
+  })
+  .strict();
+
+const providerNativeSessionsArchiveCommandSchema = z
+  .object({
+    type: z.literal("provider.native_sessions.archive"),
+    providerId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    ...nativeSessionReadParamsSchema.shape,
+  })
+  .strict();
+
+const providerNativeSessionsHistoryCommandSchema = z
+  .object({
+    type: z.literal("provider.native_sessions.history"),
+    providerId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    threadId: z.string().min(1),
+    ...nativeSessionReadParamsSchema.shape,
+  })
+  .strict();
+
+export const providerNativeSessionHistoryResultSchema = z.object({
+  session: nativeSessionSummarySchema,
+  events: z.array(
+    z.object({
+      createdAt: z.number().int().nonnegative(),
+      event: threadEventSchema,
+    }),
+  ),
 });
 
 const providerHealthCommandSchema = z
@@ -1421,10 +1482,17 @@ const threadStopResultSchema = z
   .strict();
 const emptyCommandResultSchema = z.object({});
 const projectPathResultSchema = z.object({ path: z.string().min(1) }).strict();
-const projectInspectResultSchema = projectPathResultSchema
+const projectCloneResultSchema = projectPathResultSchema
   .extend({ gitRemoteUrl: z.string().min(1).nullable() })
   .strict();
-const projectCloneResultSchema = projectInspectResultSchema;
+const projectInspectResultSchema = projectCloneResultSchema
+  .extend({
+    isGitRepo: z.boolean(),
+    isWorktree: z.boolean(),
+    branchName: z.string().min(1).nullable(),
+    defaultBranch: z.string().min(1).nullable(),
+  })
+  .strict();
 const environmentProvisionResultSchema =
   discoveredWorkspacePropertiesSchema.extend({
     transcript: z.array(provisioningTranscriptEntrySchema),
@@ -1954,6 +2022,42 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: false,
     envLane: null,
   }),
+  "provider.native_sessions.list": defineHostDaemonCommandDescriptor({
+    type: "provider.native_sessions.list",
+    schema: providerNativeSessionsListCommandSchema,
+    resultSchema: nativeSessionListResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.native_sessions.read": defineHostDaemonCommandDescriptor({
+    type: "provider.native_sessions.read",
+    schema: providerNativeSessionsReadCommandSchema,
+    resultSchema: nativeSessionReadResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.native_sessions.archive": defineHostDaemonCommandDescriptor({
+    type: "provider.native_sessions.archive",
+    schema: providerNativeSessionsArchiveCommandSchema,
+    resultSchema: emptyCommandResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.native_sessions.history": defineHostDaemonCommandDescriptor({
+    type: "provider.native_sessions.history",
+    schema: providerNativeSessionsHistoryCommandSchema,
+    resultSchema: providerNativeSessionHistoryResultSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
   "provider.health": defineHostDaemonCommandDescriptor({
     type: "provider.health",
     schema: providerHealthCommandSchema,
@@ -2059,7 +2163,9 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
+  [
+    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
+  ]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

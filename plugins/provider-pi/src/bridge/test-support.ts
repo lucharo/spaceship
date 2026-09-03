@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import { z } from "zod";
 import { experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import { PROVIDER_BRIDGE_PROTOCOL_VERSION } from "@get-bb/plugin-sdk/provider-bridge";
 import type {
   BridgeJsonRpcId,
   BridgeJsonRpcObject,
@@ -220,7 +221,7 @@ export async function startFakePiBridge(
   if (options.initialize) {
     try {
       await bridge.request(INITIALIZE_ID, "initialize", {
-        protocolVersion: 2,
+        protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
         client: { name: "test", version: "0" },
         grammarVersions: [3, 3],
       });

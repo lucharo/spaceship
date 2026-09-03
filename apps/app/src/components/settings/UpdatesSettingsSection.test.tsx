@@ -483,7 +483,9 @@ The canonical release summary.
     // reachable with nothing to install, and every word in it is the
     // changelog's own.
     expect(
-      screen.getByRole("button", { name: /^Open the full bb .* changelog$/ }),
+      screen.getByRole("button", {
+        name: /^Open the full Spaceship .* changelog$/,
+      }),
     ).toBeDefined();
     const changelog = document.querySelector(
       '[data-updates-domain="changelog"]',
@@ -533,7 +535,7 @@ The canonical release summary.
     expect(changelog?.textContent).toContain("Full changelog");
     expect(
       screen.getByRole("button", {
-        name: "Open the full bb 9.9.9 changelog",
+        name: "Open the full Spaceship 9.9.9 changelog",
       }).className,
     ).toContain("font-semibold");
     // The card carries the whole release, not a fixed three: a truncated list
@@ -549,16 +551,16 @@ The canonical release summary.
     expect(changelog?.textContent).toContain("One current feature.");
     expect(changelog?.textContent).toContain("One current fix.");
     const dismissChangelog = screen.getByRole("button", {
-      name: "Dismiss bb 9.9.9 changelog preview",
+      name: "Dismiss Spaceship 9.9.9 changelog preview",
     });
     expect(dismissChangelog.querySelector('[data-icon="X"]')).not.toBeNull();
     fireEvent.click(
       screen.getByRole("button", {
-        name: "Open the full bb 9.9.9 changelog",
+        name: "Open the full Spaceship 9.9.9 changelog",
       }),
     );
     expect(openUrlInExternalBrowserMock).toHaveBeenCalledWith(
-      "https://getbb.app/changelog#9-9-9",
+      "https://github.com/lucharo/spaceship/blob/main/CHANGELOG.md#999",
     );
     vi.useFakeTimers();
     fireEvent.click(dismissChangelog);
@@ -567,7 +569,7 @@ The canonical release summary.
     );
     expect(
       screen.queryByRole("button", {
-        name: "Open the full bb 9.9.9 changelog",
+        name: "Open the full Spaceship 9.9.9 changelog",
       }),
     ).toBeNull();
     expect(changelog?.getAttribute("data-changelog-dismiss-phase")).toBe(
@@ -621,7 +623,7 @@ The canonical release summary.
     await waitFor(() => {
       expect(
         screen.getByRole("button", {
-          name: "Dismiss bb 9.9.9 changelog preview",
+          name: "Dismiss Spaceship 9.9.9 changelog preview",
         }),
       ).toBeDefined();
     });
@@ -1002,7 +1004,9 @@ The canonical release summary.
       return node;
     });
     expect(
-      providerIcon?.querySelector("[data-provider-logo]")?.getAttribute("class"),
+      providerIcon
+        ?.querySelector("[data-provider-logo]")
+        ?.getAttribute("class"),
     ).toContain("text-muted-foreground");
     // Icon-only. The accessible name is the state and the verb — the row
     // already prints the CLI, its versions, and the machine above it. Row and

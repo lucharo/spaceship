@@ -3003,6 +3003,8 @@ describe("buildThreadTimelineFromEvents", () => {
       path: "src/old.ts",
       movePath: "src/new.ts",
     });
+    expect(rows[0]?.id).toContain("src/new.ts");
+    expect(rows[0]?.id).not.toContain(workspaceRoot);
   });
 
   it("leaves file-change paths outside the workspace root untouched", () => {
@@ -3029,5 +3031,67 @@ describe("buildThreadTimelineFromEvents", () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0]?.change.path).toBe("/etc/hosts");
+  });
+
+  it("keeps mixed absolute and relative file-change row ids distinct", () => {
+    const workspaceRoot = "/Users/dev/worktrees/env_x/bb";
+    const rows = collectFileChangeRows(
+      buildTimelineRows(
+        [
+          turnStartedEvent({ seq: 0 }),
+          fileChangeItemEvent({
+            changes: [
+              {
+                path: `${workspaceRoot}/src/a.ts`,
+                kind: "update",
+              },
+              {
+                path: "src/a.ts",
+                kind: "update",
+              },
+            ],
+            seq: 1,
+            type: "item/completed",
+          }),
+        ],
+        "idle",
+        workspaceRoot,
+      ),
+    );
+
+    expect(rows.map((row) => row.change.path)).toEqual([
+      "src/a.ts",
+      "src/a.ts",
+    ]);
+    expect(new Set(rows.map((row) => row.id))).toHaveLength(2);
+    expect(rows.some((row) => row.id.includes('["workspace-absolute",'))).toBe(
+      true,
+    );
+    expect(rows.every((row) => !row.id.includes(workspaceRoot))).toBe(true);
+  });
+
+  it("keeps reserved-looking literal file-change ids distinct", () => {
+    const workspaceRoot = "/Users/dev/worktrees/env_x/bb";
+    const rows = collectFileChangeRows(
+      buildTimelineRows(
+        [
+          turnStartedEvent({ seq: 0 }),
+          fileChangeItemEvent({
+            changes: [
+              { path: `${workspaceRoot}/src/a.ts`, kind: "update" },
+              { path: "workspace-absolute:/src/a.ts", kind: "update" },
+            ],
+            seq: 1,
+            type: "item/completed",
+          }),
+        ],
+        "idle",
+        workspaceRoot,
+      ),
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((row) => row.id))).toHaveLength(2);
+    expect(rows.every((row) => !row.id.includes(workspaceRoot))).toBe(true);
   });
 });

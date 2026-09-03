@@ -1,5 +1,5 @@
 {
-  "protocolVersion": 2,
+  "protocolVersion": 3,
   "deltaKinds": {
     "command.outputSnapshot": {
       "kind": "required",
@@ -35,7 +35,9 @@
     },
     "input.provider": {
       "kind": "required",
-      "text": "required",
+      "text": "optional",
+      "content": "optional",
+      "providerTurnId": "optional",
       "parentRef": "optional"
     },
     "item.close": {
@@ -288,7 +290,8 @@
     "approvalEnforcedBy": "default",
     "grammarVersions": "default",
     "steerMode": "default",
-    "skills": "default"
+    "skills": "default",
+    "nativeSessions": "default"
   },
   "recoveryNotification": {
     "threadId": "optional",
@@ -299,6 +302,9 @@
   "requestMethods": [
     "initialize",
     "model/list",
+    "native/session/history",
+    "native/session/list",
+    "native/session/read",
     "provider/health",
     "provider/installation/run",
     "provider/installation/status",

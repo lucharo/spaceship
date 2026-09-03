@@ -208,6 +208,10 @@ describe("public project local host routes", () => {
       await reportQueuedCommandSuccess(harness, createInspection, {
         path: "/tmp/project-sources",
         gitRemoteUrl: "ssh://git.example.test/project-sources.git",
+        isGitRepo: true,
+        isWorktree: false,
+        branchName: "main",
+        defaultBranch: "main",
       });
       const projectResponse = await projectResponsePromise;
       const project = projectResponseSchema.parse(
@@ -239,6 +243,10 @@ describe("public project local host routes", () => {
       await reportQueuedCommandSuccess(harness, addInspection, {
         path: "/tmp/project-sources-2",
         gitRemoteUrl: "ssh://git.example.test/ignored-different-origin.git",
+        isGitRepo: true,
+        isWorktree: false,
+        branchName: "main",
+        defaultBranch: "main",
       });
       const createSourceResponse = await createSourceResponsePromise;
       expect(createSourceResponse.status).toBe(201);

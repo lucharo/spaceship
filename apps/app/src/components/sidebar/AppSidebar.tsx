@@ -16,10 +16,8 @@ import {
 } from "@/components/ui/sidebar.js";
 import { ProjectList, ProjectListActionButtons } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
-import { useThreadListReplacement } from "./threadListProvider";
-import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
-import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
+import { useThreadListReplacement } from "./threadListProvider";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -30,7 +28,11 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import {
+  getPluginsRoutePath,
+  getRootComposeRoutePath,
+  getThreadRoutePath,
+} from "@/lib/route-paths";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
@@ -49,10 +51,12 @@ import {
   useIndexedAppCommandHandlers,
 } from "@/components/commands/AppCommandProvider";
 import { useRouteState } from "@/hooks/useRouteState";
+import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
 
 const NEW_THREAD_PANE_CONTENT = { kind: "new-thread" } as const;
 
-const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
+export const BUG_REPORT_NEW_ISSUE_URL =
+  "https://github.com/lucharo/spaceship/issues/new";
 const SIDEBAR_FOOTER_ACTION_CLASS = cn(
   COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
   "text-muted-foreground hover:text-sidebar-foreground [&>svg]:opacity-80",
@@ -63,7 +67,6 @@ interface AppSidebarProps {
   isResizing: boolean;
   showTopReserve: boolean;
   settingsRoutePath: string;
-  toolsRoutePath?: string;
   /**
    * Compact drawer hosting. When set, the sidebar renders its body only,
    * inside a persistent `<Sidebar>` panel owned by AppLayoutSidebar, and stays
@@ -78,13 +81,12 @@ export function AppSidebar({
   isResizing,
   showTopReserve,
   settingsRoutePath,
-  toolsRoutePath,
   mobileHosted,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
   // The resolved replacement owns the sidebar's scrolling thread list. It never
   // replaces the chrome around it: the New-thread button, search action,
-  // the plugin nav rows, and the footer stay host-rendered in every sidebar.
+  // plugin nav rows, and footer stay host-rendered in every sidebar.
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
@@ -266,30 +268,44 @@ export function AppSidebar({
           onSearchThreads={closeOnMobile}
         />
       </div>
-      <PluginNavSidebarItems
-        onNavigate={closeOnMobile}
-        splitEnabled
-        toolsRoutePath={toolsRoutePath}
-      />
+      <div className="shrink-0 px-2 pb-2 group-data-[collapsible=icon]:hidden">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip={{ children: "Skills" }}>
+              <Link
+                to={getToolsOwnedCollectionRoutePath("skills")}
+                onClick={closeOnMobile}
+              >
+                <Icon name="Zap" />
+                <span>Skills</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild tooltip={{ children: "Plugins" }}>
+              <Link to={getPluginsRoutePath()} onClick={closeOnMobile}>
+                <Icon name="Toolbox" />
+                <span>Plugins</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </div>
       <SidebarContent>
-        <PluginThreadList
-          replacement={threadListReplacement}
-          original={originalThreadList}
-          searchQuery=""
-          onNavigate={closeOnMobile}
-        />
+        <div
+          data-testid="app-sidebar-thread-list"
+          className="flex min-h-0 flex-1"
+        >
+          <PluginThreadList
+            replacement={threadListReplacement}
+            original={originalThreadList}
+            searchQuery=""
+            onNavigate={closeOnMobile}
+          />
+        </div>
       </SidebarContent>
       <SidebarFooter className="relative">
         <OverflowFade placement="above" tone="sidebar" size="sm" />
-        {/* The footer holds a variable number of plugin action buttons, so a
-         * narrowed sidebar plus several plugins can no longer fit the action
-         * row and the update chips on one line. `flex-wrap-reverse` plus the
-         * flexible spacer below handles both layouts without measuring:
-         * while everything fits, the spacer stretches and pushes the chips to
-         * the right of a single row; once it doesn't, the chips wrap onto
-         * their own line, which wrap-reverse renders above the actions, and
-         * they sit flush left because the spacer stays behind on the action
-         * line. */}
         <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
           <SidebarMenuItem className="min-w-0">
             <SidebarMenuButton
@@ -335,10 +351,6 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
           <li aria-hidden="true" className="min-w-0 flex-1" />
-          <SidebarPluginAttentionGlyph
-            className={SIDEBAR_FOOTER_ACTION_CLASS}
-            onNavigate={closeOnMobile}
-          />
           <SidebarUpdatesBadge onNavigate={closeOnMobile} />
         </SidebarMenu>
       </SidebarFooter>

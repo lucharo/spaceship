@@ -46,6 +46,8 @@ interface CreateCodexAppServerConnectionOptions {
    * children (model-list probes, maintenance).
    */
   recordThreadId: string | null;
+  /** False for metadata discovery, whose raw provider response may carry previews or paths. */
+  recordProviderIo?: boolean;
   onNotification(method: string, params: unknown): void;
   onRequest(
     method: string,
@@ -119,9 +121,11 @@ export function createCodexAppServerConnection(
     env: options.env,
     stdio: ["pipe", "pipe", "pipe"],
   });
-  experimental_recordProviderChildIo(child, {
-    threadId: options.recordThreadId,
-  });
+  if (options.recordProviderIo !== false) {
+    experimental_recordProviderChildIo(child, {
+      threadId: options.recordThreadId,
+    });
+  }
 
   const pending = new Map<number, PendingChildRequest>();
   const stderrChunks: string[] = [];

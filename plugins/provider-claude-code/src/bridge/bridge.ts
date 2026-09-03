@@ -2106,6 +2106,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
           steerMode: "inject",
           skills: { configure: true },
+          nativeSessions: { list: false, read: false, history: false },
         },
       };
       sendResult(request.id, result);

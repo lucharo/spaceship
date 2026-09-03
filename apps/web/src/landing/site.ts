@@ -1,10 +1,10 @@
-export const GITHUB_URL = "https://github.com/get-bb/bb";
+export const GITHUB_URL = "https://github.com/lucharo/spaceship";
 export const DISCORD_URL = "https://discord.gg/kvBU6tJhcJ";
 export const X_URL = "https://x.com/get_bb_app";
 export const DOWNLOAD_MACOS_FALLBACK_URL =
-  "https://github.com/get-bb/bb/releases/tag/desktop-latest";
+  "https://github.com/lucharo/spaceship/releases/tag/desktop-latest";
 export const DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL =
-  "https://github.com/get-bb/bb/releases/download/desktop-latest";
+  "https://github.com/lucharo/spaceship/releases/download/desktop-latest";
 export const DOWNLOAD_MACOS_VERSION_FEED_URL = `${DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL}/desktop-version.json`;
 const DOWNLOAD_MACOS_REDIRECT_PATH = "/download/macos";
 /** First-party endpoint that adds an email to the bb marketing audience.

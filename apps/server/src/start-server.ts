@@ -24,7 +24,7 @@ import {
   runStartupRecoverySweep,
 } from "./services/system/periodic-sweeps.js";
 import { createProviderRegistryService } from "./services/providers/provider-registry.js";
-import { createTelemetryService } from "./services/system/telemetry.js";
+import { createNoopTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
 import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "./constants.js";
@@ -123,16 +123,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     logger,
   });
 
-  // Telemetry only operates in production runs (the bb-app launcher and the
-  // desktop app both set NODE_ENV=production); dev/source runs never send.
-  const telemetry = await createTelemetryService({
-    apiKey: serverConfig.BB_POSTHOG_API_KEY,
-    appSurface: serverConfig.BB_APP_SURFACE,
-    appVersion: serverConfig.BB_APP_VERSION,
-    dataDir: serverConfig.BB_DATA_DIR,
-    enabled: serverConfig.BB_TELEMETRY && isProduction,
-    logger,
-  });
+  const telemetry = createNoopTelemetryService();
 
   const machineAuth = await createMachineAuthService({
     dataDir: serverConfig.BB_DATA_DIR,

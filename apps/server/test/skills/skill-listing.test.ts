@@ -134,6 +134,13 @@ describe("assembleSkillList", () => {
     name: string,
     rootKind: SkillRootKind,
     filePath: string,
+    canonicalFilePath = filePath,
+    sourceRepository?: string,
+    sourceRelativePath?: string,
+    canonicalRootPath = canonicalFilePath.slice(
+      0,
+      canonicalFilePath.lastIndexOf("/"),
+    ),
   ): DiscoveredSkill {
     return {
       id: `skill_${createHash("sha256").update(filePath).digest("hex")}`,
@@ -141,6 +148,10 @@ describe("assembleSkillList", () => {
       description: null,
       rootKind,
       filePath,
+      canonicalFilePath,
+      canonicalRootPath,
+      sourceRepository: sourceRepository ?? null,
+      sourceRelativePath: sourceRelativePath ?? null,
       linked: false,
     };
   }
@@ -160,6 +171,67 @@ describe("assembleSkillList", () => {
       name: "shared",
       provider: null,
       scope: "bb-user",
+    });
+  });
+
+  it("de-dupes one shared skill exposed through provider symlink views", () => {
+    const canonicalFilePath = "/store/skills/wrapup/SKILL.md";
+    const result = assembleSkillList([
+      {
+        provider: "claude-code",
+        skills: [
+          discovered(
+            "wrapup",
+            "provider-user",
+            "/home/.claude/skills/wrapup/SKILL.md",
+            canonicalFilePath,
+          ),
+        ],
+      },
+      {
+        provider: "codex",
+        skills: [
+          discovered(
+            "wrapup",
+            "shared-user",
+            "/home/.agents/skills/wrapup/SKILL.md",
+            canonicalFilePath,
+          ),
+        ],
+      },
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      name: "wrapup",
+      provider: null,
+      scope: "shared-user",
+      filePath: "/home/.agents/skills/wrapup/SKILL.md",
+      canonicalFilePath,
+      manageable: false,
+    });
+  });
+
+  it("preserves authoritative skill source provenance", () => {
+    const [skill] = assembleSkillList([
+      {
+        provider: "codex",
+        skills: [
+          discovered(
+            "wrapup",
+            "shared-user",
+            "/home/.agents/skills/wrapup/SKILL.md",
+            "/home/.refined/skills/engineering/wrapup/SKILL.md",
+            "lucharo/skills",
+            "skills/engineering/wrapup/SKILL.md",
+          ),
+        ],
+      },
+    ]);
+
+    expect(skill).toMatchObject({
+      sourceRepository: "lucharo/skills",
+      sourceRelativePath: "skills/engineering/wrapup/SKILL.md",
     });
   });
 

@@ -54,6 +54,9 @@ import type {
   CreateQueuedMessageRequest,
   CreateThreadSectionRequest,
   CreateThreadRequest,
+  AdoptNativeThreadRequest,
+  AdoptNativeThreadResponse,
+  ArchiveNativeThreadRequest,
   EditMessageRequest,
   EditMessageResponse,
   ForkThreadRequest,
@@ -149,6 +152,8 @@ import type {
   SystemInstallCliSkillsResponse,
   SystemExecutionOptionsQuery,
   SystemExecutionOptionsResponse,
+  SystemNativeSessionsQuery,
+  SystemNativeSessionsResponse,
   SystemProviderInfo,
   SystemProvidersQuery,
   SystemProviderStatesResponse,
@@ -229,6 +234,8 @@ import {
   createQueuedMessageRequestSchema,
   updateQueuedMessageRequestSchema,
   createThreadRequestSchema,
+  adoptNativeThreadRequestSchema,
+  archiveNativeThreadRequestSchema,
   forkThreadRequestSchema,
   deleteThreadRequestSchema,
   environmentActionRequestSchema,
@@ -275,6 +282,7 @@ import {
   setQueuedMessageGroupBoundaryRequestSchema,
   sendQueuedMessageRequestSchema,
   systemExecutionOptionsQuerySchema,
+  systemNativeSessionsQuerySchema,
   systemProvidersQuerySchema,
   systemUsageLimitsQuerySchema,
   systemVersionQuerySchema,
@@ -896,6 +904,22 @@ export const publicApiRoutes = {
   },
 
   threads: {
+    adoptNative: defineRoute({
+      path: "/threads/adopt-native",
+      method: "post",
+      request: jsonRequest<EmptyInput, AdoptNativeThreadRequest>(
+        adoptNativeThreadRequestSchema,
+      ),
+      response: jsonResponse<AdoptNativeThreadResponse>(),
+    }),
+    archiveNative: defineRoute({
+      path: "/threads/archive-native",
+      method: "post",
+      request: jsonRequest<EmptyInput, ArchiveNativeThreadRequest>(
+        archiveNativeThreadRequestSchema,
+      ),
+      response: jsonResponse<{ ok: true }>(),
+    }),
     list: defineRoute({
       path: "/threads",
       method: "get",
@@ -1409,6 +1433,14 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest<PathId>(),
       response: binaryResponse<Uint8Array>(),
+    }),
+    providerNativeSessions: defineRoute({
+      path: "/system/providers/:id/native-sessions",
+      method: "get",
+      request: optionalQueryRequest<PathId, SystemNativeSessionsQuery>(
+        systemNativeSessionsQuerySchema,
+      ),
+      response: jsonResponse<SystemNativeSessionsResponse>(),
     }),
     providerStates: defineRoute({
       path: "/system/providers/state",

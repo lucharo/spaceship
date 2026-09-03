@@ -1,7 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect } from "react";
-
-import { initAnalytics } from "../landing/analytics";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import { unfurlMeta } from "../landing/site";
 import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
@@ -47,10 +44,6 @@ export const Route = createFileRoute("/privacy")({
 });
 
 function PrivacyRoute() {
-  useEffect(() => {
-    initAnalytics();
-  }, []);
-
   return (
     <div className="wrap">
       <SiteNav />
@@ -171,13 +164,7 @@ function PrivacyRoute() {
 
           <h2>3. This website</h2>
 
-          <p>
-            The marketing pages use PostHog to measure how people find bb.
-            Automatic event capture is off. The pages send page views, the
-            referrer and any campaign parameters in the URL, and a small set of
-            named events, such as a click on a download link or a copy of the
-            install command.
-          </p>
+          <p>The website does not use product analytics or tracking pixels.</p>
 
           <p>
             If you give us your email address to follow releases, we keep it to
@@ -229,7 +216,7 @@ function PrivacyRoute() {
           <p>
             Write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>{" "}
             with any question about this policy, or open an issue on{" "}
-            <a href="https://github.com/get-bb/bb">GitHub</a>.
+            <a href="https://github.com/lucharo/spaceship">GitHub</a>.
           </p>
         </div>
       </article>

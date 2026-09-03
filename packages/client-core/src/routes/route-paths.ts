@@ -3,6 +3,7 @@ import { PERSONAL_PROJECT_ID } from "@bb/domain";
 export const APP_ROOT_ROUTE_PATH = "/";
 export const AUTH_CALLBACK_ROUTE_PATH = "/auth/callback";
 export const SETTINGS_ROUTE_PATH = "/settings";
+export const NATIVE_SESSIONS_ROUTE_PATH = "/native-sessions";
 // Settings buckets (general, files, …) plus legacy plugin routes that redirect
 // to the canonical Extensions → Plugins surfaces. The static "plugins" segment must
 // win over :section so those old deep links resolve before redirecting.
@@ -216,6 +217,7 @@ const baseRoutePatterns: readonly string[] = [
   APP_ROOT_ROUTE_PATH,
   AUTH_CALLBACK_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  NATIVE_SESSIONS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,

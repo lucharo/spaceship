@@ -21,10 +21,8 @@ import {
   BB_INFERENCE_FALLBACK_ENV,
   BB_INFERENCE_ENV,
   BB_MARKETPLACE_URL_ENV,
-  BB_POSTHOG_API_KEY_ENV,
   BB_SERVER_BIND_HOST_ENV,
   BB_SERVER_LAUNCH_ID_ENV,
-  BB_TELEMETRY_ENV,
   BB_TRANSCRIPTION_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_SURFACE,
@@ -33,9 +31,7 @@ import {
   DEFAULT_BB_INFERENCE_FALLBACK,
   DEFAULT_BB_INFERENCE,
   DEFAULT_BB_MARKETPLACE_URL,
-  DEFAULT_BB_POSTHOG_API_KEY,
   DEFAULT_BB_SERVER_BIND_HOST,
-  DEFAULT_BB_TELEMETRY,
   DEFAULT_BB_TRANSCRIPTION,
   DEFAULT_OPENAI_API_KEY,
   OPENAI_API_KEY_ENV,
@@ -58,7 +54,6 @@ export interface ServerConfig
   BB_INHERITED_SKILLS_ROOTS: string[];
   BB_INFERENCE: string;
   BB_INFERENCE_FALLBACK: string;
-  BB_POSTHOG_API_KEY: string;
   BB_MARKETPLACE_URL: string;
   BB_SERVER_BIND_HOST: ServerBindHost;
   /**
@@ -66,7 +61,6 @@ export interface ServerConfig
    * readiness probe accepts a /health response only when it echoes this value.
    */
   BB_SERVER_LAUNCH_ID?: string;
-  BB_TELEMETRY: boolean;
   BB_TRANSCRIPTION: string;
   OPENAI_API_KEY: string;
   featureFlags: FeatureFlags;
@@ -163,22 +157,10 @@ export function loadServerConfig(
       definition: BB_MARKETPLACE_URL_ENV,
       env: loader.env,
     }),
-    BB_POSTHOG_API_KEY: readEnvVarWithDefault({
-      context: loader.context,
-      defaultValue: DEFAULT_BB_POSTHOG_API_KEY,
-      definition: BB_POSTHOG_API_KEY_ENV,
-      env: loader.env,
-    }),
     BB_SERVER_BIND_HOST: readEnvVarWithDefault({
       context: loader.context,
       defaultValue: DEFAULT_BB_SERVER_BIND_HOST,
       definition: BB_SERVER_BIND_HOST_ENV,
-      env: loader.env,
-    }),
-    BB_TELEMETRY: readEnvVarWithDefault({
-      context: loader.context,
-      defaultValue: DEFAULT_BB_TELEMETRY,
-      definition: BB_TELEMETRY_ENV,
       env: loader.env,
     }),
     BB_TRANSCRIPTION: readEnvVarWithDefault({

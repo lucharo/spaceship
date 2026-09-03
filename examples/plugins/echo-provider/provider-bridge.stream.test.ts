@@ -31,6 +31,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   BRIDGE_JSON_RPC_ERRORS,
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
   providerHealthResultSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
@@ -192,7 +193,7 @@ function completedItem<T extends ItemEvent["item"]["type"]>(
 describe("the echo bridge's grammar v3 stream", () => {
   it("runs the whole scripted turn through the runtime assembler", async () => {
     await request("initialize", {
-      protocolVersion: 2,
+      protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
       client: { name: "echo-stream-test", version: "0.0.0" },
       grammarVersions: [3, 3],
     });
@@ -439,7 +440,7 @@ describe("the echo bridge's grammar v3 stream", () => {
 
   it("emits the malformed receipt payload the server must reject", async () => {
     await request("initialize", {
-      protocolVersion: 2,
+      protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
       client: { name: "echo-stream-test", version: "0.0.0" },
       grammarVersions: [3, 3],
     });
@@ -456,7 +457,7 @@ describe("the echo bridge's grammar v3 stream", () => {
 
   it("settles a zero-work turn and falls back to defaults without providerOptions", async () => {
     await request("initialize", {
-      protocolVersion: 2,
+      protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
       client: { name: "echo-stream-test", version: "0.0.0" },
       grammarVersions: [3, 3],
     });
@@ -514,7 +515,7 @@ describe("the echo bridge's grammar v3 stream", () => {
 describe("the echo bridge's provider maintenance", () => {
   it("answers provider/health with a ready result the runtime's schema accepts", async () => {
     await request("initialize", {
-      protocolVersion: 2,
+      protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
       client: { name: "echo-stream-test", version: "0.0.0" },
       grammarVersions: [3, 3],
     });
@@ -553,10 +554,7 @@ describe("the echo bridge's provider maintenance", () => {
     // `maintenance.usage` and `.installation` are declared false, so the
     // runtime never sends these; a bridge that declares them off must not
     // quietly answer them either.
-    for (const method of [
-      "provider/usage",
-      "provider/installation/status",
-    ]) {
+    for (const method of ["provider/usage", "provider/installation/status"]) {
       harness.sendRequest(`undeclared:${method}`, method, {
         providerId: ECHO_PROVIDER_ID,
       });

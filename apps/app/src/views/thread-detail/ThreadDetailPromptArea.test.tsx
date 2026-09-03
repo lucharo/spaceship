@@ -42,6 +42,9 @@ const mocks = vi.hoisted(() => ({
   clearThreadGoalMutate: vi.fn(),
   createQueuedMessageMutateAsync: vi.fn(),
   defaultExecutionOptions: null as ResolvedThreadExecutionOptions | null,
+  defaultExecutionOptionsError: false,
+  modelCatalogIsVerified: true,
+  permissionModeIsVerified: true,
   deleteQueuedMessageMutateAsync: vi.fn(),
   navigate: vi.fn(),
   pluginComposerHost: null as PluginComposerHost | null,
@@ -61,6 +64,7 @@ const mocks = vi.hoisted(() => ({
   },
   queuedMessages: [] as ThreadQueuedMessage[],
   reorderQueuedMessageMutateAsync: vi.fn(),
+  sendMessageMutateAsync: vi.fn(),
   sendQueuedMessageMutateAsync: vi.fn(),
   setQueuedMessageGroupBoundaryMutateAsync: vi.fn(),
   stopThreadMutate: vi.fn(),
@@ -455,10 +459,12 @@ vi.mock("@/hooks/useThreadCreationOptions", () => ({
       isLoadingModels: false,
       modelLoadError: null,
       modelLoadFailed: false,
+      modelCatalogIsVerified: mocks.modelCatalogIsVerified,
       modelOptions: [],
       moreModelOptions: [],
       permissionMode: "auto",
       permissionModeOptions: [],
+      permissionModeIsVerified: mocks.permissionModeIsVerified,
       providerOptions: [],
       reasoningLevel: "medium",
       reasoningOptions: [],
@@ -542,7 +548,7 @@ vi.mock("@/hooks/queries/thread-default-execution-options-query", () => ({
     mocks.useThreadDefaultExecutionOptions(threadId, options);
     return {
       data: mocks.defaultExecutionOptions,
-      isError: false,
+      isError: mocks.defaultExecutionOptionsError,
     };
   },
 }));
@@ -713,7 +719,7 @@ function buildPromptAreaElement({
       resolveMentionLink={() => null}
       sendMessage={{
         isPending: false,
-        mutateAsync: vi.fn(),
+        mutateAsync: mocks.sendMessageMutateAsync,
       }}
       sentMessageEdit={sentMessageEdit}
       steerActiveThreadOnEnter={false}
@@ -730,6 +736,9 @@ function renderPromptArea(options: RenderPromptAreaOptions = {}) {
 
 beforeEach(() => {
   mocks.defaultExecutionOptions = null;
+  mocks.defaultExecutionOptionsError = false;
+  mocks.modelCatalogIsVerified = true;
+  mocks.permissionModeIsVerified = true;
   mocks.pluginComposerHost = null;
   mocks.promptDraft.text = "";
   mocks.promptDraft.getCurrent.mockImplementation(() => ({
@@ -738,6 +747,7 @@ beforeEach(() => {
     text: mocks.promptDraft.text,
   }));
   mocks.queuedMessages = [];
+  mocks.sendMessageMutateAsync.mockResolvedValue(undefined);
   mocks.updateQueuedMessageMutateAsync.mockResolvedValue(undefined);
   mocks.useThreadCreationOptions.mockClear();
   mocks.useThreadDefaultExecutionOptions.mockClear();
@@ -755,6 +765,80 @@ afterEach(() => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("submits the visible picker selection when an adopted native thread has no stored execution defaults", async () => {
+    mocks.promptDraft.text = "Continue the native thread";
+
+    renderPromptArea();
+
+    expect(screen.getByTestId("selected-model").textContent).toBe("gpt-5");
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    await waitFor(() => {
+      expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith({
+        id: "thr_1",
+        input: [
+          {
+            mentions: [],
+            text: "Continue the native thread",
+            type: "text",
+          },
+        ],
+        mode: "queue-if-active",
+        model: "gpt-5",
+        permissionMode: "auto",
+        reasoningLevel: "medium",
+        executionInputSources: {
+          model: "explicit",
+          permissionMode: "explicit",
+          reasoningLevel: "explicit",
+        },
+      });
+    });
+  });
+
+  it("does not submit a fallback picker model when execution defaults failed to load", () => {
+    mocks.defaultExecutionOptionsError = true;
+    mocks.promptDraft.text = "Do not guess the execution model";
+
+    renderPromptArea();
+
+    expect(screen.getByTestId("selected-model").textContent).toBe("gpt-5");
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith({
+      id: "thr_1",
+      input: [
+        {
+          mentions: [],
+          text: "Do not guess the execution model",
+          type: "text",
+        },
+      ],
+      mode: "queue-if-active",
+    });
+  });
+
+  it("does not submit provisional picker values before their catalogs are verified", () => {
+    mocks.modelCatalogIsVerified = false;
+    mocks.permissionModeIsVerified = false;
+    mocks.promptDraft.text = "Keep the native defaults";
+
+    renderPromptArea();
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    expect(mocks.sendMessageMutateAsync).toHaveBeenCalledWith({
+      id: "thr_1",
+      input: [
+        {
+          mentions: [],
+          text: "Keep the native defaults",
+          type: "text",
+        },
+      ],
+      mode: "queue-if-active",
+    });
+  });
+
   it("keeps sent-message edit submission out of the normal send path", () => {
     mocks.defaultExecutionOptions = {
       model: "gpt-5",

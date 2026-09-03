@@ -30,7 +30,7 @@ describe("provider info schema", () => {
       providerInfoSchema.parse({
         ...baseProviderInfo,
         composerActions: [
-          { kind: "skills", trigger: "/" },
+          { kind: "skills", trigger: "/", aliases: ["$"] },
           {
             kind: "plan",
             command: { trigger: "/", name: "plan", trailingText: " " },
@@ -42,7 +42,7 @@ describe("provider info schema", () => {
         ],
       }).composerActions,
     ).toEqual([
-      { kind: "skills", trigger: "/" },
+      { kind: "skills", trigger: "/", aliases: ["$"] },
       {
         kind: "plan",
         command: { trigger: "/", name: "plan", trailingText: " " },
@@ -54,11 +54,24 @@ describe("provider info schema", () => {
     ]);
   });
 
+  it("accepts the experimental native history capability", () => {
+    expect(
+      providerInfoSchema.parse({
+        ...baseProviderInfo,
+        capabilities: {
+          ...baseProviderInfo.capabilities,
+          experimental_supportsNativeSessionHistory: true,
+        },
+        composerActions: [{ kind: "skills", trigger: "/" }],
+      }).capabilities.experimental_supportsNativeSessionHistory,
+    ).toBe(true);
+  });
+
   it("validates action-specific fields", () => {
     expect(() =>
       providerInfoSchema.parse({
         ...baseProviderInfo,
-        composerActions: [{ kind: "skills", trigger: "$" }],
+        composerActions: [{ kind: "skills", trigger: ":" }],
       }),
     ).toThrow();
     expect(() =>

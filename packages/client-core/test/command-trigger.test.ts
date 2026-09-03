@@ -8,7 +8,7 @@ describe("buildProviderPromptActionProps", () => {
   it("maps skills and insertion composer actions into prompt action props", () => {
     expect(
       buildProviderPromptActionProps([
-        { kind: "skills", trigger: "/" },
+        { kind: "skills", trigger: "/", aliases: ["$"] },
         {
           kind: "plan",
           command: { trigger: "/", name: "plan", trailingText: " " },
@@ -20,6 +20,7 @@ describe("buildProviderPromptActionProps", () => {
       ]),
     ).toEqual({
       skillsTrigger: "/",
+      skillTriggerAliases: ["$"],
       promptActions: [
         { kind: "skills", text: "/" },
         {

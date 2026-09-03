@@ -14,6 +14,7 @@ interface ProviderPromptAction {
 
 interface ProviderPromptActionProps {
   skillsTrigger: PromptMentionCommandTrigger | null;
+  skillTriggerAliases: readonly PromptMentionCommandTrigger[];
   promptActions: readonly ProviderPromptAction[];
 }
 
@@ -26,11 +27,13 @@ export function buildProviderPromptActionProps(
 ): ProviderPromptActionProps {
   const promptActions: ProviderPromptAction[] = [];
   let skillsTrigger: PromptMentionCommandTrigger | null = null;
+  let skillTriggerAliases: readonly PromptMentionCommandTrigger[] = [];
 
   for (const action of composerActions) {
     switch (action.kind) {
       case "skills":
         skillsTrigger = action.trigger;
+        skillTriggerAliases = action.aliases ?? [];
         promptActions.push({
           kind: action.kind,
           text: action.trigger,
@@ -47,7 +50,7 @@ export function buildProviderPromptActionProps(
     }
   }
 
-  return { skillsTrigger, promptActions };
+  return { skillsTrigger, skillTriggerAliases, promptActions };
 }
 
 function serializedProviderCommand(command: ProviderComposerCommand): string {

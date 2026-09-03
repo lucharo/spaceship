@@ -85,9 +85,8 @@ export function clampPermissionModeToCeiling(args: {
  */
 export const permissionModeInputSchema = z
   .union([permissionModeSchema, z.literal("workspace-write")])
-  .transform(
-    (permissionMode): PermissionMode =>
-      permissionMode === "workspace-write" ? "accept-edits" : permissionMode,
+  .transform((permissionMode): PermissionMode =>
+    permissionMode === "workspace-write" ? "accept-edits" : permissionMode,
   );
 
 const legacyRecordedPermissionModeValues = [
@@ -121,7 +120,7 @@ const promptMentionPathEntryKindSchema = z.enum(
   promptMentionPathEntryKindValues,
 );
 
-export const promptMentionCommandTriggerValues = ["/"] as const;
+export const promptMentionCommandTriggerValues = ["/", "$"] as const;
 export const promptMentionCommandTriggerSchema = z.enum(
   promptMentionCommandTriggerValues,
 );

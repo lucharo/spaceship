@@ -1521,6 +1521,78 @@ describe("ThreadTimelineRows actions", () => {
       expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
     );
   });
+
+  it("forces a collapsed ancestor open for an outline navigation target", async () => {
+    const { container, rerender } = renderWithRouter(
+      <ThreadTimelineRows
+        initialExpanded={new Set(["turn_with_match"])}
+        threadId="thr_main"
+        timelineRows={[
+          turnRow({
+            id: "turn_with_match",
+            sourceSeqStart: 10,
+            sourceSeqEnd: 20,
+            children: [
+              conversationRow({
+                id: "nested_match",
+                role: "assistant",
+                text: "Nested outline target.",
+                sourceSeqStart: 12,
+                sourceSeqEnd: 12,
+                threadId: "thr_main",
+              }),
+            ],
+            threadId: "thr_main",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { expanded: true }));
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-timeline-row-id="nested_match"]'),
+      ).toBeNull(),
+    );
+
+    rerender(
+      <MemoryRouter>
+        <ThreadTimelineRows
+          threadId="thr_main"
+          timelineNavigationTargetRowId="nested_match"
+          timelineNavigationTargetSeq={12}
+          timelineRows={[
+            turnRow({
+              id: "turn_with_match",
+              sourceSeqStart: 10,
+              sourceSeqEnd: 20,
+              children: [
+                conversationRow({
+                  id: "nested_match",
+                  role: "assistant",
+                  text: "Nested outline target.",
+                  sourceSeqStart: 12,
+                  sourceSeqEnd: 12,
+                  threadId: "thr_main",
+                }),
+              ],
+              threadId: "thr_main",
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+          workspaceRootPath={undefined}
+        />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-timeline-row-id="nested_match"]'),
+      ).not.toBeNull(),
+    );
+  });
 });
 
 describe("ThreadTimelineRows shared message column width", () => {

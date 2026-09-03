@@ -26,6 +26,7 @@ import {
   resolvePendingInteractionRequestSchema,
   sendQueuedMessageRequestSchema,
   sendMessageRequestSchema,
+  systemNativeSessionsQuerySchema,
   terminalClientMessageSchema,
   terminalOutputChunkSchema,
   terminalOutputResponseSchema,
@@ -38,6 +39,20 @@ import {
   updateEnvironmentRequestSchema,
   unmanagedBranchSpecSchema,
 } from "../src/index.js";
+
+describe("native session catalogue contract", () => {
+  it("rejects page limits outside the bridge contract", () => {
+    expect(
+      systemNativeSessionsQuerySchema.safeParse({ limit: "0" }).success,
+    ).toBe(false);
+    expect(
+      systemNativeSessionsQuerySchema.safeParse({ limit: "101" }).success,
+    ).toBe(false);
+    expect(
+      systemNativeSessionsQuerySchema.safeParse({ limit: "100" }).success,
+    ).toBe(true);
+  });
+});
 
 interface OptionalServerFieldGroup {
   fields: readonly string[];
@@ -266,6 +281,11 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "threadTimelineResponseSchema.delta",
       "threadTimelineResponseSchema.delta.rowOrder",
     ],
+  },
+  {
+    reason:
+      "Native-history projections are marked only when a provider supplied the timeline directly instead of BB event storage.",
+    fields: ["threadTimelineResponseSchema.nativeHistoryProjection"],
   },
   {
     reason:

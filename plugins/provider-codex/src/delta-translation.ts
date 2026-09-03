@@ -23,6 +23,7 @@ import {
   type DeltaItemShape,
   type DeltaPresentation,
   type ProviderRawEvent,
+  type PromptInput,
   type ThreadDelta,
   type ThreadEventItemStatus,
   type ThreadEventTurnStatus,
@@ -99,6 +100,10 @@ interface CodexEventTranslationState {
    */
   injectedToolsByName: Map<string, CodexInjectedTool>;
   retryErrorsByTurnKey: Map<string, CodexRetryErrorContext>;
+  citationBuffersByItemKey: Map<string, string>;
+  commentaryAgentMessageKeys: Set<string>;
+  classifiedAgentMessageKeys: Set<string>;
+  pendingAgentMessageDeltasByItemKey: Map<string, string[]>;
 }
 
 export function createCodexEventTranslationState(): CodexEventTranslationState {
@@ -106,7 +111,98 @@ export function createCodexEventTranslationState(): CodexEventTranslationState {
     rateLimits: null,
     injectedToolsByName: new Map(),
     retryErrorsByTurnKey: new Map(),
+    citationBuffersByItemKey: new Map(),
+    commentaryAgentMessageKeys: new Set(),
+    classifiedAgentMessageKeys: new Set(),
+    pendingAgentMessageDeltasByItemKey: new Map(),
   };
+}
+
+const CODEX_CITATION_START = "\uE200";
+const CODEX_CITATION_SEPARATOR = "\uE202";
+const CODEX_CITATION_END = "\uE201";
+const CODEX_CITATION_PATTERN = /\uE200cite((?:\uE202[^\uE201]+)+)\uE201/gu;
+
+/**
+ * Codex Desktop renders these private-use markers as source chips. bb does not
+ * yet receive enough source metadata to reproduce those links, so retain the
+ * reference count while hiding opaque app-server ids and control glyphs.
+ */
+export function normalizeCodexCitationText(text: string): string {
+  return text.replace(CODEX_CITATION_PATTERN, (_marker, body: string) => {
+    const count = body
+      .split(CODEX_CITATION_SEPARATOR)
+      .filter((reference) => reference.length > 0).length;
+    if (count === 0) return "";
+    const label = count === 1 ? "Source" : "Sources";
+    const ordinals = Array.from({ length: count }, (_, index) => index + 1);
+    return `[${label}: ${ordinals.join(", ")}]`;
+  });
+}
+
+function agentMessageItemKey(
+  threadId: string,
+  turnId: string,
+  itemId: string,
+): string {
+  return `${threadId}\0${turnId}\0${itemId}`;
+}
+
+function normalizeCodexCitationDelta(
+  state: CodexEventTranslationState,
+  threadId: string,
+  turnId: string,
+  itemId: string,
+  delta: string,
+): string {
+  const key = agentMessageItemKey(threadId, turnId, itemId);
+  let pending = (state.citationBuffersByItemKey.get(key) ?? "") + delta;
+  let output = "";
+
+  while (pending.length > 0) {
+    const start = pending.indexOf(CODEX_CITATION_START);
+    if (start === -1) {
+      state.citationBuffersByItemKey.delete(key);
+      return output + pending;
+    }
+    output += pending.slice(0, start);
+    const end = pending.indexOf(CODEX_CITATION_END, start + 1);
+    if (end === -1) {
+      state.citationBuffersByItemKey.set(key, pending.slice(start));
+      return output;
+    }
+    output += normalizeCodexCitationText(pending.slice(start, end + 1));
+    pending = pending.slice(end + 1);
+  }
+
+  state.citationBuffersByItemKey.delete(key);
+  return output;
+}
+
+function codexUserInputToPromptInput(
+  input: Extract<
+    CodexHandledThreadItem,
+    { type: "userMessage" }
+  >["content"][number],
+): PromptInput {
+  switch (input.type) {
+    case "text":
+      return { type: "text", text: input.text, mentions: [] };
+    case "image":
+      return { type: "image", url: input.url };
+    case "localImage":
+      return { type: "localImage", path: input.path };
+    case "audio":
+      return { type: "text", text: `[Audio: ${input.url}]`, mentions: [] };
+    case "localAudio":
+      return { type: "localFile", path: input.path };
+    case "skill":
+      return { type: "text", text: `/${input.name}`, mentions: [] };
+    case "mention":
+      return { type: "text", text: `@${input.name}`, mentions: [] };
+    default:
+      return assertNever(input);
+  }
 }
 
 export function setCodexInjectedTools(
@@ -395,13 +491,99 @@ function takeCodexRetryError(
 export function clearCodexEventTranslationThreadState(
   state: CodexEventTranslationState,
   threadId: string,
-): void {
+  status: Exclude<ThreadEventItemStatus, "pending"> = "failed",
+): ThreadDelta[] {
   const prefix = codexTurnKey({ threadId });
   for (const key of state.retryErrorsByTurnKey.keys()) {
     if (key.startsWith(prefix)) {
       state.retryErrorsByTurnKey.delete(key);
     }
   }
+  const turnIds = new Set<string>();
+  for (const key of state.pendingAgentMessageDeltasByItemKey.keys()) {
+    if (!key.startsWith(prefix)) continue;
+    const turnId = key.slice(prefix.length).split("\0", 1)[0];
+    if (turnId) turnIds.add(turnId);
+  }
+  const deltas = [...turnIds].flatMap((turnId) =>
+    takePendingAgentMessageDeltasForTurn(state, {
+      threadId,
+      turnId,
+      status,
+    }),
+  );
+  clearAgentMessageStateForPrefix(state, prefix);
+  return deltas;
+}
+
+function clearAgentMessageStateForPrefix(
+  state: CodexEventTranslationState,
+  prefix: string,
+): void {
+  for (const map of [
+    state.citationBuffersByItemKey,
+    state.pendingAgentMessageDeltasByItemKey,
+  ]) {
+    for (const key of map.keys()) {
+      if (key.startsWith(prefix)) map.delete(key);
+    }
+  }
+  for (const set of [
+    state.commentaryAgentMessageKeys,
+    state.classifiedAgentMessageKeys,
+  ]) {
+    for (const key of set) {
+      if (key.startsWith(prefix)) set.delete(key);
+    }
+  }
+}
+
+function takePendingAgentMessageDeltasForTurn(
+  state: CodexEventTranslationState,
+  args: {
+    threadId: string;
+    turnId: string;
+    status: ThreadEventItemStatus;
+  },
+): ThreadDelta[] {
+  const prefix = agentMessageItemKey(args.threadId, args.turnId, "");
+  const output: ThreadDelta[] = [];
+  for (const [key, pendingDeltas] of state.pendingAgentMessageDeltasByItemKey) {
+    if (!key.startsWith(prefix) || pendingDeltas.length === 0) continue;
+    const providerItemId = key.slice(prefix.length);
+    const item = {
+      type: "agentMessage" as const,
+      text: pendingDeltas.join(""),
+    };
+    output.push(
+      {
+        kind: "item.open",
+        key: { providerItemId },
+        item: { ...item, text: "" },
+        presentation: AGENT_MESSAGE_PRESENTATION,
+        providerTurnId: args.turnId,
+      },
+      ...pendingDeltas.map((text): ThreadDelta => ({
+        kind: "item.textDelta",
+        key: { providerItemId },
+        channel: state.commentaryAgentMessageKeys.has(key)
+          ? "reasoningSummary"
+          : "agentMessage",
+        text,
+        providerTurnId: args.turnId,
+      })),
+      {
+        kind: "item.close",
+        key: { providerItemId },
+        status: args.status,
+        item,
+        presentation: AGENT_MESSAGE_PRESENTATION,
+        providerTurnId: args.turnId,
+      },
+    );
+  }
+  clearAgentMessageStateForPrefix(state, prefix);
+  return output;
 }
 
 /**
@@ -721,9 +903,25 @@ function translateCodexItemShape(
   const parsedItem: CodexHandledThreadItem = parsed.data;
   switch (parsedItem.type) {
     case "agentMessage":
+      if (parsedItem.phase === "commentary") {
+        return {
+          kind: "translated",
+          shape: {
+            type: "reasoning",
+            summary: [normalizeCodexCitationText(parsedItem.text)],
+            content: [],
+          },
+          presentation: REASONING_PRESENTATION,
+          status: "completed",
+          approvalDenied: false,
+        };
+      }
       return {
         kind: "translated",
-        shape: { type: "agentMessage", text: parsedItem.text },
+        shape: {
+          type: "agentMessage",
+          text: normalizeCodexCitationText(parsedItem.text),
+        },
         presentation: AGENT_MESSAGE_PRESENTATION,
         status: "completed",
         approvalDenied: false,
@@ -935,6 +1133,57 @@ function translateCodexItemShape(
   }
 }
 
+/** Translate one item from an explicitly opened native Codex history. */
+export function translateCodexHistoryItemToDeltas(
+  item: unknown,
+  state: CodexEventTranslationState,
+  providerTurnId: string,
+): ThreadDelta[] {
+  const parsed = codexHandledThreadItemSchema.safeParse(item);
+  if (!parsed.success) {
+    const rawType =
+      typeof item === "object" &&
+      item !== null &&
+      "type" in item &&
+      typeof item.type === "string"
+        ? item.type
+        : "unknown";
+    return buildUnhandledCodexDeltas({
+      rawEvent: {
+        jsonrpc: "2.0",
+        method: "native/session/history/item",
+        params: { item },
+      },
+      rawType,
+      providerTurnId,
+    });
+  }
+  if (parsed.data.type === "userMessage") {
+    if (parsed.data.content.length === 0) return [];
+    return [
+      {
+        kind: "input.provider",
+        content: parsed.data.content.map(codexUserInputToPromptInput),
+        providerTurnId,
+      },
+    ];
+  }
+
+  const translation = translateCodexItemShape(parsed.data, state);
+  if (translation.kind !== "translated") return [];
+  return [
+    {
+      kind: "item.close",
+      key: { providerItemId: parsed.data.id },
+      status: translation.status,
+      ...(translation.approvalDenied ? { approvalStatus: "denied" } : {}),
+      item: translation.shape,
+      presentation: translation.presentation,
+      providerTurnId,
+    },
+  ];
+}
+
 export function translateCodexEventToDeltas(
   event: ProviderRuntimeEvent,
   state: CodexEventTranslationState,
@@ -975,6 +1224,27 @@ export function translateCodexEventToDeltas(
       return [
         { kind: "turn.open", providerTurnId: handledEvent.params.turn.id },
       ];
+    case "hook/started":
+      return [];
+    case "hook/completed": {
+      if (handledEvent.params.run.status === "completed") return [];
+      const details = [
+        handledEvent.params.run.statusMessage,
+        ...(handledEvent.params.run.entries ?? []).map((entry) => entry.text),
+      ]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .filter((value, index, values) => values.indexOf(value) === index)
+        .join("\n");
+      return [
+        {
+          kind: "provider.warning",
+          category: "general",
+          summary: `Codex hook ${handledEvent.params.run.status}`,
+          ...(details.length > 0 ? { details } : {}),
+          ...(handledEvent.params.turnId === null ? {} : { vouchedTurn: true }),
+        },
+      ];
+    }
     case "turn/completed": {
       takeCodexRetryError(state, {
         threadId: handledEvent.params.threadId,
@@ -982,6 +1252,11 @@ export function translateCodexEventToDeltas(
       });
       const status = toTurnStatus(handledEvent.params.turn.status);
       return [
+        ...takePendingAgentMessageDeltasForTurn(state, {
+          threadId: handledEvent.params.threadId,
+          turnId: handledEvent.params.turn.id,
+          status,
+        }),
         {
           kind: "turn.boundary",
           providerTurnId: handledEvent.params.turn.id,
@@ -1058,6 +1333,36 @@ export function translateCodexEventToDeltas(
       ];
     case "item/started":
     case "item/completed": {
+      const itemKey = agentMessageItemKey(
+        handledEvent.params.threadId,
+        handledEvent.params.turnId,
+        handledEvent.params.item.id,
+      );
+      const agentMessagePhaseIsUnknown =
+        handledEvent.params.item.type === "agentMessage" &&
+        handledEvent.params.item.phase == null;
+      if (
+        handledEvent.params.item.type === "agentMessage" &&
+        handledEvent.params.item.phase === "commentary"
+      ) {
+        state.commentaryAgentMessageKeys.add(itemKey);
+      }
+      if (
+        handledEvent.params.item.type === "agentMessage" &&
+        (!agentMessagePhaseIsUnknown ||
+          handledEvent.method === "item/completed")
+      ) {
+        state.classifiedAgentMessageKeys.add(itemKey);
+      }
+      if (
+        handledEvent.method === "item/started" &&
+        agentMessagePhaseIsUnknown
+      ) {
+        if (!state.pendingAgentMessageDeltasByItemKey.has(itemKey)) {
+          state.pendingAgentMessageDeltasByItemKey.set(itemKey, []);
+        }
+        return [];
+      }
       const translation = translateCodexItemShape(
         handledEvent.params.item,
         state,
@@ -1074,6 +1379,11 @@ export function translateCodexEventToDeltas(
       }
       const key = { providerItemId: handledEvent.params.item.id };
       if (handledEvent.method === "item/started") {
+        const pendingDeltas =
+          handledEvent.params.item.type === "agentMessage"
+            ? (state.pendingAgentMessageDeltasByItemKey.get(itemKey) ?? [])
+            : [];
+        state.pendingAgentMessageDeltasByItemKey.delete(itemKey);
         return [
           {
             kind: "item.open",
@@ -1082,30 +1392,100 @@ export function translateCodexEventToDeltas(
             presentation: translation.presentation,
             providerTurnId: handledEvent.params.turnId,
           },
+          ...pendingDeltas.map((text): ThreadDelta => ({
+            kind: "item.textDelta",
+            key,
+            channel: state.commentaryAgentMessageKeys.has(itemKey)
+              ? "reasoningSummary"
+              : "agentMessage",
+            text,
+            providerTurnId: handledEvent.params.turnId,
+          })),
         ];
+      }
+      const pendingDeltas =
+        handledEvent.params.item.type === "agentMessage"
+          ? (state.pendingAgentMessageDeltasByItemKey.get(itemKey) ?? [])
+          : [];
+      const hadDeferredStart =
+        handledEvent.params.item.type === "agentMessage" &&
+        state.pendingAgentMessageDeltasByItemKey.has(itemKey);
+      const pendingChannel = state.commentaryAgentMessageKeys.has(itemKey)
+        ? "reasoningSummary"
+        : "agentMessage";
+      if (handledEvent.params.item.type === "agentMessage") {
+        state.citationBuffersByItemKey.delete(itemKey);
+        state.commentaryAgentMessageKeys.delete(itemKey);
+        state.classifiedAgentMessageKeys.delete(itemKey);
+        state.pendingAgentMessageDeltasByItemKey.delete(itemKey);
+      }
+      const closeDelta: ThreadDelta = {
+        kind: "item.close",
+        key,
+        status: translation.status,
+        ...(translation.approvalDenied ? { approvalStatus: "denied" } : {}),
+        item: translation.shape,
+        presentation: translation.presentation,
+        providerTurnId: handledEvent.params.turnId,
+      };
+      if (
+        pendingDeltas.length === 0 &&
+        !hadDeferredStart &&
+        !agentMessagePhaseIsUnknown
+      ) {
+        return [closeDelta];
       }
       return [
         {
-          kind: "item.close",
+          kind: "item.open",
           key,
-          status: translation.status,
-          ...(translation.approvalDenied ? { approvalStatus: "denied" } : {}),
           item: translation.shape,
           presentation: translation.presentation,
           providerTurnId: handledEvent.params.turnId,
         },
+        ...pendingDeltas.map((text): ThreadDelta => ({
+          kind: "item.textDelta",
+          key,
+          channel: pendingChannel,
+          text,
+          providerTurnId: handledEvent.params.turnId,
+        })),
+        closeDelta,
       ];
     }
-    case "item/agentMessage/delta":
+    case "item/agentMessage/delta": {
+      const text = normalizeCodexCitationDelta(
+        state,
+        handledEvent.params.threadId,
+        handledEvent.params.turnId,
+        handledEvent.params.itemId,
+        handledEvent.params.delta,
+      );
+      if (text.length === 0) return [];
+      const itemKey = agentMessageItemKey(
+        handledEvent.params.threadId,
+        handledEvent.params.turnId,
+        handledEvent.params.itemId,
+      );
+      if (!state.classifiedAgentMessageKeys.has(itemKey)) {
+        const pending =
+          state.pendingAgentMessageDeltasByItemKey.get(itemKey) ?? [];
+        pending.push(text);
+        state.pendingAgentMessageDeltasByItemKey.set(itemKey, pending);
+        return [];
+      }
       return [
         {
           kind: "item.textDelta",
           key: { providerItemId: handledEvent.params.itemId },
-          channel: "agentMessage",
-          text: handledEvent.params.delta,
+          channel: state.commentaryAgentMessageKeys.has(itemKey)
+            ? "reasoningSummary"
+            : "agentMessage",
+          text,
           providerTurnId: handledEvent.params.turnId,
         },
       ];
+    }
     case "item/commandExecution/outputDelta":
       return [
         {

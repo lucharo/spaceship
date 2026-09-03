@@ -1,7 +1,10 @@
 import {
+  confirmNativeSessionArchive,
   deleteQueuedThreadMessage,
   getEnvironment,
   getQueuedThreadMessage,
+  getThreadNativeSessionHostId,
+  hasNativeSessionArchiveConfirmation,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   pinThread,
   reorderPinnedThread,
@@ -30,11 +33,6 @@ import {
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
-import {
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-  wouldCleanupEnvironment,
-} from "../../services/environments/environment-cleanup-internal.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
@@ -52,8 +50,11 @@ import { acceptThreadSendRequest } from "../../services/threads/thread-send-requ
 import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
 import {
   buildExecutionOptions,
-  dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
+  runRetainedNativeSessionUnarchiveCommand,
+  runThreadProviderArchiveCommand,
+  runThreadUnarchiveCommand,
+  waitForPendingThreadProviderArchiveCommand,
 } from "../../services/threads/thread-commands.js";
 import { getLastProviderThreadId } from "../../services/threads/thread-events.js";
 import { stopThreadForCurrentState } from "../../services/threads/thread-lifecycle.js";
@@ -63,9 +64,14 @@ import {
   toThreadResponseFromThread,
 } from "../../services/threads/thread-runtime-display.js";
 import {
-  archiveThreadAndChildren,
-  archiveThreadAndHiddenSourceForks,
+  archivePreparedThread,
+  nativeSessionMutationKey,
+  prepareThreadAndChildrenArchive,
+  prepareThreadAndHiddenSourceForksArchive,
   resolveArchiveThreadEnvironment,
+  type PreparedThreadAndChildrenArchive,
+  withNativeSessionMutation,
+  withThreadArchiveMutation,
 } from "../../services/threads/thread-archive.js";
 import {
   requireThreadCommandEnvironment,
@@ -117,6 +123,75 @@ function toQueuedMessageOrderResponse(
         "Queued messages with different execution options cannot be grouped",
       );
   }
+}
+
+interface NativeSessionIdentity {
+  hostId: string;
+  providerId: string;
+  providerThreadId: string;
+}
+
+function resolveThreadNativeSessionIdentity(
+  deps: AppDeps,
+  thread: Thread,
+): NativeSessionIdentity | null {
+  const providerThreadId = getLastProviderThreadId(deps, thread.id);
+  const hostId = getThreadNativeSessionHostId(deps.db, thread.id);
+  return providerThreadId !== null && hostId !== null
+    ? {
+        hostId,
+        providerId: thread.providerId,
+        providerThreadId,
+      }
+    : null;
+}
+
+async function archivePreparedProviderThreads(
+  deps: AppDeps,
+  prepared: PreparedThreadAndChildrenArchive,
+  options: { allowLiveChildren?: boolean } = {},
+): Promise<ReadonlyMap<string, Thread | null>> {
+  const archivedThreads = new Map<string, Thread | null>();
+  const root = prepared.threads.find(
+    ({ thread }) => thread.id === prepared.rootThreadId,
+  );
+  const orderedThreads = [
+    ...prepared.threads.filter(
+      ({ thread }) => thread.id !== prepared.rootThreadId,
+    ),
+    ...(root === undefined ? [] : [root]),
+  ];
+
+  for (const preparedThread of orderedThreads) {
+    const { environment: archiveEnvironment, thread } = preparedThread;
+    const providerThreadId = getLastProviderThreadId(deps, thread.id);
+    const environment =
+      archiveEnvironment === null
+        ? null
+        : getEnvironment(deps.db, archiveEnvironment.id);
+    if (providerThreadId !== null && environment !== null) {
+      const archived = await runThreadProviderArchiveCommand(deps, {
+        allowLiveChildren: options.allowLiveChildren,
+        environment,
+        providerThreadId,
+        thread,
+      });
+      if (archived) {
+        confirmNativeSessionArchive(deps.db, {
+          providerThreadId,
+          threadId: thread.id,
+        });
+      }
+    }
+    archivedThreads.set(
+      thread.id,
+      archivePreparedThread(deps, preparedThread, {
+        dispatchProviderArchive: false,
+      }),
+    );
+  }
+
+  return archivedThreads;
 }
 
 async function compactThreadContext(
@@ -523,45 +598,69 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   });
 
   post(routes.archive, async (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (thread.archivedAt !== null) {
-      deps.terminalSessions.closeArchivedThreadTerminals({
-        threadId: thread.id,
+    const threadId = context.req.param("id");
+    const initialThread = requirePublicThread(deps.db, threadId);
+    const nativeIdentity = resolveThreadNativeSessionIdentity(
+      deps,
+      initialThread,
+    );
+    const archive = () =>
+      withThreadArchiveMutation(threadId, async () => {
+        const thread = requirePublicThread(deps.db, threadId);
+        const sourceAlreadyArchived = thread.archivedAt !== null;
+        const environment = resolveArchiveThreadEnvironment(deps, { thread });
+        const prepared = prepareThreadAndHiddenSourceForksArchive(deps, {
+          environment,
+          thread,
+        });
+        const archivedThreads = await archivePreparedProviderThreads(
+          deps,
+          prepared,
+        );
+        const archiveResult = archivedThreads.get(thread.id) ?? null;
+        if (!archiveResult && !sourceAlreadyArchived) {
+          throw new ApiError(404, "thread_not_found", "Thread not found");
+        }
+        if (sourceAlreadyArchived) {
+          deps.terminalSessions.closeArchivedThreadTerminals({
+            threadId: thread.id,
+          });
+        }
+        return context.json({ ok: true });
       });
-      return context.json({ ok: true });
-    }
-    const shouldRequestCleanup = wouldCleanupEnvironment(deps, {
-      environmentId: thread.environmentId,
-      excludeThreadId: thread.id,
-    });
-    const environment = resolveArchiveThreadEnvironment(deps, { thread });
-    const archiveResult = archiveThreadAndHiddenSourceForks(deps, {
-      environment,
-      thread,
-    });
-    if (!archiveResult) {
-      throw new ApiError(404, "thread_not_found", "Thread not found");
-    }
-    if (shouldRequestCleanup) {
-      requestEnvironmentCleanup(deps, {
-        environmentId: thread.environmentId,
-      });
-      requestEnvironmentCleanupAdvance(deps, {
-        environmentId: thread.environmentId,
-      });
-    }
-    return context.json({ ok: true });
+    return nativeIdentity === null
+      ? archive()
+      : withNativeSessionMutation(() =>
+          withThreadArchiveMutation(
+            nativeSessionMutationKey(nativeIdentity),
+            archive,
+          ),
+        );
   });
 
-  post(routes.archiveAll, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const archivedThreadIds = archiveThreadAndChildren(deps, {
-      parentThread: thread,
-    });
-    return context.json({
-      ok: true,
-      archivedThreadIds,
-    });
+  post(routes.archiveAll, async (context) => {
+    const threadId = context.req.param("id");
+    return withNativeSessionMutation(() =>
+      withThreadArchiveMutation(threadId, async () => {
+        const thread = requirePublicThread(deps.db, threadId);
+        const prepared = prepareThreadAndChildrenArchive(deps, {
+          parentThread: thread,
+        });
+        const archivedThreads = await archivePreparedProviderThreads(
+          deps,
+          prepared,
+          {
+            allowLiveChildren: true,
+          },
+        );
+        return context.json({
+          ok: true,
+          archivedThreadIds: [...archivedThreads.values()].flatMap((thread) =>
+            thread === null ? [] : [thread.id],
+          ),
+        });
+      }),
+    );
   });
 
   // Un-archive clears archivedAt. When the thread's managed environment is still
@@ -571,27 +670,66 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
   // and the environment was destroyed, `retire.cancelled` is a no-op (illegal
   // from destroying/destroyed) and the thread remains read-only. The user can
   // hand its context and surviving branch off to a new thread instead.
-  post(routes.unarchive, (context) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const providerThreadId = getLastProviderThreadId(deps, thread.id);
-    unarchiveThread(deps.db, deps.hub, thread.id);
-    const environment = thread.environmentId
-      ? getEnvironment(deps.db, thread.environmentId)
-      : null;
-    if (environment?.status === "retiring") {
-      applyLoggedEnvironmentLifecycleEvent(deps, {
-        environmentId: environment.id,
-        event: { type: "retire.cancelled" },
+  post(routes.unarchive, async (context) => {
+    const threadId = context.req.param("id");
+    const initialThread = requirePublicThread(deps.db, threadId);
+    const nativeIdentity = resolveThreadNativeSessionIdentity(
+      deps,
+      initialThread,
+    );
+    const unarchive = () =>
+      withThreadArchiveMutation(threadId, async () => {
+        const thread = requirePublicThread(deps.db, threadId);
+        await waitForPendingThreadProviderArchiveCommand(thread.id);
+        const providerThreadId = getLastProviderThreadId(deps, thread.id);
+        const environment = thread.environmentId
+          ? getEnvironment(deps.db, thread.environmentId)
+          : null;
+        const providerArchiveConfirmed =
+          providerThreadId !== null &&
+          hasNativeSessionArchiveConfirmation(deps.db, {
+            providerThreadId,
+            threadId: thread.id,
+          });
+        if (
+          providerThreadId &&
+          nativeIdentity !== null &&
+          providerArchiveConfirmed
+        ) {
+          await runRetainedNativeSessionUnarchiveCommand(deps, {
+            hostId: nativeIdentity.hostId,
+            laneId: environment?.id ?? nativeSessionMutationKey(nativeIdentity),
+            providerThreadId,
+            thread,
+          });
+        } else if (
+          providerThreadId &&
+          environment &&
+          providerArchiveConfirmed
+        ) {
+          await runThreadUnarchiveCommand(deps, {
+            environment,
+            providerThreadId,
+            thread,
+          });
+        }
+        unarchiveThread(deps.db, deps.hub, thread.id);
+        if (environment?.status === "retiring") {
+          applyLoggedEnvironmentLifecycleEvent(deps, {
+            environmentId: environment.id,
+            event: { type: "retire.cancelled" },
+          });
+        }
+        return context.json({ ok: true });
       });
-    }
-    if (providerThreadId && environment) {
-      dispatchThreadUnarchiveCommand(deps, {
-        environment,
-        providerThreadId,
-        thread,
-      });
-    }
-    return context.json({ ok: true });
+    return nativeIdentity === null
+      ? unarchive()
+      : withNativeSessionMutation(() =>
+          withThreadArchiveMutation(
+            nativeSessionMutationKey(nativeIdentity),
+            unarchive,
+          ),
+        );
   });
 
   post(routes.read, (context) => {

@@ -211,6 +211,8 @@ export interface ThreadTimelineRowsProps {
   timelineRows: TimelineRow[];
   /** Outline destination kept mounted while timeline windowing is enabled. */
   timelineNavigationTargetRowId?: string | null;
+  /** Event sequence used to expand collapsed ancestors of an outline target. */
+  timelineNavigationTargetSeq?: number | null;
   threadId?: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   /** Omit for standalone initial-unread rendering, pass false for live updates. */
@@ -293,6 +295,7 @@ interface TimelineRowsListProps {
   hasOlderTimelineRows?: boolean;
   isLoadingOlderTimelineRows?: boolean;
   navigationTargetRowId?: string | null;
+  navigationTargetSeq?: number | null;
   onLoadOlderRows?: () => Promise<void> | void;
   rows: readonly ThreadTimelineViewRow[];
   scopeActive: boolean;
@@ -467,6 +470,7 @@ const StreamingAssistantMessageIdContext = createContext<string | null>(null);
 const EMPTY_ROW_ID_SET: ReadonlySet<string> = new Set<string>();
 const TimelineSearchExpansionContext =
   createContext<ReadonlySet<string>>(EMPTY_ROW_ID_SET);
+const TimelineNavigationTargetSeqContext = createContext<number | null>(null);
 const TimelineWindowingEnabledContext = createContext(false);
 const TIMELINE_TERMINAL_EXPANSION_RETENTION = 24;
 
@@ -622,32 +626,38 @@ function useStableReadonlySet(
 
 function useTimelineSearchExpansionRowIds(
   rows: readonly ThreadTimelineViewRow[],
+  navigationTargetSeq?: number | null,
 ): ReadonlySet<string> {
   const inheritedRowIds = useContext(TimelineSearchExpansionContext);
   const { threadId } = useTimelineRendererStaticContext();
   const location = useLocation();
   return useMemo(() => {
     const target = readSearchMessageTarget(location.state);
-    if (target === null) {
-      return inheritedRowIds;
-    }
+    const targetSeqs: number[] = [];
     if (
-      threadId !== undefined &&
-      target.threadId !== null &&
-      target.threadId !== threadId
+      target !== null &&
+      !(
+        threadId !== undefined &&
+        target.threadId !== null &&
+        target.threadId !== threadId
+      )
     ) {
-      return inheritedRowIds;
+      targetSeqs.push(target.seq);
     }
-    const localRowIds = collectSearchedMessageAncestorRowIds(rows, target.seq);
-    if (localRowIds.size === 0) {
+    if (navigationTargetSeq != null) {
+      targetSeqs.push(navigationTargetSeq);
+    }
+    if (targetSeqs.length === 0) {
       return inheritedRowIds;
     }
     const combinedRowIds = new Set<string>(inheritedRowIds);
-    for (const id of localRowIds) {
-      combinedRowIds.add(id);
+    for (const targetSeq of targetSeqs) {
+      for (const id of collectSearchedMessageAncestorRowIds(rows, targetSeq)) {
+        combinedRowIds.add(id);
+      }
     }
     return combinedRowIds;
-  }, [inheritedRowIds, location.state, rows, threadId]);
+  }, [inheritedRowIds, location.state, navigationTargetSeq, rows, threadId]);
 }
 
 function buildTurnSummaryDetailsIdentity({
@@ -2068,6 +2078,7 @@ function TimelineRowsList({
   hasOlderTimelineRows,
   isLoadingOlderTimelineRows,
   navigationTargetRowId,
+  navigationTargetSeq,
   onLoadOlderRows,
   rows,
   scopeActive,
@@ -2086,9 +2097,19 @@ function TimelineRowsList({
   const inheritedMeasurements = useContext(
     TimelineWindowingMeasurementsContext,
   );
+  const inheritedNavigationTargetSeq = useContext(
+    TimelineNavigationTargetSeqContext,
+  );
+  const effectiveNavigationTargetSeq =
+    navigationTargetSeq === undefined
+      ? inheritedNavigationTargetSeq
+      : navigationTargetSeq;
   const [standaloneMeasurements] = useState(() => new Map<string, number>());
   const measurements = inheritedMeasurements ?? standaloneMeasurements;
-  const searchExpandedRowIds = useTimelineSearchExpansionRowIds(rows);
+  const searchExpandedRowIds = useTimelineSearchExpansionRowIds(
+    rows,
+    effectiveNavigationTargetSeq,
+  );
   const stableSearchExpandedRowIds = useStableReadonlySet(searchExpandedRowIds);
   useScrollToSearchedMessage(rows, threadId, {
     hasOlderRows: hasOlderTimelineRows,
@@ -2162,86 +2183,94 @@ function TimelineRowsList({
     [messageColumnWidth],
   );
   return (
-    <TimelineSearchExpansionContext.Provider value={stableSearchExpandedRowIds}>
-      <MessageColumnWidthContext.Provider
-        value={isTopLevelList ? messageColumnWidthValue : null}
+    <TimelineNavigationTargetSeqContext.Provider
+      value={effectiveNavigationTargetSeq}
+    >
+      <TimelineSearchExpansionContext.Provider
+        value={stableSearchExpandedRowIds}
       >
-        <div
-          ref={isTopLevelList ? messageColumnWidthSourceRef : undefined}
-          className={cn(
-            "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
-            timelineRowsListGapClassName(spacing),
-            className,
-          )}
-          data-timeline-row-list={spacing}
+        <MessageColumnWidthContext.Provider
+          value={isTopLevelList ? messageColumnWidthValue : null}
         >
-          <TimelineWindowedItemsLoader
-            enabled={timelineWindowingEnabled}
-            alwaysMountedKeys={alwaysMountedKeys}
-            estimateItemHeight={(index) => {
-              const item = items[index];
-              return item?.kind === "row"
-                ? estimateTimelineWindowedRowHeight(item.row, spacing)
-                : 28;
-            }}
-            gap={spacing === "bundle" ? 0 : 8}
-            getScrollElement={getWindowingScrollElement}
-            itemKeys={itemKeys}
-            measurements={measurements}
-            minItemCount={
-              spacing === "top-level" ? (isCompactViewport ? 40 : 60) : 20
-            }
-            renderItem={(index, windowedState) => {
-              const item = items[index];
-              if (item === undefined) {
-                return null;
+          <div
+            ref={isTopLevelList ? messageColumnWidthSourceRef : undefined}
+            className={cn(
+              "flex min-w-0 flex-col [&_button:not(:disabled)]:cursor-pointer",
+              timelineRowsListGapClassName(spacing),
+              className,
+            )}
+            data-timeline-row-list={spacing}
+          >
+            <TimelineWindowedItemsLoader
+              enabled={timelineWindowingEnabled}
+              alwaysMountedKeys={alwaysMountedKeys}
+              estimateItemHeight={(index) => {
+                const item = items[index];
+                return item?.kind === "row"
+                  ? estimateTimelineWindowedRowHeight(item.row, spacing)
+                  : 28;
+              }}
+              gap={spacing === "bundle" ? 0 : 8}
+              getScrollElement={getWindowingScrollElement}
+              itemKeys={itemKeys}
+              measurements={measurements}
+              minItemCount={
+                spacing === "top-level" ? (isCompactViewport ? 40 : 60) : 20
               }
-              if (item.kind === "unread-divider") {
+              renderItem={(index, windowedState) => {
+                const item = items[index];
+                if (item === undefined) {
+                  return null;
+                }
+                if (item.kind === "unread-divider") {
+                  return (
+                    <div
+                      key={item.id}
+                      ref={windowedState.itemRef}
+                      data-index={windowedState.itemIndex}
+                      data-timeline-window-key={`divider:${item.id}`}
+                      data-timeline-windowed-realized={
+                        windowedState.windowingEnabled
+                          ? String(windowedState.isRealized)
+                          : undefined
+                      }
+                      style={windowedState.itemStyle}
+                    >
+                      {windowedState.isRealized ? (
+                        <TimelineUnreadDivider
+                          autoScroll={unreadDividerAutoScroll}
+                        />
+                      ) : null}
+                    </div>
+                  );
+                }
                 return (
-                  <div
-                    key={item.id}
-                    ref={windowedState.itemRef}
-                    data-index={windowedState.itemIndex}
-                    data-timeline-window-key={`divider:${item.id}`}
-                    data-timeline-windowed-realized={
-                      windowedState.windowingEnabled
-                        ? String(windowedState.isRealized)
-                        : undefined
-                    }
-                    style={windowedState.itemStyle}
+                  <TimelineRowItemWrapper
+                    key={item.row.id}
+                    row={item.row}
+                    spacing={spacing}
+                    windowedState={windowedState}
                   >
                     {windowedState.isRealized ? (
-                      <TimelineUnreadDivider
-                        autoScroll={unreadDividerAutoScroll}
+                      <MemoizedTimelineRowView
+                        activeLatestBundleId={activeLatestBundleId}
+                        row={item.row}
+                        scopeActive={scopeActive}
+                        showAssistantMessageActions={
+                          showAssistantMessageActions
+                        }
+                        spacing={spacing}
+                        compactActivityIntents={compactActivityIntents}
                       />
                     ) : null}
-                  </div>
+                  </TimelineRowItemWrapper>
                 );
-              }
-              return (
-                <TimelineRowItemWrapper
-                  key={item.row.id}
-                  row={item.row}
-                  spacing={spacing}
-                  windowedState={windowedState}
-                >
-                  {windowedState.isRealized ? (
-                    <MemoizedTimelineRowView
-                      activeLatestBundleId={activeLatestBundleId}
-                      row={item.row}
-                      scopeActive={scopeActive}
-                      showAssistantMessageActions={showAssistantMessageActions}
-                      spacing={spacing}
-                      compactActivityIntents={compactActivityIntents}
-                    />
-                  ) : null}
-                </TimelineRowItemWrapper>
-              );
-            }}
-          />
-        </div>
-      </MessageColumnWidthContext.Provider>
-    </TimelineSearchExpansionContext.Provider>
+              }}
+            />
+          </div>
+        </MessageColumnWidthContext.Provider>
+      </TimelineSearchExpansionContext.Provider>
+    </TimelineNavigationTargetSeqContext.Provider>
   );
 }
 
@@ -2534,6 +2563,9 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                           }
                           navigationTargetRowId={
                             props.timelineNavigationTargetRowId
+                          }
+                          navigationTargetSeq={
+                            props.timelineNavigationTargetSeq
                           }
                           onLoadOlderRows={props.onLoadOlderRows}
                           rows={rows}

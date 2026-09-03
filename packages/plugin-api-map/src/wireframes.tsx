@@ -659,18 +659,13 @@ const SIDEBAR_THREADS: readonly { title: string; glyph?: "spin" | "dot" }[] = [
  */
 const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
   settings: () => <MiniIcon icon={Settings02Icon} className="size-4" />,
-  "plugin-footer-actions": () => (
-    <span className="flex size-5.5 items-center justify-center rounded-md bg-state-hover">
-      <PluginGlyph className="size-3.5" />
-    </span>
-  ),
   "bug-report": () => <MiniIcon icon={Bug01Icon} className="size-4" />,
 };
 
 /**
  * Sidebar sections, in anatomy-manifest order (mirrors AppSidebar.tsx:
- * top-reserve chrome, the New-thread/search-action block, plugin nav rows, the
- * scrolling thread list, the footer).
+ * top-reserve chrome, the New-thread/search-action block, the scrolling
+ * thread list, and the footer).
  */
 const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
   "top-reserve": () => (
@@ -693,25 +688,6 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       </span>
       <MiniIcon icon={Search01Icon} />
     </div>
-  ),
-  "plugin-nav": () => (
-    <Mark
-      id="nav-panel"
-      label="Plugin nav panels, above the thread list"
-      className="mx-1.5 px-1.5 pb-2.5 pt-1"
-      showChip={false}
-    >
-      <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
-        <MiniIcon icon={ToolboxIcon} />
-        Extensions
-      </span>
-      {/* The active row uses the sidebar's own accent, exactly like the
-          real nav row (PluginNavSidebarItems). */}
-      <span className="flex h-6.5 items-center gap-2 rounded-md bg-sidebar-accent px-2 font-medium text-sidebar-foreground">
-        <PluginGlyph />
-        Your panel
-      </span>
-    </Mark>
   ),
   "thread-list": () => (
     <RegionMark

@@ -9,10 +9,10 @@ describe("desktop update feed url", () => {
     // macOS and Linux assets share the desktop-latest release, so a single
     // feed name would make the last publish overwrite the other platform.
     expect(createDesktopUpdateFeedUrl("macos")).toBe(
-      "https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version.json",
+      "https://github.com/lucharo/spaceship/releases/download/desktop-latest/desktop-version.json",
     );
     expect(createDesktopUpdateFeedUrl("linux")).toBe(
-      "https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version-linux.json",
+      "https://github.com/lucharo/spaceship/releases/download/desktop-latest/desktop-version-linux.json",
     );
   });
 });

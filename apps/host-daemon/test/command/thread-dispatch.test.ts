@@ -2252,6 +2252,126 @@ describe("thread command dispatch", () => {
     });
   });
 
+  it("covers provider.native_sessions.list", async () => {
+    const harness = createHarness();
+    let capturedArgs: unknown;
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        type: "provider.native_sessions.list",
+        providerId: "codex",
+        archived: true,
+        cursor: "cursor-1",
+        limit: 25,
+        cwd: "/tmp/worktree",
+        searchTerm: "release",
+      },
+      {
+        ...harness.dispatchOptions(),
+        listNativeSessions: async (args) => {
+          capturedArgs = args;
+          return {
+            sessions: [
+              {
+                providerThreadId: "native-1",
+                title: "Release checklist",
+                cwd: "/tmp/worktree",
+                projectId: "project-release",
+                workspaceRoot: "/tmp/project",
+                status: "idle",
+                createdAt: 1_777_000_000,
+                updatedAt: 1_777_000_100,
+                archived: true,
+                source: "cli",
+              },
+            ],
+            nextCursor: null,
+            backwardsCursor: null,
+          };
+        },
+      },
+    );
+
+    expect(capturedArgs).toEqual({
+      providerId: "codex",
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      archived: true,
+      cursor: "cursor-1",
+      limit: 25,
+      cwd: "/tmp/worktree",
+      searchTerm: "release",
+    });
+    expect(result.sessions).toHaveLength(1);
+  });
+
+  it("covers provider.native_sessions.read", async () => {
+    const harness = createHarness();
+    let capturedArgs: unknown;
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+        type: "provider.native_sessions.read",
+        providerId: "codex",
+        providerThreadId: "native-1",
+      },
+      {
+        ...harness.dispatchOptions(),
+        readNativeSession: async (args) => {
+          capturedArgs = args;
+          return {
+            providerThreadId: "native-1",
+            title: "Release checklist",
+            cwd: "/tmp/worktree",
+            projectId: "project-release",
+            workspaceRoot: "/tmp/project",
+            status: "idle",
+            createdAt: 1_777_000_000,
+            updatedAt: 1_777_000_100,
+            archived: false,
+            source: "cli",
+          };
+        },
+      },
+    );
+
+    expect(capturedArgs).toEqual({
+      providerId: "codex",
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      providerThreadId: "native-1",
+    });
+    expect(result).toMatchObject({ providerThreadId: "native-1" });
+  });
+
+  it("covers provider.native_sessions.archive", async () => {
+    const harness = createHarness();
+    let capturedArgs: unknown;
+
+    await expect(
+      dispatchOnlineRpcCommand(
+        {
+          bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+          type: "provider.native_sessions.archive",
+          providerId: "codex",
+          providerThreadId: "native-1",
+        },
+        {
+          ...harness.dispatchOptions(),
+          archiveNativeSession: async (args) => {
+            capturedArgs = args;
+          },
+        },
+      ),
+    ).resolves.toEqual({});
+
+    expect(capturedArgs).toEqual({
+      providerId: "codex",
+      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      providerThreadId: "native-1",
+    });
+  });
+
   it("uses the server-provided thread runtime config", async () => {
     const threadStorage = await makeTempDir("bb-thread-runtime-");
     const harness = createHarness({ workspacePath: threadStorage });

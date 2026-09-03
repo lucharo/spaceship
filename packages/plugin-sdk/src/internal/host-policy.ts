@@ -10,6 +10,7 @@ import {
   normalizeProviderNativeRoots,
   providerNativeRootsInputSchema,
   providerNativeRootsSchema,
+  type PromptMentionCommandTrigger,
   type ProviderNativeRoots,
 } from "@bb/domain";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
@@ -406,9 +407,7 @@ function normalizeProviderBridgeOptions(
       return current;
     }
     if (typeof current !== "object") {
-      throw new Error(
-        `provider "${providerId}" ${label}${path} must be JSON`,
-      );
+      throw new Error(`provider "${providerId}" ${label}${path} must be JSON`);
     }
     if (active.has(current)) {
       throw new Error(
@@ -449,9 +448,7 @@ function normalizeProviderBridgeOptions(
     Array.isArray(normalized) ||
     typeof normalized !== "object"
   ) {
-    throw new Error(
-      `provider "${providerId}" ${label} must be an object`,
-    );
+    throw new Error(`provider "${providerId}" ${label} must be an object`);
   }
   if (
     Buffer.byteLength(JSON.stringify(normalized), "utf8") >
@@ -491,9 +488,7 @@ function validateProviderStrings(
   value: unknown,
 ): PluginProviderStrings {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(
-      `provider "${providerId}" strings must be an object`,
-    );
+    throw new Error(`provider "${providerId}" strings must be an object`);
   }
   const record: Record<string, unknown> = Object.fromEntries(
     Object.entries(value),
@@ -733,7 +728,9 @@ function validateProviderNativeRoots(
   }
   return Object.freeze({
     user: Object.freeze(wire.data.user.map((root) => Object.freeze(root))),
-    project: Object.freeze(wire.data.project.map((root) => Object.freeze(root))),
+    project: Object.freeze(
+      wire.data.project.map((root) => Object.freeze(root)),
+    ),
   }) as ProviderNativeRoots;
 }
 
@@ -774,9 +771,7 @@ function validateProviderFallbackModels(
   value: unknown,
 ): readonly PluginProviderFallbackModel[] | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(
-      `provider "${providerId}" models must be an object`,
-    );
+    throw new Error(`provider "${providerId}" models must be an object`);
   }
   const fallback = Reflect.get(value, "fallback");
   if (fallback === undefined) {
@@ -794,109 +789,111 @@ function validateProviderFallbackModels(
   }
   const seen = new Set<string>();
   let defaults = 0;
-  const normalized = fallback.map((entry, index): PluginProviderFallbackModel => {
-    const field = `models.fallback[${index}]`;
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      throw new Error(`provider "${providerId}" ${field} must be an object`);
-    }
-    const record: Record<string, unknown> = Object.fromEntries(
-      Object.entries(entry),
-    );
-    const id = requireNonBlankString({
-      providerId,
-      field: `${field}.id`,
-      value: record.id,
-    });
-    if (seen.has(id)) {
-      throw new Error(
-        `provider "${providerId}" models.fallback id ${JSON.stringify(id)} is duplicated`,
+  const normalized = fallback.map(
+    (entry, index): PluginProviderFallbackModel => {
+      const field = `models.fallback[${index}]`;
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+        throw new Error(`provider "${providerId}" ${field} must be an object`);
+      }
+      const record: Record<string, unknown> = Object.fromEntries(
+        Object.entries(entry),
       );
-    }
-    seen.add(id);
-    const displayName = requireNonBlankString({
-      providerId,
-      field: `${field}.displayName`,
-      value: record.displayName,
-    });
-    const description = requireNonBlankString({
-      providerId,
-      field: `${field}.description`,
-      value: record.description,
-    });
-    const efforts = record.supportedReasoningEfforts;
-    if (!Array.isArray(efforts) || efforts.length === 0) {
-      throw new Error(
-        `provider "${providerId}" ${field}.supportedReasoningEfforts must be a non-empty array`,
+      const id = requireNonBlankString({
+        providerId,
+        field: `${field}.id`,
+        value: record.id,
+      });
+      if (seen.has(id)) {
+        throw new Error(
+          `provider "${providerId}" models.fallback id ${JSON.stringify(id)} is duplicated`,
+        );
+      }
+      seen.add(id);
+      const displayName = requireNonBlankString({
+        providerId,
+        field: `${field}.displayName`,
+        value: record.displayName,
+      });
+      const description = requireNonBlankString({
+        providerId,
+        field: `${field}.description`,
+        value: record.description,
+      });
+      const efforts = record.supportedReasoningEfforts;
+      if (!Array.isArray(efforts) || efforts.length === 0) {
+        throw new Error(
+          `provider "${providerId}" ${field}.supportedReasoningEfforts must be a non-empty array`,
+        );
+      }
+      const levels = new Set<PluginProviderReasoningLevel>();
+      const supportedReasoningEfforts = efforts.map(
+        (
+          effort,
+          effortIndex,
+        ): PluginProviderFallbackModel["supportedReasoningEfforts"][number] => {
+          if (
+            typeof effort !== "object" ||
+            effort === null ||
+            Array.isArray(effort)
+          ) {
+            throw new Error(
+              `provider "${providerId}" ${field}.supportedReasoningEfforts[${effortIndex}] must be { reasoningEffort, description }`,
+            );
+          }
+          const reasoningEffort = Reflect.get(effort, "reasoningEffort");
+          if (
+            typeof reasoningEffort !== "string" ||
+            !(
+              PLUGIN_PROVIDER_REASONING_LEVEL_VALUES as readonly string[]
+            ).includes(reasoningEffort)
+          ) {
+            throw new Error(
+              `provider "${providerId}" ${field}.supportedReasoningEfforts[${effortIndex}].reasoningEffort must be one of ${PLUGIN_PROVIDER_REASONING_LEVEL_VALUES.join(", ")}`,
+            );
+          }
+          const level = reasoningEffort as PluginProviderReasoningLevel;
+          if (levels.has(level)) {
+            throw new Error(
+              `provider "${providerId}" ${field}.supportedReasoningEfforts repeats ${JSON.stringify(level)}`,
+            );
+          }
+          levels.add(level);
+          return Object.freeze({
+            reasoningEffort: level,
+            description: requireNonBlankString({
+              providerId,
+              field: `${field}.supportedReasoningEfforts[${effortIndex}].description`,
+              value: Reflect.get(effort, "description"),
+            }),
+          });
+        },
       );
-    }
-    const levels = new Set<PluginProviderReasoningLevel>();
-    const supportedReasoningEfforts = efforts.map(
-      (
-        effort,
-        effortIndex,
-      ): PluginProviderFallbackModel["supportedReasoningEfforts"][number] => {
-        if (
-          typeof effort !== "object" ||
-          effort === null ||
-          Array.isArray(effort)
-        ) {
-          throw new Error(
-            `provider "${providerId}" ${field}.supportedReasoningEfforts[${effortIndex}] must be { reasoningEffort, description }`,
-          );
-        }
-        const reasoningEffort = Reflect.get(effort, "reasoningEffort");
-        if (
-          typeof reasoningEffort !== "string" ||
-          !(PLUGIN_PROVIDER_REASONING_LEVEL_VALUES as readonly string[]).includes(
-            reasoningEffort,
-          )
-        ) {
-          throw new Error(
-            `provider "${providerId}" ${field}.supportedReasoningEfforts[${effortIndex}].reasoningEffort must be one of ${PLUGIN_PROVIDER_REASONING_LEVEL_VALUES.join(", ")}`,
-          );
-        }
-        const level = reasoningEffort as PluginProviderReasoningLevel;
-        if (levels.has(level)) {
-          throw new Error(
-            `provider "${providerId}" ${field}.supportedReasoningEfforts repeats ${JSON.stringify(level)}`,
-          );
-        }
-        levels.add(level);
-        return Object.freeze({
-          reasoningEffort: level,
-          description: requireNonBlankString({
-            providerId,
-            field: `${field}.supportedReasoningEfforts[${effortIndex}].description`,
-            value: Reflect.get(effort, "description"),
-          }),
-        });
-      },
-    );
-    const defaultReasoningEffort = record.defaultReasoningEffort;
-    if (
-      typeof defaultReasoningEffort !== "string" ||
-      !levels.has(defaultReasoningEffort as PluginProviderReasoningLevel)
-    ) {
-      throw new Error(
-        `provider "${providerId}" ${field}.defaultReasoningEffort must be one of its supportedReasoningEfforts`,
-      );
-    }
-    if (typeof record.isDefault !== "boolean") {
-      throw new Error(
-        `provider "${providerId}" ${field}.isDefault must be a boolean`,
-      );
-    }
-    if (record.isDefault) defaults += 1;
-    return Object.freeze({
-      id,
-      displayName,
-      description,
-      supportedReasoningEfforts: Object.freeze(supportedReasoningEfforts),
-      defaultReasoningEffort:
-        defaultReasoningEffort as PluginProviderReasoningLevel,
-      isDefault: record.isDefault,
-    });
-  });
+      const defaultReasoningEffort = record.defaultReasoningEffort;
+      if (
+        typeof defaultReasoningEffort !== "string" ||
+        !levels.has(defaultReasoningEffort as PluginProviderReasoningLevel)
+      ) {
+        throw new Error(
+          `provider "${providerId}" ${field}.defaultReasoningEffort must be one of its supportedReasoningEfforts`,
+        );
+      }
+      if (typeof record.isDefault !== "boolean") {
+        throw new Error(
+          `provider "${providerId}" ${field}.isDefault must be a boolean`,
+        );
+      }
+      if (record.isDefault) defaults += 1;
+      return Object.freeze({
+        id,
+        displayName,
+        description,
+        supportedReasoningEfforts: Object.freeze(supportedReasoningEfforts),
+        defaultReasoningEffort:
+          defaultReasoningEffort as PluginProviderReasoningLevel,
+        isDefault: record.isDefault,
+      });
+    },
+  );
   if (normalized.length > 0 && defaults !== 1) {
     throw new Error(
       `provider "${providerId}" models.fallback must mark exactly one model isDefault (found ${defaults})`,
@@ -917,14 +914,44 @@ const AI_SERVICE_KINDS = new Set<PluginAiServiceKind>(["inference", "voice"]);
  */
 export const SERVER_DIRECT_AI_SERVICE_IDS: readonly string[] = Object.freeze([
   "openai",
-  "amazon-bedrock", "ant-ling", "anthropic", "azure-openai-responses", "baseten",
-  "cerebras", "cloudflare-ai-gateway", "cloudflare-workers-ai", "deepseek",
-  "fireworks", "github-copilot", "google", "google-vertex", "groq", "huggingface",
-  "kimi-coding", "minimax", "minimax-cn", "mistral", "moonshotai", "moonshotai-cn",
-  "nvidia", "openai-codex", "opencode", "opencode-go", "openrouter",
-  "qwen-token-plan", "qwen-token-plan-cn", "radius", "together",
-  "vercel-ai-gateway", "xai", "xiaomi", "xiaomi-token-plan-ams",
-  "xiaomi-token-plan-cn", "xiaomi-token-plan-sgp", "zai", "zai-coding-cn",
+  "amazon-bedrock",
+  "ant-ling",
+  "anthropic",
+  "azure-openai-responses",
+  "baseten",
+  "cerebras",
+  "cloudflare-ai-gateway",
+  "cloudflare-workers-ai",
+  "deepseek",
+  "fireworks",
+  "github-copilot",
+  "google",
+  "google-vertex",
+  "groq",
+  "huggingface",
+  "kimi-coding",
+  "minimax",
+  "minimax-cn",
+  "mistral",
+  "moonshotai",
+  "moonshotai-cn",
+  "nvidia",
+  "openai-codex",
+  "opencode",
+  "opencode-go",
+  "openrouter",
+  "qwen-token-plan",
+  "qwen-token-plan-cn",
+  "radius",
+  "together",
+  "vercel-ai-gateway",
+  "xai",
+  "xiaomi",
+  "xiaomi-token-plan-ams",
+  "xiaomi-token-plan-cn",
+  "xiaomi-token-plan-sgp",
+  "zai",
+  "zai-coding-cn",
 ]);
 
 /**
@@ -949,9 +976,7 @@ export function validatePluginAiServiceDeclaration(
       ? declaration.displayName.trim()
       : "";
   if (displayName.length === 0 || displayName.length > 64) {
-    throw new Error(
-      `AI service "${id}" displayName must be 1-64 characters`,
-    );
+    throw new Error(`AI service "${id}" displayName must be 1-64 characters`);
   }
   const kinds = declaration.kinds;
   if (!Array.isArray(kinds) || kinds.length === 0) {
@@ -959,7 +984,10 @@ export function validatePluginAiServiceDeclaration(
   }
   const seen = new Set<PluginAiServiceKind>();
   for (const kind of kinds) {
-    if (typeof kind !== "string" || !AI_SERVICE_KINDS.has(kind as PluginAiServiceKind)) {
+    if (
+      typeof kind !== "string" ||
+      !AI_SERVICE_KINDS.has(kind as PluginAiServiceKind)
+    ) {
       throw new Error(
         `AI service "${id}" kind ${JSON.stringify(kind)} is not one of: ${[...AI_SERVICE_KINDS].join(", ")}`,
       );
@@ -1054,10 +1082,12 @@ export type NormalizedPluginProviderDeclaration = Omit<
   PluginProviderDeclaration,
   | "experimental_nativeSkillRoots"
   | "experimental_nativeCommandRoots"
+  | "experimental_skillCommandAliases"
   | "experimental_resolvesNativeRoots"
 > & {
   readonly experimental_nativeSkillRoots?: ProviderNativeRoots;
   readonly experimental_nativeCommandRoots?: ProviderNativeRoots;
+  readonly experimental_skillCommandAliases: readonly PromptMentionCommandTrigger[];
   readonly experimental_resolvesNativeRoots: boolean;
   readonly maintenance: {
     readonly health: boolean;
@@ -1105,10 +1135,14 @@ const READ_EXPERIMENTAL_PROVIDER_DECLARATION_FIELDS: ReadonlySet<string> =
   new Set([
     "experimental_bridgeOptions",
     "experimental_visibility",
+    "experimental_skillCommandAliases",
     "experimental_nativeSkillRoots",
     "experimental_nativeCommandRoots",
     "experimental_resolvesNativeRoots",
   ]);
+
+const READ_EXPERIMENTAL_PROVIDER_CAPABILITY_FIELDS: ReadonlySet<string> =
+  new Set(["experimental_supportsNativeSessionHistory"]);
 
 const RENAMED_PROVIDER_FIELDS_SDK_VERSION = "0.4.16";
 
@@ -1227,7 +1261,7 @@ export function validatePluginProviderDeclaration(
     providerId: id,
     value: capabilities,
     scope: "capabilities.",
-    read: new Set(),
+    read: READ_EXPERIMENTAL_PROVIDER_CAPABILITY_FIELDS,
     renamed: MOVED_PROVIDER_CAPABILITY_FIELDS,
     verb: "moved",
   });
@@ -1270,7 +1304,17 @@ export function validatePluginProviderDeclaration(
       `provider "${id}" capabilities.fork must be one of ${PROVIDER_FORK_VALUES.join(", ")}`,
     );
   }
+  if (
+    capabilities.experimental_supportsNativeSessionHistory !== undefined &&
+    typeof capabilities.experimental_supportsNativeSessionHistory !== "boolean"
+  ) {
+    throw new Error(
+      `provider "${id}" capabilities.experimental_supportsNativeSessionHistory must be a boolean`,
+    );
+  }
   const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
+    experimental_supportsNativeSessionHistory:
+      capabilities.experimental_supportsNativeSessionHistory ?? false,
     supportsServiceTier: capabilities.supportsServiceTier,
     supportsNativeUserQuestion: capabilities.supportsNativeUserQuestion,
     fork: capabilities.fork,
@@ -1297,6 +1341,13 @@ export function validatePluginProviderDeclaration(
     field: "composerActions",
     value: declaration.composerActions,
     allowed: PLUGIN_PROVIDER_COMPOSER_ACTION_VALUES,
+    requireNonEmpty: false,
+  });
+  const skillCommandAliases = validateProviderLiteralArray({
+    providerId: id,
+    field: "experimental_skillCommandAliases",
+    value: declaration.experimental_skillCommandAliases ?? [],
+    allowed: ["$"] as const,
     requireNonEmpty: false,
   });
   const bridgeOptions =
@@ -1342,10 +1393,7 @@ export function validatePluginProviderDeclaration(
   const extensionKinds =
     declaration.extensionKinds === undefined
       ? undefined
-      : validateProviderExtensionKinds(
-          id,
-          declaration.extensionKinds,
-        );
+      : validateProviderExtensionKinds(id, declaration.extensionKinds);
   const fallbackModels =
     declaration.models === undefined
       ? undefined
@@ -1406,16 +1454,13 @@ export function validatePluginProviderDeclaration(
     maintenance: normalizedMaintenance,
     capabilities: normalizedCapabilities,
     composerActions,
+    experimental_skillCommandAliases: skillCommandAliases,
     ...(strings === undefined ? {} : { strings: strings }),
-    ...(serviceTiers === undefined
-      ? {}
-      : { serviceTiers: serviceTiers }),
+    ...(serviceTiers === undefined ? {} : { serviceTiers: serviceTiers }),
     ...(reasoningLevels === undefined
       ? {}
       : { reasoningLevels: reasoningLevels }),
-    ...(extensionKinds === undefined
-      ? {}
-      : { extensionKinds: extensionKinds }),
+    ...(extensionKinds === undefined ? {} : { extensionKinds: extensionKinds }),
     models: Object.freeze({
       ...(fallbackModels === undefined ? {} : { fallback: fallbackModels }),
       scope: modelCatalogScope,
@@ -1737,9 +1782,7 @@ export function parsePluginAgentToolPresentation(
     return null;
   }
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(
-      `tool "${toolName}" presentation must be an object`,
-    );
+    throw new Error(`tool "${toolName}" presentation must be an object`);
   }
   const declared = value as Record<string, unknown>;
   const presentation: PluginAgentToolPresentation = {};

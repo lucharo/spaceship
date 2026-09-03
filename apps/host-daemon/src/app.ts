@@ -772,6 +772,43 @@ export async function createHostDaemonApp(
         (runtime) => runtime.listModels(args),
       );
     },
+    listNativeSessions: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => runtime.listNativeSessions(args),
+      );
+    },
+    readNativeSession: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => runtime.readNativeSession(args),
+      );
+    },
+    archiveNativeSession: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) =>
+          runtime.archiveThread({
+            ...args,
+            threadId: args.providerThreadId,
+          }),
+      );
+    },
+    readNativeSessionHistory: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => {
+          if (runtime.readNativeSessionHistory === undefined) {
+            throw new Error("Native session history is unavailable");
+          }
+          return runtime.readNativeSessionHistory(args);
+        },
+      );
+    },
     providerHealth: async (args) => {
       await refreshRuntimeShellEnv();
       return runtimeManager.withProviderMaintenanceRuntime(

@@ -167,6 +167,7 @@ export interface NewThreadComposerProps {
   onProjectChange: (projectId: string) => void | Promise<void>;
   draftStorage: PromptDraftScope;
   selectionScope: NewThreadComposerSelectionScope;
+  allowedProviderIds?: readonly string[];
   seed?: NewThreadComposerSeed;
   resetKey?: string | number | null;
   preferReadyProviderWhenUnset?: boolean;
@@ -369,6 +370,7 @@ export function NewThreadComposer({
   onProjectChange,
   draftStorage,
   selectionScope,
+  allowedProviderIds,
   seed,
   resetKey,
   preferReadyProviderWhenUnset = false,
@@ -542,6 +544,7 @@ export function NewThreadComposer({
       seed?.permissionMode === undefined);
   const creationOptions = useThreadCreationOptions({
     scope: selectionScope,
+    allowedProviderIds,
     preferenceProjectId: projectId,
     resetKey: `${projectId}\0${seedSignature}`,
     resolveProviderRouting,
@@ -987,6 +990,7 @@ export function NewThreadComposer({
     providerId: selectedProviderId,
     commandScope: "new-thread",
     skillsTrigger: providerPromptActions.skillsTrigger,
+    skillsAliases: providerPromptActions.skillTriggerAliases,
     promptActions,
     environmentId: reuseEnvironmentId,
     hostId: projectHostId,
@@ -1259,6 +1263,7 @@ export function NewThreadComposer({
             },
             command: {
               trigger: commandSuggestions.trigger,
+              aliases: commandSuggestions.aliases,
               suggestions: commandSuggestions.suggestions,
               isLoading: commandSuggestions.isLoading,
               isError: commandSuggestions.isError,

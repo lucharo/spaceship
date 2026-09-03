@@ -232,6 +232,18 @@ content-block vocabulary; decide whether legacy aggregate fields still need to
 be accepted; and define any image MIME validation, decoding, or payload-size
 policy at the server boundary before making the helper stable.
 
+## `PluginProviderCapabilities.experimental_supportsNativeSessionHistory`
+
+**Kept experimental (2026-09-02).** Declares that a provider can project an
+existing native session's history without importing it into BB's event store.
+The declaration is projected onto `ProviderInfo` so provider-neutral clients
+can gate native-first surfaces without matching provider ids.
+
+**Audit before stabilizing.** Confirm the history response identity and
+pagination contract across at least two provider implementations, and decide
+whether native history support remains one capability or splits into read,
+resume, and mutation capabilities.
+
 ## The ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp`)
 
 **Kept experimental (2026-08-22).** Four members remain, each with an open
@@ -312,6 +324,18 @@ The per-root options and the symlink boundary rule are in
 `experimental_nativeSkillRoots` paragraph); audit whether those options are
 the right vocabulary or whether a root should carry a shape like the
 resolver's answer does.
+
+## `PluginProviderDeclaration.experimental_skillCommandAliases`
+
+**What it does.** Lets a provider plugin add alternate trigger characters for
+the universal skills picker without teaching core about a provider id. The
+canonical `/` trigger remains implicit; Codex declares `$` so `$wrapup` and
+other native skill names open the same picker as `/wrapup`.
+
+**Audit before stabilizing.** Confirm whether aliases belong on the provider
+declaration or on a future command-catalog response, and whether providers
+need any aliases beyond `$`. The validator currently rejects `/` as redundant,
+duplicates, and every other character.
 
 ## `PluginProviderDeclaration.experimental_nativeCommandRoots`
 
@@ -1591,6 +1615,30 @@ one toast.
 5. **Accessibility.** Confirm the host can still guarantee list semantics,
    focus order, and the mobile close behavior when a plugin owns the markup —
    `onNavigate` is currently the plugin's responsibility to call.
+
+## `experimental_NativeSessionThreadList` (`@get-bb/plugin-sdk/app`)
+
+**Introduced experimental (2026-08-28).** The Codex provider is the first
+consumer; additional native providers have not yet tested the generic shape.
+
+**What it does.** Gives a provider plugin BB's host-rendered native-session
+thread list. The plugin supplies a provider id and label; the host owns
+metadata discovery, its last-known local cache, grouping, search, pinning,
+adoption, navigation, archive actions, and the privacy rule that transcript
+history is fetched only after a row is opened. Provider history remains in the
+native store and is projected on demand rather than copied into BB events.
+
+**Audit before stabilizing.**
+
+1. **Provider-neutral vocabulary.** Exercise a second provider and confirm the
+   current metadata shape, archive semantics, and labels are genuinely shared.
+2. **Cache lifecycle.** Confirm the last-known browser cache should remain
+   client-local and whether providers need an explicit invalidation signal.
+3. **Action surface.** Confirm open, pin, and archive are the correct common
+   actions before adding provider-specific actions to this component.
+4. **Ownership.** Confirm a host-rendered deep module selected by the provider
+   plugin is preferable to exposing low-level native-session queries and
+   mutations independently to every plugin.
 
 ## AI services (`bb.experimental_aiServices.register`, `@get-bb/plugin-sdk/ai-services`)
 

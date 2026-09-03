@@ -69,7 +69,7 @@ message agents, or inspect projects, providers, and environments.
   `bb-app config set BB_TRANSCRIPTION <provider/model>`.
 - `bb-app config` and `bb-app env` reload runtime settings in a running server,
   but the CLI identifies server and launcher settings that are startup-only,
-  including binding/ports, data and the dev-app port, telemetry, inherited skill
+  including binding/ports, data and the dev-app port, inherited skill
   roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
   `bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`,
   `BB_INFERENCE_FALLBACK`, or `BB_TRANSCRIPTION` live. After a startup-only
@@ -336,6 +336,19 @@ environment pull-request show <id>`. Diff commands require an explicit target
   (alias `--host`) or `--environment <id>` to inspect the machine where work
   will run; the selectors cannot be combined. With neither selector they
   intentionally inspect the primary machine.
+- Use `bb provider sessions <provider-id> [--archived] [--cursor <cursor>]
+[--cwd <path>] [--limit <1-100>] [--search <text>]` to list native session
+  metadata. Add `--machine <id-or-name>` or `--environment <id>` to choose the
+  host. The command never returns transcript content.
+- Use `bb provider adopt <provider-id> <provider-thread-id>` to resolve a
+  selected session's current metadata from its provider and link it without
+  copying its history. Add a machine selector, or pass `--environment <id>`
+  to reuse that environment's host and workspace. Archived sessions must be
+  unarchived natively first.
+- Use `bb provider archive <provider-id> <provider-thread-id>` to archive a
+  session in the provider's authoritative native store without adopting or
+  copying it first. Add `--machine <id-or-name>` or `--environment <id>` to
+  use the same host selection as list and adopt.
 - Known ACP agents can appear automatically when their CLI is installed on the
   host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
   `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,
@@ -800,8 +813,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     name, description, category, or tag; status shows installed / compatible /
     requires newer bb. An **Installs** column appears once the curated
     marketplace's `stats.json` sidecar has been read (`installs` in `--json`,
-    null when unknown): anonymous-telemetry install counts, published only for
-    bundled plugins and `bb-community` entries, never for third-party ones.
+    null when unknown): registry-provided install counts.
 - **Third-party marketplaces** (routes under `/api/v1/marketplaces`):
   - `bb marketplace add <source>` — add a marketplace from an https manifest
     URL, `git:<url>[@<ref>]` (bb reads `marketplace.json` from the checkout),

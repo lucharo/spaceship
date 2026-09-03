@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { validatePluginProviderDeclaration,
-  type NormalizedPluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import {
+  validatePluginProviderDeclaration,
+  type NormalizedPluginProviderDeclaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import { loadFirstPartyProviderDeclarations } from "../helpers/provider-registry.js";
@@ -90,6 +92,7 @@ describe("buildPluginProviderRegistration", () => {
       fork: "checkpoint",
       supportsManualCompaction:
         normalized.capabilities.supportsManualCompaction,
+      supportsNativeSessionHistory: false,
     });
     expect(registration.bridgeOptions).toStrictEqual({
       launch: { command: "my-agent" },
@@ -108,10 +111,15 @@ describe("buildPluginProviderRegistration", () => {
   });
 
   it("projects the target-state declaration fields onto ProviderInfo", () => {
+    const nativeCapabilities = declaration().capabilities;
     const registration = buildPluginProviderRegistration({
       available: true,
       pluginId: "acme-agent",
       declaration: declaration({
+        capabilities: {
+          ...nativeCapabilities,
+          experimental_supportsNativeSessionHistory: true,
+        },
         family: "remote",
         strings: {
           signInHint: "Run `my-agent login`.",
@@ -140,6 +148,9 @@ describe("buildPluginProviderRegistration", () => {
     });
 
     expect(registration.info.family).toBe("remote");
+    expect(
+      registration.info.capabilities.experimental_supportsNativeSessionHistory,
+    ).toBe(true);
     expect(registration.info.strings).toStrictEqual({
       signInHint: "Run `my-agent login`.",
       expiredHint: "Session expired.",
@@ -300,6 +311,21 @@ describe("buildPluginProviderRegistration", () => {
     expect(registration.info.serviceTiers).toBeUndefined();
   });
 
+  it("projects provider-declared skill trigger aliases", () => {
+    const registration = buildPluginProviderRegistration({
+      available: true,
+      pluginId: "acme-agent",
+      declaration: declaration({ experimental_skillCommandAliases: ["$"] }),
+      readSettings: NO_SETTINGS,
+    });
+
+    expect(registration.info.composerActions[0]).toStrictEqual({
+      kind: "skills",
+      trigger: "/",
+      aliases: ["$"],
+    });
+  });
+
   it("projects a named glyph icon by name and a path icon as a logo URL, never both", () => {
     // `icon: "Zap"` has no bytes for the logo route to serve; before this the
     // glyph was dropped and the picker showed the display name's initial.
@@ -319,7 +345,9 @@ describe("buildPluginProviderRegistration", () => {
       readSettings: NO_SETTINGS,
     });
     expect(path.info.icon).toBeUndefined();
-    expect(path.info.logoUrl).toBe("/api/v1/system/providers/my-remote-agent/logo");
+    expect(path.info.logoUrl).toBe(
+      "/api/v1/system/providers/my-remote-agent/logo",
+    );
   });
 
   it("leaves the first-party providers on their SVG assets (no glyph)", async () => {
@@ -340,13 +368,21 @@ describe("buildPluginProviderRegistration", () => {
     // Every well-known ACP agent declares its own SVG asset too: core vendors
     // no brand marks, so a provider without a served logo has no mark.
     expect(projected).toStrictEqual([
-      { id: "codex", logoUrl: "/api/v1/system/providers/codex/logo", icon: undefined },
+      {
+        id: "codex",
+        logoUrl: "/api/v1/system/providers/codex/logo",
+        icon: undefined,
+      },
       {
         id: "claude-code",
         logoUrl: "/api/v1/system/providers/claude-code/logo",
         icon: undefined,
       },
-      { id: "pi", logoUrl: "/api/v1/system/providers/pi/logo", icon: undefined },
+      {
+        id: "pi",
+        logoUrl: "/api/v1/system/providers/pi/logo",
+        icon: undefined,
+      },
       {
         id: "acp-cursor",
         logoUrl: "/api/v1/system/providers/acp-cursor/logo",
@@ -357,8 +393,16 @@ describe("buildPluginProviderRegistration", () => {
         logoUrl: "/api/v1/system/providers/acp-opencode/logo",
         icon: undefined,
       },
-      { id: "acp-omp", logoUrl: "/api/v1/system/providers/acp-omp/logo", icon: undefined },
-      { id: "acp-grok", logoUrl: "/api/v1/system/providers/acp-grok/logo", icon: undefined },
+      {
+        id: "acp-omp",
+        logoUrl: "/api/v1/system/providers/acp-omp/logo",
+        icon: undefined,
+      },
+      {
+        id: "acp-grok",
+        logoUrl: "/api/v1/system/providers/acp-grok/logo",
+        icon: undefined,
+      },
       {
         id: "acp-hermes-agent",
         logoUrl: "/api/v1/system/providers/acp-hermes-agent/logo",

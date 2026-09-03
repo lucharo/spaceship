@@ -94,6 +94,53 @@ describe("unmanagedAttachRefusal", () => {
     });
   });
 
+  it("lets a retained native projection reclaim an unclaimed managed path", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-claims-native-reopen",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Native owner",
+      });
+      const managedPath = `${HOST_DATA_DIR}/worktrees/env_pruned/repo`;
+
+      expect(
+        unmanagedAttachRefusal(harness.deps.db, {
+          allowUnclaimedManagedPathForProject: true,
+          checksOutBranch: false,
+          dataDir: HOST_DATA_DIR,
+          hostId: host.id,
+          path: managedPath,
+          projectId: project.id,
+        }),
+      ).toBeNull();
+
+      const { project: foreignProject } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Foreign owner",
+      });
+      const foreignPath = `${HOST_DATA_DIR}/worktrees/env_foreign/repo`;
+      seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: foreignProject.id,
+        path: foreignPath,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+      });
+      expect(
+        unmanagedAttachRefusal(harness.deps.db, {
+          allowUnclaimedManagedPathForProject: true,
+          checksOutBranch: false,
+          dataDir: HOST_DATA_DIR,
+          hostId: host.id,
+          path: foreignPath,
+          projectId: project.id,
+        }),
+      ).toMatchObject({ reason: "foreign-managed" });
+    });
+  });
+
   it.each([
     { status: "starting", visibility: "visible" },
     { status: "idle", visibility: "visible" },

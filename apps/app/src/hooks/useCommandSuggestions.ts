@@ -17,6 +17,7 @@ interface UseCommandSuggestionsArgs {
   /** Composer surface used to exclude commands that require an existing thread. */
   commandScope: "new-thread" | "thread";
   skillsTrigger: PromptMentionCommandTrigger | null;
+  skillsAliases?: readonly PromptMentionCommandTrigger[];
   promptActions?: readonly CommandSuggestionPromptAction[];
   /**
    * Environment whose workspace scopes discovery (e.g. a thread's worktree, or
@@ -44,6 +45,7 @@ const COMMAND_CATALOG_PREFETCH_STALE_TIME_MS = 30_000;
 interface UseCommandSuggestionsResult {
   /** The provider's command trigger char, or `null` when the feature is inert. */
   trigger: PromptMentionCommandTrigger | null;
+  aliases: readonly PromptMentionCommandTrigger[];
   suggestions: ProviderCommandSuggestion[];
   /**
    * `true` only before the first result lands (and not yet placeholder-backed).
@@ -270,6 +272,7 @@ export function useCommandSuggestions(
 
   return {
     trigger,
+    aliases: args.skillsAliases ?? [],
     suggestions,
     isLoading,
     isError,

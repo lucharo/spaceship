@@ -273,6 +273,23 @@ function createFakeRuntime() {
       models: [],
       selectedOnlyModels: [],
     })),
+    listNativeSessions: vi.fn(async () => ({
+      sessions: [],
+      nextCursor: null,
+      backwardsCursor: null,
+    })),
+    readNativeSession: vi.fn(async () => ({
+      providerThreadId: "native-1",
+      title: null,
+      cwd: "/workspace",
+      projectId: null,
+      workspaceRoot: "/workspace",
+      status: "idle" as const,
+      createdAt: 1,
+      updatedAt: 2,
+      archived: false,
+      source: null,
+    })),
     providerHealth: vi.fn(async () => ({ supported: false as const })),
     providerUsage: vi.fn(async () => ({ supported: false as const })),
     providerInstallationStatus: vi.fn(async () => {
@@ -762,14 +779,16 @@ describe("RuntimeManager", () => {
     // pending, its catalog is staged, and nothing in `entries` names it yet.
     const provisionStarted = createDeferredPromise<void>();
     const releaseProvision = createDeferredPromise<void>();
-    const provisionWorkspace = vi.fn(async (options: ProvisionWorkspaceArgs) => {
-      const targetPath = "path" in options ? options.path : undefined;
-      if (targetPath === "/tmp/env-a") {
-        provisionStarted.resolve();
-        await releaseProvision.promise;
-      }
-      return createFakeWorkspace(targetPath ?? "/tmp/env");
-    });
+    const provisionWorkspace = vi.fn(
+      async (options: ProvisionWorkspaceArgs) => {
+        const targetPath = "path" in options ? options.path : undefined;
+        if (targetPath === "/tmp/env-a") {
+          provisionStarted.resolve();
+          await releaseProvision.promise;
+        }
+        return createFakeWorkspace(targetPath ?? "/tmp/env");
+      },
+    );
     const manager = new RuntimeManager({
       dataDir,
       provisionWorkspace,

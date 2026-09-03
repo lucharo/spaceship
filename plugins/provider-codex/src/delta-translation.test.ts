@@ -13,6 +13,10 @@ import {
   PLAN_PRESENTATION,
 } from "./presentation.js";
 import {
+  createCodexEventTranslationState,
+  translateCodexHistoryItemToDeltas,
+} from "./delta-translation.js";
+import {
   createCodexEventTranslator,
   type CodexEventTranslator,
 } from "./translator.js";
@@ -213,6 +217,54 @@ describe("codex turn lifecycle translation", () => {
         }),
       ).toEqual([]);
     }
+  });
+
+  it("suppresses successful Codex hook lifecycle notifications", () => {
+    const harness = createHarness();
+
+    for (const method of ["hook/started", "hook/completed"] as const) {
+      expect(
+        harness.translate({
+          jsonrpc: "2.0",
+          method,
+          params: {
+            threadId: "t1",
+            turnId: "turn-1",
+            run:
+              method === "hook/completed"
+                ? { id: "hook-1", status: "completed" }
+                : { id: "hook-1" },
+          },
+        }),
+      ).toEqual([]);
+    }
+  });
+
+  it("surfaces unsuccessful Codex hook output as a warning", () => {
+    const harness = createHarness();
+    expect(
+      harness.translate({
+        jsonrpc: "2.0",
+        method: "hook/completed",
+        params: {
+          threadId: "t1",
+          turnId: "turn-1",
+          run: {
+            id: "hook-1",
+            status: "failed",
+            statusMessage: "Hook failed",
+            entries: [{ kind: "stderr", text: "Action required" }],
+          },
+        },
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/warning",
+        category: "general",
+        summary: "Codex hook failed",
+        details: "Hook failed\nAction required",
+      }),
+    );
   });
 
   it("translates a failed turn/completed without claiming a fork checkpoint", () => {
@@ -434,6 +486,34 @@ describe("codex thread lifecycle translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex item translation", () => {
+  it("preserves unsupported native history items as provider-unhandled deltas", () => {
+    const item = {
+      type: "sleep",
+      id: "sleep-1",
+      durationMs: 1_000,
+    };
+
+    expect(
+      translateCodexHistoryItemToDeltas(
+        item,
+        createCodexEventTranslationState(),
+        "turn-1",
+      ),
+    ).toEqual([
+      {
+        kind: "unhandled",
+        raw: {
+          jsonrpc: "2.0",
+          method: "native/session/history/item",
+          params: { item },
+        },
+        rawType: "sleep",
+        vouchedTurn: true,
+        providerTurnId: "turn-1",
+      },
+    ]);
+  });
+
   it("translates item/started with agentMessage", () => {
     const harness = createHarness();
     const events = harness.translate(
@@ -445,7 +525,7 @@ describe("codex item translation", () => {
           type: "agentMessage",
           id: "item-1",
           text: "Hello",
-          phase: null,
+          phase: "final_answer",
           memoryCitation: null,
           delivery: null,
         },
@@ -461,6 +541,67 @@ describe("codex item translation", () => {
           text: "Hello",
           presentation: AGENT_MESSAGE_PRESENTATION,
         },
+      }),
+    );
+  });
+
+  it("translates commentary-phase agent messages as collapsible reasoning", () => {
+    const harness = createHarness();
+    const events = harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "item-commentary",
+          text: "Checking the implementation",
+          phase: "commentary",
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: {
+          type: "reasoning",
+          id: harness.itemId("item-commentary"),
+          summary: ["Checking the implementation"],
+          content: [],
+          presentation: REASONING_PRESENTATION,
+        },
+      }),
+    );
+  });
+
+  it("renders Codex citation markers as readable source references", () => {
+    const harness = createHarness();
+    const events = harness.translate(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 1,
+        item: {
+          type: "agentMessage",
+          id: "item-citations",
+          text: "Verified. \uE200cite\uE202turn0search1\uE202turn0search2\uE201",
+          phase: null,
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "Verified. [Sources: 1, 2]",
+        }),
       }),
     );
   });
@@ -1499,33 +1640,301 @@ describe("codex web item translation", () => {
 // ---------------------------------------------------------------------------
 
 describe("codex delta and usage translation", () => {
-  it("synthesizes item/started for a delta-first agent message and keeps the id", () => {
+  it("waits for an explicit phase before streaming a started agent message", () => {
     const harness = createHarness();
+    expect(
+      harness.translate(
+        codexEvent("item/started", {
+          threadId: "t1",
+          turnId: "turn-1",
+          startedAtMs: 0,
+          item: {
+            type: "agentMessage",
+            id: "item-late-commentary",
+            text: "",
+            phase: null,
+            memoryCitation: null,
+            delivery: null,
+          },
+        }),
+      ),
+    ).toEqual([]);
+
+    expect(
+      harness.translate(
+        codexEvent("item/agentMessage/delta", {
+          threadId: "t1",
+          turnId: "turn-1",
+          itemId: "item-late-commentary",
+          delta: "Checking the implementation",
+        }),
+      ),
+    ).toEqual([]);
+
     const events = harness.translate(
-      codexEvent("item/agentMessage/delta", {
+      codexEvent("item/completed", {
         threadId: "t1",
         turnId: "turn-1",
-        itemId: "item-1",
-        delta: "hello ",
+        completedAtMs: 1,
+        item: {
+          type: "agentMessage",
+          id: "item-late-commentary",
+          text: "Checking the implementation",
+          phase: "commentary",
+          memoryCitation: null,
+          delivery: null,
+        },
       }),
     );
-    const itemId = harness.itemId("item-1");
-    expect(itemId).toMatch(ITEM_ID_PATTERN);
+
     expect(events).toEqual([
       expect.objectContaining({
         type: "item/started",
-        scope: turnScope(harness.turnId("turn-1")),
-        item: { type: "agentMessage", id: itemId, text: "" },
+        item: expect.objectContaining({ type: "reasoning" }),
       }),
       expect.objectContaining({
-        type: "item/agentMessage/delta",
-        scope: turnScope(harness.turnId("turn-1")),
+        type: "item/reasoning/summaryTextDelta",
+        delta: "Checking the implementation",
+      }),
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({ type: "reasoning" }),
+      }),
+    ]);
+    expect(
+      events.some(
+        (event) =>
+          (event.type === "item/started" || event.type === "item/completed") &&
+          event.item.type === "agentMessage",
+      ),
+    ).toBe(false);
+  });
+
+  it("synthesizes a phase-null agent message opening on zero-delta completion", () => {
+    const harness = createHarness();
+    expect(
+      harness.translate(
+        codexEvent("item/started", {
+          threadId: "t1",
+          turnId: "turn-1",
+          startedAtMs: 0,
+          item: {
+            type: "agentMessage",
+            id: "item-zero-delta",
+            text: "",
+            phase: null,
+            memoryCitation: null,
+            delivery: null,
+          },
+        }),
+      ),
+    ).toEqual([]);
+
+    const events = harness.translate(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 1,
+        item: {
+          type: "agentMessage",
+          id: "item-zero-delta",
+          text: "all done",
+          phase: null,
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "item/started",
+      "item/completed",
+    ]);
+    expect(events[0]).toMatchObject({
+      item: { type: "agentMessage", text: "all done" },
+    });
+  });
+
+  it("flushes deferred agent output before a failed turn boundary", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "item-interrupted",
+          text: "",
+          phase: null,
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+    harness.translate(
+      codexEvent("item/agentMessage/delta", {
+        threadId: "t1",
+        turnId: "turn-1",
+        itemId: "item-interrupted",
+        delta: "Partial answer",
+      }),
+    );
+
+    const events = harness.translate(
+      codexEvent("turn/completed", {
+        threadId: "t1",
+        turn: codexTurn({
+          id: "turn-1",
+          status: "failed",
+          error: {
+            message: "Synthetic failure",
+            codexErrorInfo: "other",
+            additionalDetails: null,
+          },
+        }),
+      }),
+    );
+
+    expect(events.map((event) => event.type)).toEqual([
+      "item/started",
+      "item/agentMessage/delta",
+      "item/completed",
+      "turn/completed",
+    ]);
+    expect(events[2]).toMatchObject({
+      item: { type: "agentMessage", text: "Partial answer" },
+    });
+    expect(events[3]).toMatchObject({
+      status: "failed",
+      error: { message: "Synthetic failure" },
+    });
+  });
+
+  it("flushes and clears deferred agent output when a child exits", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "item-child-exit",
+          text: "",
+          phase: null,
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+    harness.translate(
+      codexEvent("item/agentMessage/delta", {
+        threadId: "t1",
+        turnId: "turn-1",
+        itemId: "item-child-exit",
+        delta: "Last visible output",
+      }),
+    );
+
+    const events = harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: harness.translator.clearExitedChildThreadState({
+        providerThreadId: "t1",
+      }),
+    });
+    expect(events.map((event) => event.type)).toEqual([
+      "item/started",
+      "item/agentMessage/delta",
+      "item/completed",
+    ]);
+    expect(events[2]).toMatchObject({
+      item: { type: "agentMessage", text: "Last visible output" },
+    });
+    expect(
+      harness.translator.clearExitedChildThreadState({
+        providerThreadId: "t1",
+      }),
+    ).toEqual([]);
+  });
+
+  it("streams commentary-phase agent messages into reasoning summaries", () => {
+    const harness = createHarness();
+    harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "item-commentary",
+          text: "",
+          phase: "commentary",
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+
+    expect(
+      harness.translate(
+        codexEvent("item/agentMessage/delta", {
+          threadId: "t1",
+          turnId: "turn-1",
+          itemId: "item-commentary",
+          delta: "Checking the implementation",
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/reasoning/summaryTextDelta",
+        itemId: harness.itemId("item-commentary"),
+        delta: "Checking the implementation",
+      }),
+    ]);
+  });
+
+  it("buffers a delta-first agent message until its phase is known", () => {
+    const harness = createHarness();
+    expect(
+      harness.translate(
+        codexEvent("item/agentMessage/delta", {
+          threadId: "t1",
+          turnId: "turn-1",
+          itemId: "item-1",
+          delta: "hello ",
+        }),
+      ),
+    ).toEqual([]);
+
+    const events = harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: {
+          type: "agentMessage",
+          id: "item-1",
+          text: "",
+          phase: "commentary",
+          memoryCitation: null,
+          delivery: null,
+        },
+      }),
+    );
+    const itemId = harness.itemId("item-1");
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({ type: "reasoning", id: itemId }),
+      }),
+      expect.objectContaining({
+        type: "item/reasoning/summaryTextDelta",
         itemId,
         delta: "hello ",
       }),
     ]);
 
-    // A second delta streams into the already-open item.
     expect(
       harness.translate(
         codexEvent("item/agentMessage/delta", {
@@ -1537,9 +1946,61 @@ describe("codex delta and usage translation", () => {
       ),
     ).toEqual([
       expect.objectContaining({
-        type: "item/agentMessage/delta",
+        type: "item/reasoning/summaryTextDelta",
         itemId,
         delta: "world",
+      }),
+    ]);
+  });
+
+  it("buffers citation markers split across streaming deltas", () => {
+    const harness = createHarness();
+    const first = harness.translate(
+      codexEvent("item/agentMessage/delta", {
+        threadId: "t1",
+        turnId: "turn-1",
+        itemId: "item-citations",
+        delta: "Answer. \uE200cite\uE202turn0",
+      }),
+    );
+    expect(first).toEqual([]);
+
+    expect(
+      harness.translate(
+        codexEvent("item/agentMessage/delta", {
+          threadId: "t1",
+          turnId: "turn-1",
+          itemId: "item-citations",
+          delta: "search1\uE202turn0search2\uE201 Done.",
+        }),
+      ),
+    ).toEqual([]);
+
+    expect(
+      harness.translate(
+        codexEvent("item/started", {
+          threadId: "t1",
+          turnId: "turn-1",
+          startedAtMs: 0,
+          item: {
+            type: "agentMessage",
+            id: "item-citations",
+            text: "",
+            phase: "final_answer",
+            memoryCitation: null,
+            delivery: null,
+          },
+        }),
+      ),
+    ).toEqual([
+      expect.objectContaining({ type: "item/started" }),
+      expect.objectContaining({
+        type: "item/agentMessage/delta",
+        delta: "Answer. ",
+      }),
+      expect.objectContaining({
+        type: "item/agentMessage/delta",
+        delta: "[Sources: 1, 2] Done.",
       }),
     ]);
   });

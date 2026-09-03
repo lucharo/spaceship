@@ -25,6 +25,7 @@ import {
   completeFullStackSupervision,
   createDaemonEnv,
   createHostEnrollKeyRequestBody,
+  createServerProcessArgs,
   createServerEnv,
   createHostDaemonJoinEnv,
   parseLauncherArgs,
@@ -173,10 +174,8 @@ const startupOnlyManagedEnvCases: StartupOnlyManagedEnvCase[] = [
   { key: "BB_INHERITED_SKILLS_ROOTS", value: "/tmp/bb-skills" },
   { key: "BB_LOG_LEVEL", value: "debug" },
   { key: "BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD", value: "1" },
-  { key: "BB_POSTHOG_API_KEY", value: "test-posthog-key" },
   { key: "BB_SERVER_BIND_HOST", value: "127.0.0.1" },
   { key: "BB_SERVER_PORT", value: "48886" },
-  { key: "BB_TELEMETRY", value: "false" },
   { key: "BB_TRANSCRIPTION", value: "codex/test-transcription" },
 ];
 
@@ -490,6 +489,13 @@ async function captureStdout(run: () => Promise<void>): Promise<string> {
 }
 
 describe("bb-app launcher", () => {
+  it("starts the server with the operating system certificate store", () => {
+    expect(createServerProcessArgs("/app/server.js")).toEqual([
+      "--use-system-ca",
+      "/app/server.js",
+    ]);
+  });
+
   it("waits for the expected host daemon identity and connection", async () => {
     let statusRequests = 0;
     const server = createServer((request, response) => {
@@ -1012,7 +1018,6 @@ describe("bb-app launcher", () => {
           BB_INHERITED_SKILLS_ROOTS: "/stored/skills",
           BB_SERVER_BIND_HOST: "0.0.0.0",
           BB_SERVER_PORT: "48886",
-          BB_TELEMETRY: "true",
           OPENAI_API_KEY: "stored-openai-key",
         },
       }),
@@ -1050,7 +1055,6 @@ describe("bb-app launcher", () => {
         BB_INHERITED_SKILLS_ROOTS: "/worktree/skills",
         BB_SERVER_BIND_HOST: "127.0.0.1",
         BB_SERVER_PORT: "47886",
-        BB_TELEMETRY: "false",
         OPENAI_API_KEY: "stored-openai-key",
       });
       expect(env.BB_DEV_APP_PORT).toBeUndefined();
@@ -1773,7 +1777,6 @@ describe("bb-app launcher", () => {
           BB_FF_PLACEHOLDER: "true",
           BB_SERVER_BIND_HOST: "0.0.0.0",
           BB_SERVER_PORT: "48886",
-          BB_TELEMETRY: "false",
         },
       }),
       "utf8",
@@ -1794,7 +1797,7 @@ describe("bb-app launcher", () => {
 
       expect(output).toContain("Reloaded running bb server config.");
       expect(output).toContain(
-        "Startup-only settings currently configured (BB_FF_PLACEHOLDER, BB_LOG_LEVEL, BB_SERVER_BIND_HOST, BB_SERVER_PORT, BB_TELEMETRY) apply on the next full bb-app restart.",
+        "Startup-only settings currently configured (BB_FF_PLACEHOLDER, BB_LOG_LEVEL, BB_SERVER_BIND_HOST, BB_SERVER_PORT) apply on the next full bb-app restart.",
       );
     } finally {
       await server.close();

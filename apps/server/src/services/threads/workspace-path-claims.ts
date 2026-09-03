@@ -1,5 +1,6 @@
 import {
   findForeignManagedEnvironmentAtHostPath,
+  findManagedEnvironmentAtHostPath,
   findProjectEnvironmentByHostPath,
   hasLiveThreadAtHostPath,
   type DbConnection,
@@ -21,11 +22,17 @@ interface UnmanagedAttachRefusal {
 interface UnmanagedAttachCheckArgs {
   /** Host data directory, for recognizing bb's own workspace roots. */
   dataDir: string | null;
+  /**
+   * A retained native projection proves that this project previously owned
+   * the provider-reported workspace even after cleanup removed its environment
+   * row. Foreign live managed-environment claims are still refused.
+   */
+  allowUnclaimedManagedPathForProject?: boolean;
   /** Set when the request also checks out a branch, which rewrites the tree. */
   checksOutBranch: boolean;
   hostId: string;
   path: string;
-  projectId: string;
+  projectId: string | null;
 }
 
 /**
@@ -47,13 +54,15 @@ export function unmanagedAttachRefusal(
   const foreignManagedMessage =
     "Workspace path is a bb-managed workspace owned by another project";
 
-  if (
-    findForeignManagedEnvironmentAtHostPath(db, {
-      hostId: args.hostId,
-      path: args.path,
-      projectId: args.projectId,
-    })
-  ) {
+  const managedEnvironment =
+    args.projectId === null
+      ? findManagedEnvironmentAtHostPath(db, args)
+      : findForeignManagedEnvironmentAtHostPath(db, {
+          hostId: args.hostId,
+          path: args.path,
+          projectId: args.projectId,
+        });
+  if (managedEnvironment) {
     return { reason: "foreign-managed", message: foreignManagedMessage };
   }
 
@@ -62,7 +71,13 @@ export function unmanagedAttachRefusal(
   if (
     args.dataDir !== null &&
     isBbManagedWorkspacePath({ dataDir: args.dataDir, path: args.path }) &&
-    !findProjectOwnsPath(db, args)
+    !args.allowUnclaimedManagedPathForProject &&
+    (args.projectId === null ||
+      !findProjectOwnsPath(db, {
+        hostId: args.hostId,
+        path: args.path,
+        projectId: args.projectId,
+      }))
   ) {
     return { reason: "foreign-managed", message: foreignManagedMessage };
   }
@@ -87,7 +102,9 @@ export function unmanagedAttachRefusal(
  */
 function findProjectOwnsPath(
   db: DbConnection,
-  args: Pick<UnmanagedAttachCheckArgs, "hostId" | "path" | "projectId">,
+  args: Pick<UnmanagedAttachCheckArgs, "hostId" | "path"> & {
+    projectId: string;
+  },
 ): boolean {
   return (
     findProjectEnvironmentByHostPath(

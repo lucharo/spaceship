@@ -13,6 +13,10 @@ import {
   providerInfoSchema,
 } from "@bb/domain";
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
+import {
+  nativeSessionListResultSchema,
+  nativeSessionSummarySchema,
+} from "@bb/provider-bridge-protocol";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
@@ -92,6 +96,41 @@ export const systemProvidersQuerySchema = z
   .partial()
   .superRefine(rejectMultipleProviderHostSelectors);
 export type SystemProvidersQuery = z.infer<typeof systemProvidersQuerySchema>;
+
+export const systemNativeSessionsQuerySchema = z
+  .object({
+    ...systemProviderHostQueryFields,
+    archived: z.enum(["true", "false"]).optional(),
+    cursor: z.string().min(1).optional(),
+    limit: z
+      .string()
+      .regex(/^\d+$/u)
+      .refine((value) => {
+        const limit = Number(value);
+        return limit >= 1 && limit <= 100;
+      }, "limit must be between 1 and 100")
+      .optional(),
+    cwd: z.string().min(1).optional(),
+    searchTerm: z.string().min(1).max(256).optional(),
+  })
+  .partial()
+  .superRefine(rejectMultipleProviderHostSelectors);
+export type SystemNativeSessionsQuery = z.infer<
+  typeof systemNativeSessionsQuerySchema
+>;
+
+export const systemNativeSessionsResponseSchema =
+  nativeSessionListResultSchema.extend({
+    sessions: z.array(
+      nativeSessionSummarySchema.extend({
+        /** Existing Spaceship projection, when this native session was adopted. */
+        localThreadId: z.string().min(1).nullable().optional(),
+      }),
+    ),
+  });
+export type SystemNativeSessionsResponse = z.infer<
+  typeof systemNativeSessionsResponseSchema
+>;
 
 export const systemExecutionOptionsQuerySchema = z
   .object({

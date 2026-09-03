@@ -430,6 +430,8 @@ describe("Plugin detail recipe", () => {
             scope: "plugin",
             pluginId: "github",
             filePath: "/plugins/github/skills/review/SKILL.md",
+            sourceRepository: null,
+            sourceRelativePath: null,
             manageable: false,
             registrySkillId: null,
           },

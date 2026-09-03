@@ -941,7 +941,10 @@ describe("thread runtime config", () => {
         pluginId,
         iconNames: new Set<string>(),
       });
-      harness.deps.pluginHostArtifacts.set(pluginId, stubHostArtifact(pluginId));
+      harness.deps.pluginHostArtifacts.set(
+        pluginId,
+        stubHostArtifact(pluginId),
+      );
 
       const { host } = seedHostSession(harness.deps, {
         id: "host-provider-hook",
@@ -1476,6 +1479,9 @@ describe("thread runtime config", () => {
               name: "portable-review",
               description: "Review code from one shared source.",
               filePath: skillFilePath,
+              canonicalFilePath: skillFilePath,
+              sourceRepository: null,
+              sourceRelativePath: null,
               rootKind: "shared-project",
               linked: false,
             },

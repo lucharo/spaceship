@@ -213,6 +213,23 @@ function createFakeRuntime(): AgentRuntime {
     archiveThread: vi.fn(async () => undefined),
     unarchiveThread: vi.fn(async () => undefined),
     listModels: vi.fn(async () => ({ models: [], selectedOnlyModels: [] })),
+    listNativeSessions: vi.fn(async () => ({
+      sessions: [],
+      nextCursor: null,
+      backwardsCursor: null,
+    })),
+    readNativeSession: vi.fn(async () => ({
+      providerThreadId: "native-1",
+      title: null,
+      cwd: "/workspace",
+      projectId: null,
+      workspaceRoot: "/workspace",
+      status: "idle" as const,
+      createdAt: 1,
+      updatedAt: 2,
+      archived: false,
+      source: null,
+    })),
     providerHealth: vi.fn(async () => ({ supported: false as const })),
     providerUsage: vi.fn(async () => ({ supported: false as const })),
     providerInstallationStatus: vi.fn(async () => {

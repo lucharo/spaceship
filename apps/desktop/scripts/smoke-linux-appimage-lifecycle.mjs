@@ -440,11 +440,18 @@ async function smokeLinuxAppImageLifecycle() {
     delete childEnv.BB_DESKTOP_NODE_EXEC_PATH;
     delete childEnv.ELECTRON_RUN_AS_NODE;
 
-    child = spawn(appImage, [`--user-data-dir=${userDataDir}`], {
-      detached: true,
-      env: childEnv,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    // GitHub-hosted runners cannot provide the root-owned setuid sandbox that
+    // Chromium expects inside a FUSE-mounted AppImage. This smoke exercises
+    // mount and runtime ownership, not Chromium's sandbox configuration.
+    child = spawn(
+      appImage,
+      ["--no-sandbox", `--user-data-dir=${userDataDir}`],
+      {
+        detached: true,
+        env: childEnv,
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
     if (child.pid === undefined) {
       throw new Error("The AppImage process did not expose a PID");
     }

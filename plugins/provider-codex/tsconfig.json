@@ -5,6 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM"],
+    "jsx": "react-jsx",
     "noEmit": true,
     "skipLibCheck": true,
     "paths": {
@@ -15,7 +16,7 @@
         "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk-app.d.ts"
       ]
     },
-    "types": ["node"]
+    "types": ["node", "react"]
   },
-  "include": ["server.ts", "src", "vitest.config.ts"]
+  "include": ["app.tsx", "server.ts", "src", "vitest.config.ts"]
 }

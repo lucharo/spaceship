@@ -87,7 +87,6 @@ export function toDevLaunchProcessEnv(args: {
   }
 
   delete env.BB_DEV_APP_PORT;
-  env.BB_TELEMETRY = "false";
   env.NODE_ENV = "production";
   return env;
 }

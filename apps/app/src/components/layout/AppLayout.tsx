@@ -78,6 +78,7 @@ import {
   isToolsRoutePath,
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  NATIVE_SESSIONS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
 import { IframeDragGuardOverlay } from "@/lib/iframe-drag-guard";
@@ -282,10 +283,11 @@ function SidebarTriggerOverlay({
 }
 
 const routeTitles: Record<string, { title: string }> = {
-  "/": { title: "bb" },
+  "/": { title: "Spaceship" },
   "/settings": { title: "Settings" },
   "/automations": { title: "Automations" },
   "/skills": { title: "Skills" },
+  [NATIVE_SESSIONS_ROUTE_PATH]: { title: "Native sessions" },
 };
 
 function resolveRouteTitle(pathname: string): { title: string } | undefined {
@@ -449,12 +451,8 @@ export function AppLayout({ children }: AppLayoutProps) {
     };
   }, [location.pathname, setResourceRouteLabel]);
   const navigate = useNavigate();
-  const {
-    appRoutePath,
-    settingsRoutePath,
-    toolsBackRoutePath,
-    toolsRoutePath,
-  } = useAppSettingsRouteMemory();
+  const { appRoutePath, settingsRoutePath, toolsBackRoutePath } =
+    useAppSettingsRouteMemory();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   useEffect(
     () =>
@@ -661,7 +659,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       return pluginPanel.title;
     }
     if (documentTitleBreadcrumbs) {
-      const sectionLabel = documentTitleBreadcrumbs[0]?.label ?? "BB";
+      const sectionLabel = documentTitleBreadcrumbs[0]?.label ?? "Spaceship";
       const pageLabel = documentTitleBreadcrumbs.at(-1)?.label ?? sectionLabel;
       return pageLabel === sectionLabel
         ? sectionLabel
@@ -682,7 +680,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       return projectLabel ?? projectId;
     }
     const routeTitle = resolveRouteTitle(location.pathname)?.title;
-    return routeTitle && routeTitle.length > 0 ? routeTitle : "BB";
+    return routeTitle && routeTitle.length > 0 ? routeTitle : "Spaceship";
   })();
   // The sidebar list omits archived threads and side chats, so it can't answer
   // whether the currently-viewed thread is blocked on input. Read the current
@@ -814,7 +812,6 @@ export function AppLayout({ children }: AppLayoutProps) {
               appRoutePath={appRoutePath}
               settingsRoutePath={settingsRoutePath}
               toolsBackRoutePath={toolsBackRoutePath}
-              toolsRoutePath={toolsRoutePath}
             />
             <SidebarInset>
               <div

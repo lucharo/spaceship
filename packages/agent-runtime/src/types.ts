@@ -19,6 +19,9 @@ import type {
   ProviderHealthResult,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
+  NativeSessionHistoryResult,
+  NativeSessionListResult,
+  NativeSessionReadResult,
   ProviderUsageResult,
   SkillsConfigureRoot,
 } from "@bb/provider-bridge-protocol";
@@ -367,6 +370,36 @@ export interface ListModelsArgs {
   cwd?: string;
 }
 
+export interface ListNativeSessionsArgs {
+  providerId: string;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+  archived: boolean;
+  cursor?: string;
+  limit?: number;
+  cwd?: string;
+  searchTerm?: string;
+}
+
+export interface ReadNativeSessionArgs {
+  providerId: string;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+  providerThreadId: string;
+}
+
+export interface ReadNativeSessionHistoryArgs extends ReadNativeSessionArgs {
+  threadId: string;
+}
+
+export interface AgentRuntimeNativeSessionHistoryEvent {
+  createdAt: number;
+  event: ThreadEvent;
+}
+
+export interface AgentRuntimeNativeSessionHistoryResult {
+  session: NativeSessionHistoryResult["session"];
+  events: AgentRuntimeNativeSessionHistoryEvent[];
+}
+
 interface ProviderMaintenanceArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
@@ -415,13 +448,21 @@ export interface AgentRuntime {
     selectedOnlyModels: AvailableModel[];
   }>;
 
-  providerHealth(
-    args: ProviderMaintenanceArgs,
-  ): Promise<ProviderHealthResult>;
+  listNativeSessions(
+    args: ListNativeSessionsArgs,
+  ): Promise<NativeSessionListResult>;
 
-  providerUsage(
-    args: ProviderMaintenanceArgs,
-  ): Promise<ProviderUsageResult>;
+  readNativeSession(
+    args: ReadNativeSessionArgs,
+  ): Promise<NativeSessionReadResult>;
+
+  readNativeSessionHistory?(
+    args: ReadNativeSessionHistoryArgs,
+  ): Promise<AgentRuntimeNativeSessionHistoryResult>;
+
+  providerHealth(args: ProviderMaintenanceArgs): Promise<ProviderHealthResult>;
+
+  providerUsage(args: ProviderMaintenanceArgs): Promise<ProviderUsageResult>;
 
   providerInstallationStatus(
     args: ProviderInstallationStatusArgs,

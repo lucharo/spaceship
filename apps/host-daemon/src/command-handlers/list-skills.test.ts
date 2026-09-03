@@ -66,7 +66,9 @@ function declared(
   };
 }
 
-function skillRoots(skills: Partial<ProviderNativeRoots>): ProviderNativeRootSet {
+function skillRoots(
+  skills: Partial<ProviderNativeRoots>,
+): ProviderNativeRootSet {
   return {
     skills: { user: [], project: [], ...skills },
     commands: { user: [], project: [] },
@@ -143,6 +145,10 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
       name: "proj-bb",
       description: "proj-bb skill",
       filePath: files["proj-bb"],
+      canonicalFilePath: await realpath(files["proj-bb"]),
+      canonicalRootPath: await realpath(path.dirname(files["proj-bb"])),
+      sourceRepository: null,
+      sourceRelativePath: null,
       rootKind: "bb-project",
       linked: false,
     });
@@ -298,6 +304,196 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
 
     expect(byName(skills, "linked-directory")?.linked).toBe(true);
     expect(byName(skills, "linked-file")?.linked).toBe(true);
+  });
+
+  it("reads copied skill provenance from the Agent Skills lockfile", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const skillsRoot = path.join(fixture.homeDir, ".agents", "skills");
+    await writeSkill(path.join(skillsRoot, "grill-me", "SKILL.md"), "grill-me");
+    await writeFile(
+      path.join(fixture.homeDir, ".agents", ".skill-lock.json"),
+      JSON.stringify({
+        version: 3,
+        skills: {
+          "grill-me": {
+            source: "mattpocock/skills",
+            sourceUrl: "https://github.com/mattpocock/skills.git",
+            skillPath: "skills/productivity/grill-me/SKILL.md",
+          },
+        },
+      }),
+      "utf8",
+    );
+
+    const skills = await listSkills(
+      fixture,
+      fixture.cwd,
+      skillRoots({ user: [declared(".agents/skills")] }),
+      "bb-shared",
+    );
+
+    expect(byName(skills, "grill-me")).toMatchObject({
+      sourceRepository: "mattpocock/skills",
+      sourceRelativePath: "skills/productivity/grill-me/SKILL.md",
+    });
+  });
+
+  it("reads symlinked skill provenance from the canonical Git repository", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const repositoryRoot = path.join(tempRoot, "repositories", "skills");
+    const skillDirectory = path.join(
+      repositoryRoot,
+      "skills",
+      "engineering",
+      "wrapup",
+    );
+    await writeSkill(path.join(skillDirectory, "SKILL.md"), "wrapup");
+    await mkdir(path.join(repositoryRoot, ".git"), { recursive: true });
+    await writeFile(
+      path.join(repositoryRoot, ".git", "config"),
+      '[remote "origin"]\n\turl = git@github.com:lucharo/skills.git\n',
+      "utf8",
+    );
+    const skillsRoot = path.join(fixture.homeDir, ".agents", "skills");
+    await mkdir(skillsRoot, { recursive: true });
+    await symlink(skillDirectory, path.join(skillsRoot, "wrapup"), "dir");
+
+    const skills = await listSkills(
+      fixture,
+      fixture.cwd,
+      skillRoots({ user: [declared(".agents/skills")] }),
+      "bb-shared",
+    );
+
+    expect(byName(skills, "wrapup")).toMatchObject({
+      sourceRepository: "lucharo/skills",
+      sourceRelativePath: "skills/engineering/wrapup/SKILL.md",
+    });
+  });
+
+  it("uses the target file as the canonical root for a directly linked skill file", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const targetDirectory = path.join(tempRoot, "linked-skill-target");
+    const targetFile = path.join(targetDirectory, "actual-skill.md");
+    await writeSkill(targetFile, "linked-file");
+    await writeFile(
+      path.join(targetDirectory, "private-notes.md"),
+      "private",
+      "utf8",
+    );
+    const logicalDirectory = path.join(
+      fixture.homeDir,
+      ".agents",
+      "skills",
+      "linked-file",
+    );
+    await mkdir(logicalDirectory, { recursive: true });
+    await symlink(targetFile, path.join(logicalDirectory, "SKILL.md"));
+
+    const skills = await listSkills(
+      fixture,
+      fixture.cwd,
+      skillRoots({ user: [declared(".agents/skills")] }),
+      "bb-shared",
+    );
+
+    expect(byName(skills, "linked-file")).toMatchObject({
+      canonicalFilePath: await realpath(targetFile),
+      canonicalRootPath: await realpath(targetFile),
+      linked: true,
+    });
+  });
+
+  it("calculates each skill path independently when repository lookup is cached", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const repositoryRoot = path.join(tempRoot, "repositories", "skills");
+    await writeSkill(
+      path.join(repositoryRoot, "skills", "engineering", "wrapup", "SKILL.md"),
+      "wrapup",
+    );
+    await writeSkill(
+      path.join(repositoryRoot, "skills", "meta", "retrospect", "SKILL.md"),
+      "retrospect",
+    );
+    await mkdir(path.join(repositoryRoot, ".git"), { recursive: true });
+    await writeFile(
+      path.join(repositoryRoot, ".git", "config"),
+      '[remote "origin"]\n\turl = git@github.com:lucharo/skills.git\n',
+      "utf8",
+    );
+    const skillsRoot = path.join(fixture.homeDir, ".agents", "skills");
+    await mkdir(skillsRoot, { recursive: true });
+    await symlink(
+      path.join(repositoryRoot, "skills", "engineering", "wrapup"),
+      path.join(skillsRoot, "wrapup"),
+      "dir",
+    );
+    await symlink(
+      path.join(repositoryRoot, "skills", "meta", "retrospect"),
+      path.join(skillsRoot, "retrospect"),
+      "dir",
+    );
+
+    const skills = await listSkills(
+      fixture,
+      fixture.cwd,
+      skillRoots({ user: [declared(".agents/skills")] }),
+      "bb-shared",
+    );
+
+    expect(byName(skills, "wrapup")?.sourceRelativePath).toBe(
+      "skills/engineering/wrapup/SKILL.md",
+    );
+    expect(byName(skills, "retrospect")?.sourceRelativePath).toBe(
+      "skills/meta/retrospect/SKILL.md",
+    );
+  });
+
+  it("reads skill provenance from a Git worktree marker", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const repositoryRoot = path.join(tempRoot, "repositories", "worktree");
+    const gitDirectory = path.join(
+      tempRoot,
+      "repositories",
+      ".git",
+      "worktrees",
+      "skills",
+    );
+    const commonDirectory = path.join(tempRoot, "repositories", ".git");
+    const skillDirectory = path.join(
+      repositoryRoot,
+      "skills",
+      "engineering",
+      "wrapup",
+    );
+    await writeSkill(path.join(skillDirectory, "SKILL.md"), "wrapup");
+    await mkdir(gitDirectory, { recursive: true });
+    await writeFile(
+      path.join(repositoryRoot, ".git"),
+      `gitdir: ${gitDirectory}\n`,
+      "utf8",
+    );
+    await writeFile(path.join(gitDirectory, "commondir"), "../..\n", "utf8");
+    await writeFile(
+      path.join(commonDirectory, "config"),
+      '[remote "origin"]\n\turl = https://github.com/lucharo/skills.git\n',
+      "utf8",
+    );
+    const skillsRoot = path.join(fixture.homeDir, ".agents", "skills");
+    await mkdir(skillsRoot, { recursive: true });
+    await symlink(skillDirectory, path.join(skillsRoot, "wrapup"), "dir");
+
+    const skills = await listSkills(
+      fixture,
+      fixture.cwd,
+      skillRoots({ user: [declared(".agents/skills")] }),
+      "bb-shared",
+    );
+
+    expect(byName(skills, "wrapup")).toMatchObject({
+      sourceRepository: "lucharo/skills",
+      sourceRelativePath: "skills/engineering/wrapup/SKILL.md",
+    });
   });
 
   it("classifies a prefixed declared root as a plugin root", async () => {

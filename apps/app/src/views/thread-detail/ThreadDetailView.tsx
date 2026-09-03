@@ -866,6 +866,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     isLoadingOlderTimelineRows,
     loadOlderTimelineRows,
     modelFallback,
+    nativeHistoryProjection,
     pendingTodos,
     timelineError,
     timelineLoading,
@@ -2994,10 +2995,14 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               isLoadingOlderTimelineRows,
               isThreadTimelinePending,
               timelineError: Boolean(timelineError),
-              onForkMessage: isForkAvailable ? handleForkMessage : undefined,
-              onEditMessage: canEditSentMessages
-                ? handleEditSentMessage
-                : undefined,
+              onForkMessage:
+                !nativeHistoryProjection && isForkAvailable
+                  ? handleForkMessage
+                  : undefined,
+              onEditMessage:
+                !nativeHistoryProjection && canEditSentMessages
+                  ? handleEditSentMessage
+                  : undefined,
               inlineMessageEditor,
               onMessageAddToChat: handleSelectionAddToChat,
               onSendToMainMessage: handleSendToMainMessage,
@@ -3005,7 +3010,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
               onLoadOlderRows: loadOlderTimelineRows,
               onOpenLink: handleOpenTimelineLink,
               onOpenLocalFileLink: handleOpenTimelineLocalFileLink,
-              onOpenPluginPanel: handleOpenTimelinePluginPanel,
+              onOpenPluginPanel: nativeHistoryProjection
+                ? undefined
+                : handleOpenTimelinePluginPanel,
               onTitleAction: handleTimelineTitleAction,
               projectId,
               resolveMentionLink,

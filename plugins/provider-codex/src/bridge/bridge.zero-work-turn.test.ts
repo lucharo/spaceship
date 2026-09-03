@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
+import type { ThreadDelta } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   experimental_assembleCapturedThreadEvents as assembleCapturedThreadEvents,
   experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness,
@@ -168,6 +169,62 @@ it("preserves the native checkpoint when thread/stop interrupts a turn", async (
       type: "turn/completed",
       status: "interrupted",
       providerCheckpointId: "turn-fx-1",
+    }),
+  );
+}, 30_000);
+
+it("closes deferred output as interrupted when thread/stop times out", async () => {
+  const providerThreadId = await startSession();
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    input: [{ type: "text", text: "/ignore-interrupt", mentions: [] }],
+    clientRequestId: "creq_intrpt2345",
+    options: { ...sessionOptions },
+  });
+  await harness.waitForResponse(2);
+  await waitForEvents((events) =>
+    events.some((event) => event.type === "turn/started"),
+  );
+
+  harness.sendRequest(3, "thread/stop", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    intent: "interrupt",
+    activeTurnId: "turn-fx-1",
+  });
+  await harness.waitForResponse(3);
+
+  const events = await waitForEvents((all) =>
+    all.some(
+      (event) =>
+        event.type === "turn/completed" && event.status === "interrupted",
+    ),
+  );
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      status: "interrupted",
+      type: "turn/completed",
+    }),
+  );
+  const close = harness.messages
+    .filter((message) => message.method === "thread/delta")
+    .flatMap((message) => {
+      const params = message.params as { deltas?: ThreadDelta[] } | undefined;
+      return params?.deltas ?? [];
+    })
+    .find(
+      (delta) =>
+        delta.kind === "item.close" && delta.item.type === "agentMessage",
+    );
+  expect(close).toEqual(
+    expect.objectContaining({
+      kind: "item.close",
+      status: "interrupted",
+      item: expect.objectContaining({
+        type: "agentMessage",
+        text: "partial interrupted output",
+      }),
     }),
   );
 }, 30_000);

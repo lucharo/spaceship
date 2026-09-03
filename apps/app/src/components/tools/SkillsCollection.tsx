@@ -39,7 +39,7 @@ type ResourceProviderFilter = "bb" | SkillProvider;
  */
 export type ProviderRoster = ReadonlyMap<string, ProviderInfo>;
 type ResourceSkillSourceFilter = "included" | "bb-official" | "user";
-type ResourceSortMode = "provider" | "alpha";
+type ResourceSortMode = "source" | "provider" | "alpha";
 type ResourceSortDirection = "asc" | "desc";
 
 const RESOURCE_SKILL_SOURCE_FILTERS: readonly ResourceSkillSourceFilter[] = [
@@ -76,9 +76,7 @@ function providerFilterLabel(
   provider: ResourceProviderFilter,
   providerRoster: ProviderRoster,
 ): string {
-  return provider === "bb"
-    ? "bb"
-    : providerLabel(provider, providerRoster);
+  return provider === "bb" ? "bb" : providerLabel(provider, providerRoster);
 }
 
 function skillSourceFilterId(skill: SkillSummary): ResourceSkillSourceFilter {
@@ -135,7 +133,11 @@ export function ProviderLogo({
     return <LogoIcon className={className} />;
   }
   return (
-    <ProviderIconMark provider={provider} icon={info.icon} className={className} />
+    <ProviderIconMark
+      provider={provider}
+      icon={info.icon}
+      className={className}
+    />
   );
 }
 
@@ -223,6 +225,78 @@ function includedPluginDescription(
   providerRoster: ProviderRoster,
 ): string {
   return `${providerPluginDisplayName(skill)} (${providerLabel(skill.provider, providerRoster)} plugin)`;
+}
+
+function pathSegments(filePath: string): string[] {
+  return filePath.replaceAll("\\", "/").split("/").filter(Boolean);
+}
+
+function nestedSkillGroup(
+  segments: readonly string[],
+  rootIndex: number,
+): string | null {
+  const skillPath = segments.slice(rootIndex + 1, -1);
+  if (skillPath[0] === "skills") skillPath.shift();
+  return skillPath.length > 1 ? (skillPath[0] ?? null) : null;
+}
+
+/** A compact, path-derived source label for grouping the installed library. */
+export function skillSourceGroupLabel(
+  skill: SkillSummary,
+  providerRoster: ProviderRoster,
+): string {
+  if (skill.sourceRepository !== null) {
+    const sourceSegments = pathSegments(skill.sourceRelativePath ?? "");
+    const skillsIndex = sourceSegments.indexOf("skills");
+    const category =
+      skillsIndex >= 0 && sourceSegments.length - skillsIndex > 2
+        ? sourceSegments[skillsIndex + 1]
+        : null;
+    return `${skill.sourceRepository}${category ? ` / ${category}` : ""}`;
+  }
+  const segments = pathSegments(skill.canonicalFilePath ?? skill.filePath);
+  const githubIndex = segments.findIndex(
+    (segment, index) =>
+      segment === "github.com" &&
+      segments[index + 1] !== undefined &&
+      segments[index + 2] !== undefined,
+  );
+  if (githubIndex >= 0) {
+    const owner = segments[githubIndex + 1];
+    const repository = segments[githubIndex + 2];
+    const category = nestedSkillGroup(segments, githubIndex + 2);
+    return (
+      [owner, repository].filter(Boolean).join("/") +
+      (category ? ` / ${category}` : "")
+    );
+  }
+
+  const refinedIndex = segments.indexOf(".refined");
+  if (refinedIndex >= 0) {
+    const category = nestedSkillGroup(segments, refinedIndex);
+    return category ? `Refined / ${category}` : "Refined";
+  }
+  const privateIndex = segments.indexOf(".private-skills");
+  if (privateIndex >= 0) {
+    const category = nestedSkillGroup(segments, privateIndex);
+    return category ? `Private skills / ${category}` : "Private skills";
+  }
+  if (segments.includes(".agents")) return "Shared skills";
+  if (segments.includes(".claude")) return "Claude Code";
+  if (segments.includes(".codex")) return "Codex";
+  if (segments.includes(".cursor")) return "Cursor";
+  if (skill.scope === "bb-builtin") return "BB Official";
+  if (skill.scope === "plugin") {
+    return `${providerPluginDisplayName(skill)} plugin`;
+  }
+  if (skill.scope === "bb-project" || skill.scope === "provider-project") {
+    return "Project skills";
+  }
+  if (skill.scope === "bb-user") return "BB skills";
+  if (skill.scope === "shared-project" || skill.scope === "shared-user") {
+    return "Shared skills";
+  }
+  return providerLabel(skill.provider, providerRoster);
 }
 
 function skillMutationDisabledReason(
@@ -377,12 +451,12 @@ export function SkillsOverview({
 }: SkillsOverviewProps) {
   const [providerFilters, setProviderFilters] = useState<
     ResourceProviderFilter[]
-  >(["bb"]);
+  >([]);
   // Empty means unfiltered: the menu has no explicit "All" row.
   const [sourceFilters, setSourceFilters] = useState<
     ResourceSkillSourceFilter[]
   >([]);
-  const [sortMode, setSortMode] = useState<ResourceSortMode>("alpha");
+  const [sortMode, setSortMode] = useState<ResourceSortMode>("source");
   const [sortDirection, setSortDirection] =
     useState<ResourceSortDirection>("asc");
   const [libraryViewport, setLibraryViewport] = useState<HTMLDivElement | null>(
@@ -468,10 +542,8 @@ export function SkillsOverview({
           skill.name,
           skill.description ?? "",
           providerLabel(skill.provider, providerRoster),
-          skillScopeLabel(
-            skill,
-            providerLabelForScope(skill, providerRoster),
-          ),
+          skillScopeLabel(skill, providerLabelForScope(skill, providerRoster)),
+          skillSourceGroupLabel(skill, providerRoster),
         ]
           .join(" ")
           .toLowerCase()
@@ -486,11 +558,15 @@ export function SkillsOverview({
         if (officialResult !== 0) return officialResult;
       }
       const base =
-        sortMode === "provider"
-          ? providerLabel(left.provider, providerRoster).localeCompare(
-              providerLabel(right.provider, providerRoster),
+        sortMode === "source"
+          ? skillSourceGroupLabel(left, providerRoster).localeCompare(
+              skillSourceGroupLabel(right, providerRoster),
             ) || left.name.localeCompare(right.name)
-          : left.name.localeCompare(right.name);
+          : sortMode === "provider"
+            ? providerLabel(left.provider, providerRoster).localeCompare(
+                providerLabel(right.provider, providerRoster),
+              ) || left.name.localeCompare(right.name)
+            : left.name.localeCompare(right.name);
       if (base !== 0) return sortDirection === "asc" ? base : -base;
       return left.filePath.localeCompare(right.filePath);
     });
@@ -509,9 +585,28 @@ export function SkillsOverview({
     pageSize: libraryPageSize,
     resetKey: libraryResetKey,
   });
+  const sourceGroups = useMemo(() => {
+    const groups: Array<{ label: string; skills: SkillSummary[] }> = [];
+    for (const skill of libraryList.items) {
+      const label = skillSourceGroupLabel(skill, providerRoster);
+      const current = groups.at(-1);
+      if (current?.label === label) {
+        current.skills.push(skill);
+      } else {
+        groups.push({ label, skills: [skill] });
+      }
+    }
+    return groups;
+  }, [libraryList.items, providerRoster]);
   const handleSortChange = useCallback(
     (nextSort: string) => {
-      if (nextSort !== "provider" && nextSort !== "alpha") return;
+      if (
+        nextSort !== "source" &&
+        nextSort !== "provider" &&
+        nextSort !== "alpha"
+      ) {
+        return;
+      }
       if (nextSort === "provider" && providerBucketCount <= 1) return;
       if (nextSort === sortMode) {
         setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
@@ -548,17 +643,40 @@ export function SkillsOverview({
     />
   ) : (
     <>
-      <ResourceListPanel>
-        {libraryList.items.map((skill) => (
-          <SkillRow
-            key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
-            skill={skill}
-            providerRoster={providerRoster}
-            onSelect={() => onSelectSkill(skill)}
-            onPrefetch={onPrefetchSkill}
-          />
-        ))}
-      </ResourceListPanel>
+      {sortMode === "source" ? (
+        <div className="space-y-4">
+          {sourceGroups.map((group) => (
+            <section key={group.label} aria-label={group.label}>
+              <h3 className="mb-1.5 px-1 text-xs font-medium text-muted-foreground">
+                {group.label}
+              </h3>
+              <ResourceListPanel>
+                {group.skills.map((skill) => (
+                  <SkillRow
+                    key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
+                    skill={skill}
+                    providerRoster={providerRoster}
+                    onSelect={() => onSelectSkill(skill)}
+                    onPrefetch={onPrefetchSkill}
+                  />
+                ))}
+              </ResourceListPanel>
+            </section>
+          ))}
+        </div>
+      ) : (
+        <ResourceListPanel>
+          {libraryList.items.map((skill) => (
+            <SkillRow
+              key={`${skill.scope}-${skill.provider ?? "bb"}-${skill.name}-${skill.filePath}`}
+              skill={skill}
+              providerRoster={providerRoster}
+              onSelect={() => onSelectSkill(skill)}
+              onPrefetch={onPrefetchSkill}
+            />
+          ))}
+        </ResourceListPanel>
+      )}
       <ResourceInfiniteScrollSentinel
         hasMore={libraryList.hasMore}
         onLoadMore={libraryList.loadMore}
@@ -630,6 +748,7 @@ export function SkillsOverview({
                     direction={sortDirection}
                     compact
                     options={[
+                      { id: "source", label: "Source" },
                       {
                         id: "provider",
                         label: "Provider",

@@ -54,6 +54,28 @@ interface RecoverThreadModelOverrideArgs {
   thread: Thread;
 }
 
+const threadExecutionOverrideMutationChains = new Map<string, Promise<void>>();
+
+export function withThreadExecutionOverrideMutation<T>(
+  threadId: string,
+  mutate: () => Promise<T>,
+): Promise<T> {
+  const previous =
+    threadExecutionOverrideMutationChains.get(threadId) ?? Promise.resolve();
+  const result = previous.then(mutate);
+  const tail = result.then(
+    () => {},
+    () => {},
+  );
+  threadExecutionOverrideMutationChains.set(threadId, tail);
+  void tail.then(() => {
+    if (threadExecutionOverrideMutationChains.get(threadId) === tail) {
+      threadExecutionOverrideMutationChains.delete(threadId);
+    }
+  });
+  return result;
+}
+
 /**
  * Pure resolver for the next override values. Validates a requested model
  * against the active catalog (same-provider + in-catalog), validates an
@@ -137,15 +159,14 @@ export function resolveThreadExecutionOverrideUpdate(
 }
 
 /**
- * Validates and persists the sticky thread-level execution override. Loads the
- * thread provider's active model catalog from the daemon to validate, then
- * stores the resolved values. The change takes effect on the next turn via
- * `resolveExecutionOptions` + the runtime's `recordThreadExecutionOptions`.
+ * Resolves a sticky thread-level execution override without persisting it.
+ * Loads the provider's active model catalog from the daemon so callers can
+ * validate every field in a combined update before committing any of them.
  */
-export async function applyThreadExecutionOverride(
+export async function resolveThreadExecutionOverrideForThread(
   deps: LoggedWorkSessionDeps,
   args: ApplyThreadExecutionOverrideArgs,
-): Promise<void> {
+): Promise<ThreadExecutionOverride> {
   const { thread, patch } = args;
 
   const models = await loadThreadProviderModels(deps, thread);
@@ -154,16 +175,32 @@ export async function applyThreadExecutionOverride(
     reasoningLevelOverride: null,
   };
 
-  const next = resolveThreadExecutionOverrideUpdate(deps.providerRegistry, {
+  return resolveThreadExecutionOverrideUpdate(deps.providerRegistry, {
     existing,
     patch,
     models,
     providerId: thread.providerId,
     fallbackModel: resolveFallbackModel(deps, thread),
   });
+}
+
+export async function applyThreadExecutionOverride(
+  deps: LoggedWorkSessionDeps,
+  args: ApplyThreadExecutionOverrideArgs,
+): Promise<void> {
+  await withThreadExecutionOverrideMutation(args.thread.id, () =>
+    applyThreadExecutionOverrideUnlocked(deps, args),
+  );
+}
+
+async function applyThreadExecutionOverrideUnlocked(
+  deps: LoggedWorkSessionDeps,
+  args: ApplyThreadExecutionOverrideArgs,
+): Promise<void> {
+  const next = await resolveThreadExecutionOverrideForThread(deps, args);
 
   setThreadExecutionOverride(deps.db, {
-    threadId: thread.id,
+    threadId: args.thread.id,
     modelOverride: next.modelOverride,
     reasoningLevelOverride: next.reasoningLevelOverride,
   });
@@ -179,20 +216,24 @@ export async function recoverThreadModelOverride(
   deps: LoggedWorkSessionDeps,
   args: RecoverThreadModelOverrideArgs,
 ): Promise<void> {
-  const existing = getThreadExecutionOverride(deps.db, args.thread.id);
-  if (
-    args.model === undefined ||
-    args.modelSource !== "explicit" ||
-    existing?.modelOverride === null ||
-    existing?.modelOverride === undefined ||
-    existing.modelOverride === args.model
-  ) {
+  if (args.model === undefined || args.modelSource !== "explicit") {
     return;
   }
 
-  await applyThreadExecutionOverride(deps, {
-    thread: args.thread,
-    patch: { model: args.model },
+  await withThreadExecutionOverrideMutation(args.thread.id, async () => {
+    const existing = getThreadExecutionOverride(deps.db, args.thread.id);
+    if (
+      existing?.modelOverride === null ||
+      existing?.modelOverride === undefined ||
+      existing.modelOverride === args.model
+    ) {
+      return;
+    }
+
+    await applyThreadExecutionOverrideUnlocked(deps, {
+      thread: args.thread,
+      patch: { model: args.model },
+    });
   });
 }
 

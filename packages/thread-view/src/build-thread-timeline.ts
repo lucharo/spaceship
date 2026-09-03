@@ -470,6 +470,25 @@ function relativizeWorkspacePath(
   return path;
 }
 
+function relativizeWorkspacePathsInIdentifier(
+  identifier: string,
+  workspaceRoot: string | null,
+): string {
+  if (!workspaceRoot) return identifier;
+  const normalizedRoot = workspaceRoot.replace(/\/+$/u, "");
+  if (normalizedRoot.length === 0) return identifier;
+  const workspacePrefix = `${normalizedRoot}/`;
+  const parts = identifier.split(workspacePrefix);
+
+  // Tag both source forms so a literal identifier cannot impersonate the
+  // redacted representation of an absolute workspace path.
+  return `workspace-id:${JSON.stringify(
+    parts.length === 1
+      ? ["literal", identifier]
+      : ["workspace-absolute", parts],
+  )}`;
+}
+
 function toTimelineFileChange(
   change: EventProjectionFileEditChange,
   workspaceRoot: string | null,
@@ -653,7 +672,10 @@ function convertMessage(
         const base = buildTimelineRowBase(message, options.rowIdPrefix);
         return {
           ...base,
-          id: `${base.id}:file-change:${index}`,
+          id: `${relativizeWorkspacePathsInIdentifier(
+            base.id,
+            options.workspaceRoot,
+          )}:file-change:${index}`,
           kind: "work",
           workKind: "file-change",
           status: message.status,

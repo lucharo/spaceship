@@ -32,7 +32,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
-import { initAnalytics, trackLandingEvent } from "../landing/analytics";
 import blackstoneLogo from "../assets/company-logos/blackstone.png";
 import datadogLogo from "../assets/company-logos/datadog.svg";
 import figmaLogo from "../assets/company-logos/figma.svg";
@@ -147,9 +146,6 @@ export const Route = createFileRoute("/")({
 });
 
 function LandingRoute() {
-  useEffect(() => {
-    initAnalytics();
-  }, []);
   return <LandingPage />;
 }
 
@@ -183,12 +179,6 @@ const AppleSolidIcon: IconSvgElement = [
 function RunCommandButton({ placement }: { placement: CtaPlacement }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
-    // Track and show feedback first; the clipboard write can reject (no user
-    // activation, permissions) and must not swallow the event.
-    trackLandingEvent({
-      name: "landing_cli_command_copied",
-      properties: { placement, command: CLI_COMMAND },
-    });
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
     navigator.clipboard.writeText(CLI_COMMAND).catch(() => {});

@@ -578,6 +578,129 @@ describe("@bb/sdk", () => {
     ]);
   });
 
+  it("lists provider-native sessions without requesting transcript content", async () => {
+    const queue = createFetchQueue([
+      {
+        body: {
+          sessions: [
+            {
+              providerThreadId: "native-1",
+              title: "Release checklist",
+              cwd: "/workspace",
+              createdAt: 1_777_000_000,
+              updatedAt: 1_777_000_100,
+              archived: false,
+              source: "cli",
+            },
+          ],
+          nextCursor: null,
+          backwardsCursor: null,
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.providers.nativeSessions("codex", {
+        archived: false,
+        hostId: "host_remote",
+        limit: 25,
+        searchTerm: "release",
+      }),
+    ).resolves.toMatchObject({
+      sessions: [{ providerThreadId: "native-1" }],
+    });
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/system/providers/codex/native-sessions?archived=false&limit=25&searchTerm=release&hostId=host_remote",
+      },
+    ]);
+  });
+
+  it("adopts a provider-native session into an existing environment", async () => {
+    const queue = createFetchQueue([
+      {
+        body: {
+          created: true,
+          thread: {
+            id: "thr_1",
+            projectId: "proj_1",
+            environmentId: "env_1",
+            providerId: "codex",
+          },
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.adoptNative({
+      hostId: "host_1",
+      projectId: "proj_1",
+      environmentId: "env_1",
+      providerId: "codex",
+      providerThreadId: "native-1",
+    });
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({
+          hostId: "host_1",
+          projectId: "proj_1",
+          environmentId: "env_1",
+          providerId: "codex",
+          providerThreadId: "native-1",
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/adopt-native",
+      },
+    ]);
+  });
+
+  it("archives a provider-native session without adopting it", async () => {
+    const queue = createFetchQueue([{ body: { ok: true } }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.archiveNative({
+        hostId: "host_1",
+        providerId: "codex",
+        providerThreadId: "native-1",
+      }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({
+          hostId: "host_1",
+          providerId: "codex",
+          providerThreadId: "native-1",
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/archive-native",
+      },
+    ]);
+  });
+
   it("targets provider usage at an explicit machine", async () => {
     const usage = {
       codex: { status: "unauthenticated" as const },

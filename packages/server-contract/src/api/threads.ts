@@ -160,6 +160,41 @@ export const createThreadRequestSchema = z
   });
 export type CreateThreadRequest = z.infer<typeof createThreadRequestSchema>;
 
+export const adoptNativeThreadRequestSchema = z
+  .object({
+    hostId: z.string().min(1),
+    projectId: z.string().min(1).optional(),
+    environmentId: z.string().min(1).optional(),
+    providerId: z.string().min(1),
+    providerThreadId: z.string().min(1),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (
+      (value.projectId === undefined) !==
+      (value.environmentId === undefined)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "projectId and environmentId must be provided together",
+      });
+    }
+  });
+export type AdoptNativeThreadRequest = z.infer<
+  typeof adoptNativeThreadRequestSchema
+>;
+
+export const archiveNativeThreadRequestSchema = z
+  .object({
+    hostId: z.string().min(1),
+    providerId: z.string().min(1),
+    providerThreadId: z.string().min(1),
+  })
+  .strict();
+export type ArchiveNativeThreadRequest = z.infer<
+  typeof archiveNativeThreadRequestSchema
+>;
+
 const agentOnlyPromptInputSchema = promptInputSchema.and(
   z.object({ visibility: z.literal("agent-only") }),
 );
@@ -398,6 +433,16 @@ export const threadResponseSchema = threadWithRuntimeSchema.extend({
   canSpawnChild: z.boolean(),
 });
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;
+
+export const adoptNativeThreadResponseSchema = z
+  .object({
+    created: z.boolean(),
+    thread: threadResponseSchema,
+  })
+  .strict();
+export type AdoptNativeThreadResponse = z.infer<
+  typeof adoptNativeThreadResponseSchema
+>;
 
 export const threadIncludeOptionSchema = z.enum(["environment", "host"]);
 export type ThreadIncludeOption = z.infer<typeof threadIncludeOptionSchema>;
@@ -826,6 +871,10 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
 
 export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
+  /** True when rows are a live projection of provider-native history rather
+   * than persisted BB events. Sequence-addressed mutation actions are unsafe
+   * for these rows and clients must keep them read-only. */
+  nativeHistoryProjection: z.boolean().optional(),
   activePromptMode: threadTimelineActivePromptModeSchema.nullable(),
   activeThinking: activeThinkingSchema.nullable(),
   /** Running workflows, most recently started first. */
@@ -869,13 +918,15 @@ export type ThreadConversationOutlineAttachmentSummary = z.infer<
  * A single conversation message in the thread's full table-of-contents
  * outline. `id` matches the corresponding timeline row id (both are projected
  * by the same builder), so the minimap can scroll-spy and jump to a row once
- * it is paginated into the loaded window. `preview` is already whitespace-
- * normalized and length-clamped server-side to keep the payload small for
- * very long threads.
+ * it is paginated into the loaded window. `sourceSeq` lets the timeline expand
+ * collapsed ancestors before that row is mounted. `preview` is already
+ * whitespace-normalized and length-clamped server-side to keep the payload
+ * small for very long threads.
  */
 export const threadConversationOutlineItemSchema = z
   .object({
     id: z.string().min(1),
+    sourceSeq: z.number().int().nonnegative().optional(),
     role: z.enum(["user", "assistant"]),
     preview: z.string(),
     attachmentSummary:

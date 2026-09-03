@@ -1,6 +1,6 @@
 /**
  * The narrow-grammar `thread/delta` notification: the protocol's one and only
- * timeline lane (protocol version 2, grammar v3).
+ * timeline lane (protocol version 3, grammar v3).
  *
  * A bridge emits parsed *semantic deltas* instead of finished `ThreadEvent`s:
  * the runtime's delta assembler owns turn/item id minting, accepted-input
@@ -29,6 +29,7 @@ import {
   clientTurnRequestIdSchema,
   extensionKindSchema,
   jsonValueSchema,
+  promptInputSchema,
   providerErrorCategorySchema,
   providerErrorInfoSchema,
   providerRateLimitStateSchema,
@@ -424,11 +425,22 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
    * appended it to its own context without running the agent, so there is no
    * bb turn to attach it to.
    */
-  z.object({
-    kind: z.literal("input.provider"),
-    text: z.string().min(1),
-    parentRef: deltaKeyPartSchema.optional(),
-  }),
+  z
+    .object({
+      kind: z.literal("input.provider"),
+      text: z.string().min(1).optional(),
+      content: z.array(promptInputSchema).min(1).optional(),
+      providerTurnId: providerTurnIdSchema.optional(),
+      parentRef: deltaKeyPartSchema.optional(),
+    })
+    .superRefine((value, ctx) => {
+      if (value.text === undefined && value.content === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "provider input requires text or content",
+        });
+      }
+    }),
 
   /**
    * An explicit provider signal opened work (pi `agent_start`, codex

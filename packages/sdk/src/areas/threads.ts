@@ -14,6 +14,9 @@ import { threadTabsResponseSchema } from "@bb/server-contract";
 import type {
   CreateQueuedMessageRequest,
   CreateThreadRequest,
+  AdoptNativeThreadRequest,
+  AdoptNativeThreadResponse,
+  ArchiveNativeThreadRequest,
   EditMessageRequest,
   EditMessageResponse,
   ForkThreadRequest,
@@ -105,6 +108,7 @@ export interface ThreadOutputResponse {
   output: string | null;
 }
 export type ThreadMutationResult = ThreadResponse;
+export type ThreadAdoptNativeResult = AdoptNativeThreadResponse;
 export type ThreadSpawnResult = ThreadResponse;
 export type ThreadForkResult = ThreadResponse;
 export type ThreadInteractionGetResult = PendingInteraction;
@@ -429,6 +433,8 @@ export interface ThreadTabsArea {
 }
 
 export interface ThreadsArea {
+  adoptNative(args: AdoptNativeThreadRequest): Promise<ThreadAdoptNativeResult>;
+  archiveNative(args: ArchiveNativeThreadRequest): Promise<{ ok: true }>;
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
@@ -889,6 +895,16 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
     },
   };
   return {
+    async adoptNative(input) {
+      return transport.readJson(
+        transport.api.v1.threads["adopt-native"].$post({ json: input }),
+      );
+    },
+    async archiveNative(input) {
+      return transport.readJson(
+        transport.api.v1.threads["archive-native"].$post({ json: input }),
+      );
+    },
     async archive(input) {
       // Match the UI: archiving a parent also archives assigned children and
       // source-derived side chats via the cascade archive-all route.

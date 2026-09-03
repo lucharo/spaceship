@@ -689,9 +689,11 @@ export function ThreadDetailPromptArea({
     isLoadingModels,
     modelLoadFailed,
     modelLoadError,
+    modelCatalogIsVerified,
     reasoningOptions,
     permissionModeOptions,
     supportsPermissionModeSelection,
+    permissionModeIsVerified,
     supportsServiceTier,
     serviceTierSupportByProvider,
     serviceTierFastLabel,
@@ -721,6 +723,13 @@ export function ThreadDetailPromptArea({
   const effectiveSelectedModel = isFallbackModelActive
     ? modelFallback.fallbackModel
     : (activeModel?.model ?? selectedModel);
+  const canSubmitVisibleExecutionSelection =
+    !defaultExecutionOptionsQuery.isError &&
+    (hasConcreteDefaultExecutionOptions ||
+      (verifiedDefaultExecutionOptions === null &&
+        modelCatalogIsVerified &&
+        permissionModeIsVerified &&
+        effectiveSelectedModel.length > 0));
   const handleModelChange = useCallback(
     (model: string) => {
       if (fallbackIdentity !== null) {
@@ -842,7 +851,7 @@ export function ThreadDetailPromptArea({
     submitModeKind: submitMode.kind,
   });
   const followUpExecutionSelection = useMemo<FollowUpExecutionSelection>(() => {
-    if (!hasConcreteDefaultExecutionOptions) {
+    if (!canSubmitVisibleExecutionSelection) {
       return null;
     }
     return {
@@ -851,9 +860,20 @@ export function ThreadDetailPromptArea({
       serviceTier,
       reasoningLevel,
       permissionMode,
-      executionInputSources,
+      executionInputSources: hasConcreteDefaultExecutionOptions
+        ? executionInputSources
+        : {
+            ...executionInputSources,
+            model: "explicit",
+            permissionMode: "explicit",
+            reasoningLevel: "explicit",
+            ...(supportsServiceTier && serviceTier
+              ? { serviceTier: "explicit" as const }
+              : {}),
+          },
     };
   }, [
+    canSubmitVisibleExecutionSelection,
     effectiveSelectedModel,
     executionInputSources,
     hasConcreteDefaultExecutionOptions,
@@ -1234,14 +1254,14 @@ export function ThreadDetailPromptArea({
 
   const bottomPermissionConfig = useMemo(
     () => ({
-      value: hasConcreteDefaultExecutionOptions ? permissionMode : undefined,
-      options: hasConcreteDefaultExecutionOptions ? permissionModeOptions : [],
+      value: canSubmitVisibleExecutionSelection ? permissionMode : undefined,
+      options: canSubmitVisibleExecutionSelection ? permissionModeOptions : [],
       onChange: setPermissionMode,
       supported:
-        hasConcreteDefaultExecutionOptions && supportsPermissionModeSelection,
+        canSubmitVisibleExecutionSelection && supportsPermissionModeSelection,
     }),
     [
-      hasConcreteDefaultExecutionOptions,
+      canSubmitVisibleExecutionSelection,
       permissionMode,
       permissionModeOptions,
       setPermissionMode,

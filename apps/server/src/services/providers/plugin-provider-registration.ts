@@ -160,7 +160,13 @@ export function buildPluginProviderRegistration(args: {
   // provider), so it always leads; declared actions carry the composer's own
   // fixed command syntax, identical to the core catalog entries.
   const composerActions: ProviderComposerAction[] = [
-    { kind: "skills", trigger: "/" },
+    {
+      kind: "skills",
+      trigger: "/",
+      ...(declaration.experimental_skillCommandAliases.length === 0
+        ? {}
+        : { aliases: [...declaration.experimental_skillCommandAliases] }),
+    },
   ];
   for (const action of declaration.composerActions) {
     composerActions.push(
@@ -184,9 +190,7 @@ export function buildPluginProviderRegistration(args: {
     id: declaration.id,
     pluginId: args.pluginId,
     displayName: declaration.displayName,
-    ...(declaration.family === undefined
-      ? {}
-      : { family: declaration.family }),
+    ...(declaration.family === undefined ? {} : { family: declaration.family }),
     available: args.available,
     maintenance: { ...declaration.maintenance },
     // Served by the provider-logo route from the icon byte snapshot on the
@@ -208,6 +212,9 @@ export function buildPluginProviderRegistration(args: {
       ? { icon: { glyph: declaration.icon } }
       : {}),
     capabilities: {
+      ...(capabilities.experimental_supportsNativeSessionHistory
+        ? { experimental_supportsNativeSessionHistory: true }
+        : {}),
       supportsThreadArchive,
       supportsThreadRename,
       supportsServiceTier,
@@ -252,6 +259,8 @@ export function buildPluginProviderRegistration(args: {
     reasoningLevels: [...capabilities.reasoningLevels],
     fork: capabilities.fork,
     supportsManualCompaction: capabilities.supportsManualCompaction,
+    supportsNativeSessionHistory:
+      capabilities.experimental_supportsNativeSessionHistory ?? false,
   };
 
   return {

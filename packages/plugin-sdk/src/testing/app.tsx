@@ -810,6 +810,7 @@ const testPluginSdkApp = {
   experimental_useCodeTheme(): PluginCodeThemeState {
     return useSlotEnv("experimental_useCodeTheme").codeTheme;
   },
+  experimental_NativeSessionThreadList: () => null,
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions {
     return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;
   },

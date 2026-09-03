@@ -305,6 +305,35 @@ afterEach(() => {
 });
 
 describe("useThreadCreationOptions", () => {
+  it("can restrict new-thread creation to the native Codex provider", async () => {
+    const response = executionOptionsResponse();
+    const codex = rememberedProviders()[0];
+    if (codex === undefined) throw new Error("missing codex fixture");
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue({
+      ...response,
+      providers: [codex, ...response.providers],
+    });
+
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "new-thread",
+          allowedProviderIds: ["codex"],
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isLoadingModels).toBe(false));
+    expect(result.current.selectedProviderId).toBe("codex");
+    expect(
+      result.current.providerOptions.map((option) => option.value),
+    ).toEqual(["codex"]);
+    expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: "codex" }),
+    );
+  });
+
   it("keeps the selected remembered provider branded while models load", () => {
     window.localStorage.setItem("bb.promptbox.provider", "codex");
     // The app vendors no roster: the provider list this routing last
@@ -330,21 +359,39 @@ describe("useThreadCreationOptions", () => {
     ).toBeDefined();
   });
 
-  it("does not switch away from a provider when its failed plugin response arrives", async () => {
+  it("removes an unavailable provider from the new-thread picker", async () => {
     window.localStorage.setItem("bb.promptbox.provider", "codex");
     writeCachedProviderList(
       providerListCacheKey({ environmentId: null, hostId: null }),
       rememberedProviders(),
     );
-    let resolveOptions: (
-      value: SystemExecutionOptionsResponse,
-    ) => void = () => {};
-    const optionsPromise = new Promise<SystemExecutionOptionsResponse>(
-      (resolve) => {
-        resolveOptions = resolve;
-      },
+    const base = executionOptionsResponse();
+    const templateProvider = base.providers[0];
+    if (templateProvider === undefined) {
+      throw new Error("execution-options fixture has no provider");
+    }
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      args?.providerId === "codex"
+        ? {
+            ...base,
+            providers: [
+              {
+                ...templateProvider,
+                id: "codex",
+                pluginId: "provider-codex",
+                displayName: "Codex",
+                available: false,
+              },
+              ...base.providers,
+            ],
+            models: [],
+            modelLoadError: {
+              providerId: "codex",
+              code: "provider_unavailable",
+            },
+          }
+        : base,
     );
-    vi.mocked(sdk.system.executionOptions).mockReturnValue(optionsPromise);
     const { result } = renderHook(
       () => useThreadCreationOptions({ scope: "new-thread" }),
       { wrapper: createQueryClientTestHarness().wrapper },
@@ -354,42 +401,20 @@ describe("useThreadCreationOptions", () => {
     });
     expect(result.current.selectedProviderId).toBe("codex");
 
-    const base = executionOptionsResponse();
-    const templateProvider = base.providers[0];
-    if (templateProvider === undefined) {
-      throw new Error("execution-options fixture has no provider");
-    }
-    act(() => {
-      resolveOptions({
-        ...base,
-        providers: [
-          {
-            ...templateProvider,
-            id: "codex",
-            pluginId: "provider-codex",
-            displayName: "Codex",
-            available: false,
-          },
-          ...base.providers,
-        ],
-        models: [],
-        modelLoadError: {
-          providerId: "codex",
-          code: "provider_unavailable",
-        },
-      });
-    });
-
     await waitFor(() => {
-      expect(result.current.selectedProviderId).toBe("codex");
-      expect(result.current.modelLoadError).toEqual({
-        providerId: "codex",
-        code: "provider_unavailable",
-      });
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+      expect(result.current.selectedModel).toBe("global-model");
+      expect(result.current.modelLoadError).toBeNull();
       expect(
         result.current.providerOptions.map((option) => option.value),
-      ).toContain("codex");
+      ).not.toContain("codex");
     });
+    expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: "codex" }),
+    );
+    expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ providerId: GLOBAL_PROVIDER_ID }),
+    );
   });
 
   it("uses the medium product default for providers without reasoning history", async () => {

@@ -94,7 +94,8 @@ const EMPTY_PROVIDER_CLI_FAILURES: ReadonlyMap<
   string,
   ProviderCliInstallFailure
 > = new Map();
-const CHANGELOG_URL = "https://getbb.app/changelog";
+const CHANGELOG_URL =
+  "https://github.com/lucharo/spaceship/blob/main/CHANGELOG.md";
 const CHANGELOG_STALE_TIME_MS = 5 * 60_000;
 const CHANGELOG_DISMISSED_VERSION_STORAGE_KEY =
   "bb.settings.updates.dismissed-changelog-version";
@@ -248,9 +249,7 @@ function UpdatesRow({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(ROW_GRID, ROW_SPACING, "text-sm", className)}
-    >
+    <div className={cn(ROW_GRID, ROW_SPACING, "text-sm", className)}>
       <span className="flex size-6 shrink-0 items-center justify-center">
         {leading}
       </span>
@@ -716,7 +715,7 @@ export function ChangelogPreviewCard() {
                   variant="ghost"
                   size="icon"
                   className="size-7 text-muted-foreground hover:text-foreground"
-                  aria-label={`Dismiss bb ${entry.version} changelog preview`}
+                  aria-label={`Dismiss Spaceship ${entry.version} changelog preview`}
                   onClick={() => {
                     rawStringLocalStorage.setItem(
                       CHANGELOG_DISMISSED_VERSION_STORAGE_KEY,
@@ -799,10 +798,10 @@ export function ChangelogPreviewCard() {
               <button
                 type="button"
                 disabled={!releaseVisible}
-                aria-label={`Open the full bb ${entry.version} changelog`}
+                aria-label={`Open the full Spaceship ${entry.version} changelog`}
                 onClick={() =>
                   openUrlInExternalBrowser(
-                    `${CHANGELOG_URL}#${entry.version.replaceAll(".", "-")}`,
+                    `${CHANGELOG_URL}#${entry.version.replaceAll(".", "")}`,
                   )
                 }
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-sm text-xs font-semibold text-background underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-background"
@@ -1668,7 +1667,9 @@ export function UpdatesSettingsSection({
                 onStartInstall={(hostId, issue) =>
                   startInstall({ hostId, issue })
                 }
-                onOpenProvider={() => navigate(getSettingsRoutePath("providers"))}
+                onOpenProvider={() =>
+                  navigate(getSettingsRoutePath("providers"))
+                }
               />
             </MachineUpdatesSection>
           );

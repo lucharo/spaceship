@@ -631,6 +631,61 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       bridgeLaunch,
     });
   },
+  "provider.native_sessions.list": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return options.listNativeSessions({
+      providerId: command.providerId,
+      bridgeLaunch,
+      archived: command.archived,
+      ...(command.cursor !== undefined ? { cursor: command.cursor } : {}),
+      ...(command.limit !== undefined ? { limit: command.limit } : {}),
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+      ...(command.searchTerm !== undefined
+        ? { searchTerm: command.searchTerm }
+        : {}),
+    });
+  },
+  "provider.native_sessions.read": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return options.readNativeSession({
+      providerId: command.providerId,
+      bridgeLaunch,
+      providerThreadId: command.providerThreadId,
+    });
+  },
+  "provider.native_sessions.archive": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    await options.archiveNativeSession({
+      providerId: command.providerId,
+      bridgeLaunch,
+      providerThreadId: command.providerThreadId,
+    });
+    return {};
+  },
+  "provider.native_sessions.history": async (command, options) => {
+    if (options.readNativeSessionHistory === undefined) {
+      throw new Error("Native session history is unavailable");
+    }
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return options.readNativeSessionHistory({
+      providerId: command.providerId,
+      bridgeLaunch,
+      providerThreadId: command.providerThreadId,
+      threadId: command.threadId,
+    });
+  },
   "provider.health": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,

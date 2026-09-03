@@ -18,6 +18,7 @@ export interface TocItem {
   id: string;
   label: string;
   role: "user" | "assistant";
+  sourceSeq?: number;
 }
 
 type TocTab = "user" | "agent";
@@ -39,7 +40,7 @@ interface ThreadTableOfContentsProps {
   /** Loads the next older timeline page; awaited while jumping to an unloaded row. */
   loadOlderTimelineRows: () => void | Promise<void>;
   /** Lets timeline windowing mount an offscreen destination before scrolling. */
-  onNavigateToRow?: (rowId: string) => void;
+  onNavigateToRow?: (rowId: string, sourceSeq?: number) => void | (() => void);
 }
 
 // Matches `@container scroll-overlay (min-width: 56rem)` in app.css.
@@ -56,6 +57,8 @@ const TOC_ACTIVE_UPDATE_IDLE_MS = 120;
 const TOC_JUMP_MAX_PAGE_LOADS = 1000;
 // Frames to wait for prepended rows to commit before paginating again.
 const TOC_JUMP_RENDER_FRAMES = 6;
+// A failed lazy-details request must not leave the outline busy forever.
+const TOC_JUMP_MOUNT_TIMEOUT_MS = 15_000;
 function toPreviewLabel(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
@@ -101,6 +104,7 @@ function outlineItemToTocItem(item: ThreadConversationOutlineItem): TocItem {
     id: item.id,
     label: item.preview || toAttachmentSummaryLabel(item.attachmentSummary),
     role: item.role,
+    sourceSeq: item.sourceSeq,
   };
 }
 
@@ -276,6 +280,7 @@ function useConversationTocItems({
         id: row.id,
         label: toTocLabel({ attachments: row.attachments, text: row.text }),
         role: row.role,
+        sourceSeq: row.sourceSeqStart,
       };
       if (row.role === "user") {
         userItems.push(item);
@@ -383,6 +388,61 @@ function waitForAnimationFrame(): Promise<void> {
     }
     window.requestAnimationFrame(() => resolve());
   });
+}
+
+function waitForTimelineRowElement({
+  rowId,
+  scrollElement,
+  signal,
+}: {
+  rowId: string;
+  scrollElement: HTMLElement | null;
+  signal: AbortSignal;
+}): Promise<HTMLElement | null> {
+  const existing = findTimelineRowElement(scrollElement, rowId);
+  if (existing || !scrollElement || signal.aborted) {
+    return Promise.resolve(existing);
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let timeoutId: number | null = null;
+    const finish = (row: HTMLElement | null) => {
+      if (settled) return;
+      settled = true;
+      observer.disconnect();
+      signal.removeEventListener("abort", handleAbort);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      resolve(row);
+    };
+    const handleAbort = () => finish(null);
+    const observer = new MutationObserver(() => {
+      const row = findTimelineRowElement(scrollElement, rowId);
+      if (row) finish(row);
+    });
+
+    signal.addEventListener("abort", handleAbort, { once: true });
+    observer.observe(scrollElement, { childList: true, subtree: true });
+    timeoutId = window.setTimeout(
+      () => finish(null),
+      TOC_JUMP_MOUNT_TIMEOUT_MS,
+    );
+    // Close the gap between the first lookup and observer registration.
+    const mounted = findTimelineRowElement(scrollElement, rowId);
+    if (mounted) finish(mounted);
+  });
+}
+
+function timelineRowsContainSequence(
+  rows: readonly TimelineRow[],
+  sourceSeq: number | undefined,
+): boolean {
+  return (
+    sourceSeq !== undefined &&
+    rows.some(
+      (row) => row.sourceSeqStart <= sourceSeq && sourceSeq <= row.sourceSeqEnd,
+    )
+  );
 }
 
 function isScrollElementNearBottom(scrollElement: HTMLElement): boolean {
@@ -554,7 +614,11 @@ export function ThreadTableOfContents({
   const [tab, setTab] = useState<TocTab>("user");
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
-  const [pendingJumpId, setPendingJumpId] = useState<string | null>(null);
+  const [pendingJump, setPendingJump] = useState<{
+    rowId: string;
+    scope: symbol;
+  } | null>(null);
+  const navigationScope = useMemo(() => Symbol(threadId), [threadId]);
   const {
     aboveOverflow,
     belowOverflow,
@@ -582,17 +646,18 @@ export function ThreadTableOfContents({
   hasOlderRef.current = hasOlderTimelineRows;
   const loadOlderRef = useRef(loadOlderTimelineRows);
   loadOlderRef.current = loadOlderTimelineRows;
-  const jumpInProgressRef = useRef(false);
-  // Switching threads remounts this component (PageShell is keyed by threadId).
-  // The jump loop checks this after each await so it stops paginating a thread
-  // the user has already left instead of firing requests against a stale closure.
-  const mountedRef = useRef(true);
+  const timelineRowsRef = useRef(timelineRows);
   useEffect(() => {
-    mountedRef.current = true;
+    timelineRowsRef.current = timelineRows;
+  }, [timelineRows]);
+  const activeJumpAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    activeJumpAbortRef.current?.abort();
+    activeJumpAbortRef.current = null;
     return () => {
-      mountedRef.current = false;
+      activeJumpAbortRef.current?.abort();
     };
-  }, []);
+  }, [threadId]);
 
   useEffect(() => {
     if (!tocVisible) return;
@@ -663,7 +728,8 @@ export function ThreadTableOfContents({
   }, [activeId, open, scrollRef, tocVisible]);
 
   const handleSelect = useCallback(
-    async (id: string) => {
+    async (item: TocItem) => {
+      const { id, sourceSeq } = item;
       const getScrollElement = () => bottomAnchor?.getScrollElement() ?? null;
       const scrollToRow = (element: HTMLElement) => {
         bottomAnchor?.scrollElementIntoView({
@@ -671,22 +737,47 @@ export function ThreadTableOfContents({
           options: { block: "start", inline: "nearest" },
         });
       };
-      onNavigateToRow?.(id);
+      activeJumpAbortRef.current?.abort();
+      setPendingJump(null);
+      const jumpAbort = new AbortController();
+      activeJumpAbortRef.current = jumpAbort;
+      const settleNavigation = onNavigateToRow?.(id, sourceSeq);
 
       let row = findTimelineRowElement(getScrollElement(), id);
       if (row) {
-        scrollToRow(row);
+        try {
+          scrollToRow(row);
+        } finally {
+          settleNavigation?.();
+          if (activeJumpAbortRef.current === jumpAbort) {
+            activeJumpAbortRef.current = null;
+          }
+        }
         return;
       }
-      // The target message hasn't been paginated into the loaded window yet.
-      // Page older windows in until it appears (or history is exhausted), then
-      // scroll to it.
-      if (jumpInProgressRef.current) return;
-      jumpInProgressRef.current = true;
-      setPendingJumpId(id);
+      setPendingJump({ rowId: id, scope: navigationScope });
       try {
         let loads = 0;
-        while (!row && hasOlderRef.current && loads < TOC_JUMP_MAX_PAGE_LOADS) {
+        let waitedForMountedRow = false;
+        while (!row && !jumpAbort.signal.aborted) {
+          // A nested row can require an asynchronous turn-summary-details
+          // request after its collapsed ancestor opens. Once its source
+          // sequence is in the loaded window, observe the DOM until that row
+          // actually mounts instead of guessing how many render frames it
+          // needs. The observer is cancelled by another jump or thread change.
+          if (
+            !hasOlderRef.current ||
+            timelineRowsContainSequence(timelineRowsRef.current, sourceSeq)
+          ) {
+            waitedForMountedRow = true;
+            row = await waitForTimelineRowElement({
+              rowId: id,
+              scrollElement: getScrollElement(),
+              signal: jumpAbort.signal,
+            });
+            break;
+          }
+          if (loads >= TOC_JUMP_MAX_PAGE_LOADS) break;
           loads += 1;
           try {
             await Promise.resolve(loadOlderRef.current());
@@ -698,27 +789,45 @@ export function ThreadTableOfContents({
             // call as an unhandled rejection.
             break;
           }
-          if (!mountedRef.current) return;
+          if (jumpAbort.signal.aborted) return;
           // Wait for the prepended rows to commit, retrying across a few frames
-          // before deciding the row is in an even older page.
+          // before deciding the target sequence is in an even older page. Once
+          // its containing row is loaded, the DOM observer owns the remaining
+          // lazy-details wait.
           for (let frame = 0; frame < TOC_JUMP_RENDER_FRAMES && !row; frame++) {
             await waitForAnimationFrame();
-            if (!mountedRef.current) return;
+            if (jumpAbort.signal.aborted) return;
             row = findTimelineRowElement(getScrollElement(), id);
+            if (
+              timelineRowsContainSequence(timelineRowsRef.current, sourceSeq)
+            ) {
+              break;
+            }
           }
         }
-        // If the row still isn't loaded after exhausting older pages the jump is
-        // a no-op. Outline ids are projected by the same builder as timeline
-        // rows, so a visible-but-unreachable entry is effectively impossible; we
-        // fail silently rather than surface an error for a row the user sees.
-        if (!row) row = findTimelineRowElement(getScrollElement(), id);
+        if (
+          !row &&
+          !waitedForMountedRow &&
+          !jumpAbort.signal.aborted &&
+          timelineRowsContainSequence(timelineRowsRef.current, sourceSeq)
+        ) {
+          row = await waitForTimelineRowElement({
+            rowId: id,
+            scrollElement: getScrollElement(),
+            signal: jumpAbort.signal,
+          });
+        }
         if (row) scrollToRow(row);
       } finally {
-        jumpInProgressRef.current = false;
-        setPendingJumpId(null);
+        jumpAbort.abort();
+        settleNavigation?.();
+        if (activeJumpAbortRef.current === jumpAbort) {
+          activeJumpAbortRef.current = null;
+          setPendingJump(null);
+        }
       }
     },
-    [bottomAnchor, onNavigateToRow],
+    [bottomAnchor, navigationScope, onNavigateToRow],
   );
 
   if (userItems.length < TOC_MIN_USER_MESSAGES) {
@@ -803,7 +912,9 @@ export function ThreadTableOfContents({
                     <ul className="flex flex-col">
                       {items.map((item) => {
                         const active = item.id === activeId;
-                        const pending = item.id === pendingJumpId;
+                        const pending =
+                          pendingJump?.scope === navigationScope &&
+                          item.id === pendingJump.rowId;
                         return (
                           <li key={item.id}>
                             <button
@@ -814,7 +925,7 @@ export function ThreadTableOfContents({
                               type="button"
                               aria-busy={pending}
                               onClick={() => {
-                                void handleSelect(item.id);
+                                void handleSelect(item);
                               }}
                               className={cn(
                                 "flex w-full cursor-pointer rounded-md px-2 py-1.5 text-left transition-colors",

@@ -96,6 +96,23 @@ const pluginSdkRuntimePath = join(
 );
 const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
 
+const PLUGIN_SDK_RUNTIME_SUBPATHS = [
+  "ai-services",
+  "provider-bridge",
+  "provider-bridge/testing",
+  "provider-bridge/acp",
+  "app",
+  "host",
+  "internal/composer-customization-validation",
+  "internal/composer-view",
+  "internal/file-navigation-validation",
+  "internal/host-policy",
+  "internal/plugin-app-collector",
+  "testing",
+  "testing/app",
+  "testing/host",
+] as const;
+
 /**
  * Legacy alias for {@link PLUGIN_SDK_SPECIFIER}, kept so plugin server
  * artifacts built before the rename — and pre-rename plugin sources — still
@@ -103,6 +120,12 @@ const PLUGIN_SDK_SPECIFIER = "@get-bb/plugin-sdk";
  * migration window closes.
  */
 const LEGACY_PLUGIN_SDK_SPECIFIER = "@bb/plugin-sdk";
+
+const pluginRuntimeRequire = createRequire(import.meta.url);
+
+function resolvePluginSdkSubpath(specifier: string): string {
+  return pluginRuntimeRequire.resolve(specifier);
+}
 
 async function hashFile(
   path: string,
@@ -117,11 +140,28 @@ async function hashFile(
 }
 
 /** Internal export for focused tests; not part of the service surface. */
-export function pluginSdkAliasFor(runtimePath: string): Record<string, string> {
-  return {
+export function pluginSdkAliasFor(
+  runtimePath: string,
+  resolveSpecifier: (specifier: string) => string = resolvePluginSdkSubpath,
+): Record<string, string> {
+  const alias: Record<string, string> = {
     [PLUGIN_SDK_SPECIFIER]: runtimePath,
     [LEGACY_PLUGIN_SDK_SPECIFIER]: runtimePath,
   };
+
+  for (const subpath of PLUGIN_SDK_RUNTIME_SUBPATHS) {
+    const specifier = `${PLUGIN_SDK_SPECIFIER}/${subpath}`;
+    try {
+      const resolved = resolveSpecifier(specifier);
+      alias[specifier] = resolved;
+      alias[`${LEGACY_PLUGIN_SDK_SPECIFIER}/${subpath}`] = resolved;
+    } catch {
+      // Packaged plugin bundles inline SDK subpaths, so a packaged server may
+      // legitimately have only the bare runtime bundle available.
+    }
+  }
+
+  return alias;
 }
 
 const pluginSdkAlias: Record<string, string> | undefined = existsSync(
@@ -1603,13 +1643,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ...declaration,
           pluginId: row.id,
           completeInference: async (input, options) =>
-            experimental_aiServicesHostContract["ai.inference.complete"].output.parse(
-              await call("ai.inference.complete", input, options),
-            ),
+            experimental_aiServicesHostContract[
+              "ai.inference.complete"
+            ].output.parse(await call("ai.inference.complete", input, options)),
           transcribeVoice: async (input, options) =>
-            experimental_aiServicesHostContract["ai.voice.transcribe"].output.parse(
-              await call("ai.voice.transcribe", input, options),
-            ),
+            experimental_aiServicesHostContract[
+              "ai.voice.transcribe"
+            ].output.parse(await call("ai.voice.transcribe", input, options)),
         });
       },
       registerProvider: (declaration) => {

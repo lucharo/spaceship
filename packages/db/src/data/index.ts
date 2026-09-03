@@ -52,14 +52,20 @@ export {
   deleteProjectSource,
 } from "./project-sources.js";
 export {
+  adoptNativeThread,
+  findThreadByNativeIdentity,
+  findThreadsByNativeIdentities,
   createThread,
+  confirmNativeSessionArchive,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
   getThread,
+  getThreadNativeSessionHostId,
   getThreadExecutionOverride,
   hasActiveThreadAttention,
   setThreadExecutionOverride,
   hasLiveThreadAtHostPath,
+  hasNativeSessionArchiveConfirmation,
   hasPendingThreadShutdownInEnvironment,
   hasRevivableArchivedThreadInEnvironment,
   listHostThreadIds,
@@ -90,6 +96,7 @@ export {
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
 } from "./threads.js";
 export type {
+  AdoptNativeThreadInput,
   ApplyThreadLifecycleEventArgs,
   ApplyThreadLifecycleEventOutcome,
   ReorderPinnedThreadResult,
@@ -206,6 +213,7 @@ export {
 export {
   createEnvironment,
   getEnvironment,
+  findManagedEnvironmentAtHostPath,
   findProjectEnvironmentByHostPath,
   listEnvironments,
   findForeignManagedEnvironmentAtHostPath,

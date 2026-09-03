@@ -59,6 +59,9 @@ import {
   createBridgeIo,
   initializeParamsSchema,
   modelListParamsSchema,
+  nativeSessionListParamsSchema,
+  nativeSessionHistoryParamsSchema,
+  nativeSessionReadParamsSchema,
   skillsConfigureParamsSchema,
   threadArchiveParamsSchema,
   threadDiscardParamsSchema,
@@ -86,6 +89,9 @@ import { z } from "zod";
 const scriptedMethodSchema = z.enum([
   "initialize",
   "model/list",
+  "native/session/list",
+  "native/session/history",
+  "native/session/read",
   "thread/start",
   "thread/resume",
   "thread/fork",
@@ -820,7 +826,12 @@ function beginTurn(args: {
     });
     return;
   }
-  scheduleCompletion(session, plan.responseText, plan.delayMs, plan.recoverKind);
+  scheduleCompletion(
+    session,
+    plan.responseText,
+    plan.delayMs,
+    plan.recoverKind,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1074,6 +1085,7 @@ const handlers: Record<string, RequestHandler> = {
         grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
         steerMode: "inject",
         skills: { configure: true },
+        nativeSessions: { list: true, read: true, history: true },
       },
     });
   },
@@ -1085,6 +1097,103 @@ const handlers: Record<string, RequestHandler> = {
       return;
     }
     io.sendResult(id, MODEL_LIST);
+  },
+
+  [BRIDGE_REQUEST_METHODS.nativeSessionList]: (id, params) => {
+    const parsed = nativeSessionListParamsSchema.safeParse(params);
+    if (!parsed.success) {
+      invalidParams(
+        id,
+        BRIDGE_REQUEST_METHODS.nativeSessionList,
+        parsed.error.issues,
+      );
+      return;
+    }
+    io.sendResult(id, {
+      sessions: [
+        {
+          providerThreadId: "provider-native-1",
+          title: "Native session",
+          cwd: parsed.data.cwd ?? null,
+          projectId: "project-native",
+          workspaceRoot: parsed.data.cwd ?? null,
+          createdAt: 1_777_000_000,
+          updatedAt: 1_777_000_100,
+          archived: parsed.data.archived,
+          source: "test",
+          status: "idle",
+          preview: "private preview",
+        },
+      ],
+      nextCursor: null,
+      backwardsCursor: null,
+    });
+  },
+
+  [BRIDGE_REQUEST_METHODS.nativeSessionRead]: (id, params) => {
+    const parsed = nativeSessionReadParamsSchema.safeParse(params);
+    if (!parsed.success) {
+      invalidParams(
+        id,
+        BRIDGE_REQUEST_METHODS.nativeSessionRead,
+        parsed.error.issues,
+      );
+      return;
+    }
+    io.sendResult(id, {
+      providerThreadId: parsed.data.providerThreadId,
+      title: "Native session",
+      cwd: "/workspace",
+      projectId: "project-native",
+      workspaceRoot: "/workspace",
+      createdAt: 1_777_000_000,
+      updatedAt: 1_777_000_100,
+      archived: false,
+      source: "test",
+      status: "idle",
+      preview: "private preview",
+    });
+  },
+
+  [BRIDGE_REQUEST_METHODS.nativeSessionHistory]: (id, params) => {
+    const parsed = nativeSessionHistoryParamsSchema.safeParse(params);
+    if (!parsed.success) {
+      invalidParams(
+        id,
+        BRIDGE_REQUEST_METHODS.nativeSessionHistory,
+        parsed.error.issues,
+      );
+      return;
+    }
+    io.sendResult(id, {
+      session: {
+        providerThreadId: parsed.data.providerThreadId,
+        title: "Native session",
+        cwd: "/workspace",
+        projectId: "project-native",
+        workspaceRoot: "/workspace",
+        createdAt: 1_777_000_000,
+        updatedAt: 1_777_000_100,
+        archived: false,
+        source: "test",
+        status: "idle",
+      },
+      turns: [
+        {
+          providerTurnId: "provider-turn-1",
+          startedAt: 1_777_000_010,
+          completedAt: 1_777_000_070,
+          deltas: [
+            { kind: "turn.open", providerTurnId: "provider-turn-1" },
+            {
+              kind: "turn.boundary",
+              providerTurnId: "provider-turn-1",
+              status: "completed",
+            },
+          ],
+        },
+      ],
+    });
   },
 
   [BRIDGE_REQUEST_METHODS.providerHealth]: (id) => {

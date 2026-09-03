@@ -1,3 +1,5 @@
+Read and follow [AGENTS.spaceship.md](AGENTS.spaceship.md) for fork-specific rules.
+
 # Codebase Guidelines
 
 ## Simplicity First
@@ -48,6 +50,7 @@
 
 ## Build And Typecheck
 
+- Run repository validation under Node 22, matching CI. Reproduce failures seen only on unsupported host Node 26 under Node 22 before treating them as product regressions.
 - Always use Turbo when building and typechecking: `pnpm exec turbo run <task> --filter=@bb/<pkg>`. Turbo ensures upstream `^build` dependencies run first.
 - Typecheck with `pnpm exec turbo run typecheck --filter=@bb/<pkg>`.
 - Do not run package scripts directly, such as `pnpm --filter @bb/foo test`, or raw `npx tsc --noEmit` unless you are deliberately bypassing repo orchestration for investigation.

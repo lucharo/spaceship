@@ -68,6 +68,7 @@ export function getToolsOwnedCollectionRoutePath(id: ToolsSectionId): string {
 }
 
 export const TOOLS_NAV_ITEMS = [TOOLS_SECTIONS.plugins, TOOLS_SECTIONS.skills];
+export const PRIMARY_TOOLS_NAV_ITEMS = [TOOLS_SECTIONS.skills];
 
 interface ToolsBreadcrumbSegment {
   label: string;
@@ -380,7 +381,11 @@ export function resolveToolsAreaHeaderMeta(
     if (pluginCreateBreadcrumbs !== null) {
       return { kind: "breadcrumbs", breadcrumbs: pluginCreateBreadcrumbs };
     }
-    return { kind: "extensions-title", title: "Extensions" };
+    return {
+      kind: "extensions-title",
+      title:
+        resolveToolsSection(pathname) === "skills" ? "Skills" : "Extensions",
+    };
   }
   const automationBreadcrumbs = resolveAutomationBreadcrumbs(
     pathname,

@@ -1,4 +1,10 @@
-import { getThread } from "@bb/db";
+import {
+  archiveThread,
+  getEnvironment,
+  getThread,
+  getThreadExecutionOverride,
+  setThreadExecutionOverride,
+} from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import {
   apiErrorSchema,
@@ -8,7 +14,12 @@ import {
   threadListResponseSchema,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
-import { waitForQueuedCommand } from "../helpers/commands.js";
+import { availableModelFixture } from "../helpers/available-models.js";
+import {
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
+import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -407,6 +418,306 @@ describe("public thread parenting routes", () => {
     });
   });
 
+  it("serializes child creation behind archive-all", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const providerThreadId = "provider-parent-create-during-archive";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: parentThread.id,
+      });
+
+      const archiveResponsePromise = harness.app.request(
+        `/api/v1/threads/${parentThread.id}/archive-all`,
+        { method: "POST" },
+      );
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.archive" &&
+          command.providerThreadId === providerThreadId,
+      );
+
+      let creationSettled = false;
+      const creationResponsePromise = Promise.resolve(
+        harness.app.request("/api/v1/threads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            origin: "app",
+            projectId: project.id,
+            providerId: "codex",
+            model: "gpt-5",
+            input: [{ type: "text", text: "Create child work" }],
+            environment: {
+              type: "reuse",
+              environmentId: environment.id,
+            },
+            parentThreadId: parentThread.id,
+          }),
+        }),
+      ).then((response) => {
+        creationSettled = true;
+        return response;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(creationSettled).toBe(false);
+
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+      expect((await archiveResponsePromise).status).toBe(200);
+      expect((await creationResponsePromise).status).toBe(400);
+      expect(getThread(harness.db, parentThread.id)?.archivedAt).not.toBeNull();
+    });
+  });
+
+  it("serializes reparenting behind archive-all", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const childThread = seedThread(harness.deps, {
+        projectId: project.id,
+      });
+      const providerThreadId = "provider-parent-reparent-during-archive";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: parentThread.id,
+      });
+
+      const archiveResponsePromise = harness.app.request(
+        `/api/v1/threads/${parentThread.id}/archive-all`,
+        { method: "POST" },
+      );
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.archive" &&
+          command.providerThreadId === providerThreadId,
+      );
+
+      let reparentSettled = false;
+      const reparentResponsePromise = Promise.resolve(
+        harness.app.request(`/api/v1/threads/${childThread.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ parentThreadId: parentThread.id }),
+        }),
+      ).then((response) => {
+        reparentSettled = true;
+        return response;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(reparentSettled).toBe(false);
+
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+      expect((await archiveResponsePromise).status).toBe(200);
+      expect((await reparentResponsePromise).status).toBe(400);
+      expect(getThread(harness.db, childThread.id)?.parentThreadId).toBeNull();
+    });
+  });
+
+  it("revalidates a hidden source-derived thread after archive-all", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const sourceThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const visibleFork = seedThread(harness.deps, {
+        environmentId: environment.id,
+        originKind: "fork",
+        projectId: project.id,
+        sourceThreadId: sourceThread.id,
+        visibility: "visible",
+      });
+      const providerThreadId = "provider-source-hide-during-archive";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: sourceThread.id,
+      });
+
+      const archiveResponsePromise = harness.app.request(
+        `/api/v1/threads/${sourceThread.id}/archive-all`,
+        { method: "POST" },
+      );
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.archive" &&
+          command.providerThreadId === providerThreadId,
+      );
+
+      let visibilitySettled = false;
+      const visibilityResponsePromise = Promise.resolve(
+        harness.app.request(`/api/v1/threads/${visibleFork.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ visibility: "hidden" }),
+        }),
+      ).then((response) => {
+        visibilitySettled = true;
+        return response;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(visibilitySettled).toBe(false);
+
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+      expect((await archiveResponsePromise).status).toBe(200);
+      expect((await visibilityResponsePromise).status).toBe(400);
+      expect(getThread(harness.db, visibleFork.id)).toMatchObject({
+        archivedAt: null,
+        visibility: "visible",
+      });
+    });
+  });
+
+  it("revalidates a hidden source-derived thread after model discovery", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const sourceThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const visibleFork = seedThread(harness.deps, {
+        environmentId: environment.id,
+        originKind: "fork",
+        projectId: project.id,
+        sourceThreadId: sourceThread.id,
+        visibility: "visible",
+      });
+      setThreadExecutionOverride(harness.db, {
+        threadId: visibleFork.id,
+        modelOverride: "gpt-5.5",
+        reasoningLevelOverride: "medium",
+      });
+
+      let markCatalogRequested!: () => void;
+      const catalogRequested = new Promise<void>((resolve) => {
+        markCatalogRequested = resolve;
+      });
+      let releaseCatalog!: () => void;
+      const catalogResult = new Promise<{
+        ok: true;
+        result: {
+          models: ReturnType<typeof availableModelFixture>[];
+          selectedOnlyModels: never[];
+        };
+      }>((resolve) => {
+        releaseCatalog = () =>
+          resolve({
+            ok: true,
+            result: {
+              models: [
+                availableModelFixture({
+                  model: "gpt-5.6-sol",
+                  reasoningLevels: ["medium"],
+                }),
+              ],
+              selectedOnlyModels: [],
+            },
+          });
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.list_models") {
+            throw new Error(`Unexpected command ${request.command.type}`);
+          }
+          markCatalogRequested();
+          return catalogResult;
+        },
+      });
+
+      const visibilityResponsePromise = harness.app.request(
+        `/api/v1/threads/${visibleFork.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "gpt-5.6-sol",
+            visibility: "hidden",
+          }),
+        },
+      );
+      await catalogRequested;
+
+      const deleteResponse = await harness.app.request(
+        `/api/v1/threads/${sourceThread.id}`,
+        {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ childThreadsConfirmed: false }),
+        },
+      );
+      expect(deleteResponse.status).toBe(200);
+
+      releaseCatalog();
+
+      expect((await visibilityResponsePromise).status).toBe(400);
+      expect(getThread(harness.db, visibleFork.id)).toMatchObject({
+        archivedAt: null,
+        visibility: "visible",
+      });
+      expect(getThreadExecutionOverride(harness.db, visibleFork.id)).toEqual({
+        modelOverride: "gpt-5.5",
+        reasoningLevelOverride: "medium",
+      });
+    });
+  });
+
   // Archiving one thread cascades too, not just archive-all: the plugin's
   // `thread.archived` listener used to cover this route.
   it("archives hidden source-derived forks when archiving a single thread", async () => {
@@ -417,7 +728,9 @@ describe("public thread parenting routes", () => {
       });
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
+        managed: true,
         projectId: project.id,
+        workspaceProvisionType: "managed-worktree",
       });
       const sourceThread = seedThread(harness.deps, {
         environmentId: environment.id,
@@ -442,6 +755,40 @@ describe("public thread parenting routes", () => {
       expect(
         getThread(harness.db, sideChatThread.id)?.archivedAt,
       ).not.toBeNull();
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+        "retiring",
+      );
+    });
+  });
+
+  it("retires an unused managed environment when archive is repeated", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        managed: true,
+        projectId: project.id,
+        workspaceProvisionType: "managed-worktree",
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      archiveThread(harness.db, harness.hub, thread.id);
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe("ready");
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/archive`,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(200);
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+        "retiring",
+      );
     });
   });
 

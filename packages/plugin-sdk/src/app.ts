@@ -52,6 +52,8 @@ export const experimental_FileLink = runtime.experimental_FileLink;
 export const UrlLink = runtime.UrlLink;
 export const experimental_NewThreadComposer =
   runtime.experimental_NewThreadComposer;
+export const experimental_NativeSessionThreadList =
+  runtime.experimental_NativeSessionThreadList;
 export const experimental_ProviderModelPicker =
   runtime.experimental_ProviderModelPicker;
 export const experimental_PermissionModePicker =

@@ -191,6 +191,10 @@ describe("public project command typeahead route", () => {
               description: "Review code from one shared source.",
               filePath:
                 "/tmp/shared-skills/.agents/skills/portable-review/SKILL.md",
+              canonicalFilePath:
+                "/tmp/shared-skills/.agents/skills/portable-review/SKILL.md",
+              sourceRepository: null,
+              sourceRelativePath: null,
               rootKind: "shared-project",
               linked: false,
             },
@@ -630,9 +634,9 @@ describe("public project command typeahead route", () => {
           providerId: "claude-code",
           cwd: "/tmp/claude-commands-env",
           nativeRoots: declaredNativeRootSet(
-          harness.deps.providerRegistry,
-          "claude-code",
-        ),
+            harness.deps.providerRegistry,
+            "claude-code",
+          ),
         },
       ]);
     });

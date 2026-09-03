@@ -103,8 +103,10 @@ export const bridgeCapabilitiesSchema = z
     approvalEnforcedBy: z.enum(["runtime", "provider"]).default("runtime"),
     /**
      * The `thread/delta` grammar range this bridge speaks. A bridge that says
-     * nothing is read as speaking exactly the protocol version it negotiated,
-     * so the default is `[2, 2]` — never a wider range it never claimed.
+     * nothing is read as speaking exactly the protocol version it negotiated.
+     * The outer initialize schemas inject that version-specific default before
+     * parsing capabilities. Direct capability parsing defaults to this build's
+     * protocol version.
      * Every bridge in this repo emits v3 and reports `[3, 3]`, and the
      * runtime's assembler speaks `[3, 3]` only (`ASSEMBLER_GRAMMAR_VERSIONS`),
      * so a bridge that takes the default is refused at startup: the two
@@ -139,6 +141,14 @@ export const bridgeCapabilitiesSchema = z
     skills: z
       .object({ configure: z.boolean().default(false) })
       .default({ configure: false }),
+    /** Provider-native session discovery available without starting a thread. */
+    nativeSessions: z
+      .object({
+        list: z.boolean().default(false),
+        read: z.boolean().default(false),
+        history: z.boolean().default(false),
+      })
+      .default({ list: false, read: false, history: false }),
   })
   .passthrough();
 
@@ -154,24 +164,54 @@ export const initializeParamsSchema = z
      * {@link negotiateGrammarVersion}). A runtime that predates the field
      * reads as speaking exactly its protocol version.
      */
-    grammarVersions: bridgeGrammarVersionsSchema.default([
-      PROVIDER_BRIDGE_PROTOCOL_VERSION,
-      PROVIDER_BRIDGE_PROTOCOL_VERSION,
-    ]),
+    grammarVersions: bridgeGrammarVersionsSchema.optional(),
   })
-  .passthrough();
+  .passthrough()
+  .transform((value) => ({
+    ...value,
+    grammarVersions: value.grammarVersions ?? [
+      value.protocolVersion,
+      value.protocolVersion,
+    ],
+  }));
 
 /** Bridge → runtime `initialize` result. */
 export const initializeResultSchema = z
   .object({
     protocolVersion: z.number().int().positive(),
-    // An absent capabilities block reads as "no capabilities" via the inner
-    // per-field defaults, so older bridges parse to explicit values.
-    capabilities: z.preprocess(
-      (value) => value ?? {},
-      bridgeCapabilitiesSchema,
-    ),
+    capabilities: z.unknown().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .transform((value, context) => {
+    const rawCapabilities = value.capabilities ?? {};
+    if (typeof rawCapabilities !== "object" || Array.isArray(rawCapabilities)) {
+      context.addIssue({
+        code: "custom",
+        path: ["capabilities"],
+        message: "Expected object",
+      });
+      return z.NEVER;
+    }
 
-export type InitializeResult = z.infer<typeof initializeResultSchema>;
+    const capabilities = bridgeCapabilitiesSchema.safeParse({
+      ...rawCapabilities,
+      grammarVersions: Reflect.get(rawCapabilities, "grammarVersions") ?? [
+        value.protocolVersion,
+        value.protocolVersion,
+      ],
+    });
+    if (!capabilities.success) {
+      for (const issue of capabilities.error.issues) {
+        context.addIssue({
+          ...issue,
+          path: ["capabilities", ...issue.path],
+        });
+      }
+      return z.NEVER;
+    }
+
+    return { ...value, capabilities: capabilities.data };
+  });
+
+export type InitializeResult = z.infer<typeof initializeResultSchema> &
+  Record<string, unknown>;

@@ -8,6 +8,10 @@ import {
 import {
   bridgeCapabilitiesSchema,
   initializeResultSchema,
+  nativeSessionReadParamsSchema,
+  nativeSessionReadResultSchema,
+  nativeSessionListParamsSchema,
+  nativeSessionListResultSchema,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   providerInstallationStatusParamsSchema,
   threadStopParamsSchema,
@@ -25,6 +29,7 @@ describe("handshake", () => {
       threadArchive: false,
       threadRename: false,
       threadGoalClear: false,
+      nativeSessions: { list: false, read: false, history: false },
       fork: "none",
       approvalEnforcedBy: "runtime",
     });
@@ -39,6 +44,145 @@ describe("handshake", () => {
     expect((parsed as Record<string, unknown>).futureCapability).toStrictEqual({
       anything: true,
     });
+  });
+
+  it("advertises native session discovery explicitly", () => {
+    const parsed = bridgeCapabilitiesSchema.parse({
+      nativeSessions: { list: true, read: true, history: true },
+    });
+    expect(parsed.nativeSessions).toEqual({
+      list: true,
+      read: true,
+      history: true,
+    });
+  });
+});
+
+describe("native session catalogue", () => {
+  it("reads one native session through a metadata-only contract", () => {
+    expect(
+      nativeSessionReadParamsSchema.parse({
+        providerThreadId: "019c-session",
+      }),
+    ).toEqual({ providerThreadId: "019c-session" });
+
+    expect(
+      nativeSessionReadResultSchema.parse({
+        providerThreadId: "019c-session",
+        title: "Release checklist",
+        cwd: "/workspace",
+        projectId: "project-release",
+        workspaceRoot: "/workspace-root",
+        repositoryUrl: "https://github.com/acme/release.git",
+        status: "idle",
+        createdAt: 1_777_000_000,
+        updatedAt: 1_777_000_100,
+        archived: false,
+        source: "cli",
+        preview: "must not cross the privacy seam",
+        path: "/private/rollout.jsonl",
+        turns: [{ secret: true }],
+      }),
+    ).toEqual({
+      providerThreadId: "019c-session",
+      title: "Release checklist",
+      cwd: "/workspace",
+      projectId: "project-release",
+      workspaceRoot: "/workspace-root",
+      repositoryUrl: "https://github.com/acme/release.git",
+      status: "idle",
+      createdAt: 1_777_000_000,
+      updatedAt: 1_777_000_100,
+      archived: false,
+      source: "cli",
+    });
+  });
+
+  it("accepts bounded metadata queries and strips provider-private fields", () => {
+    expect(
+      nativeSessionListParamsSchema.parse({
+        archived: true,
+        cursor: "next-page",
+        limit: 50,
+        cwd: "/workspace",
+        searchTerm: "release",
+      }),
+    ).toEqual({
+      archived: true,
+      cursor: "next-page",
+      limit: 50,
+      cwd: "/workspace",
+      searchTerm: "release",
+    });
+
+    expect(
+      nativeSessionListResultSchema.parse({
+        sessions: [
+          {
+            providerThreadId: "019c-session",
+            title: "Release checklist",
+            cwd: "/workspace",
+            projectId: "project-release",
+            workspaceRoot: "/workspace-root",
+            status: "idle",
+            createdAt: 1_777_000_000,
+            updatedAt: 1_777_000_100,
+            archived: false,
+            source: "cli",
+            preview: "must not cross the privacy seam",
+            path: "/private/rollout.jsonl",
+            turns: [{ secret: true }],
+          },
+        ],
+        nextCursor: null,
+        backwardsCursor: "previous-page",
+      }),
+    ).toEqual({
+      sessions: [
+        {
+          providerThreadId: "019c-session",
+          title: "Release checklist",
+          cwd: "/workspace",
+          projectId: "project-release",
+          workspaceRoot: "/workspace-root",
+          status: "idle",
+          createdAt: 1_777_000_000,
+          updatedAt: 1_777_000_100,
+          archived: false,
+          source: "cli",
+        },
+      ],
+      nextCursor: null,
+      backwardsCursor: "previous-page",
+    });
+  });
+
+  it("rejects unbounded catalogue pages", () => {
+    expect(
+      nativeSessionListParamsSchema.safeParse({
+        archived: false,
+        limit: 101,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      nativeSessionListResultSchema.safeParse({
+        sessions: Array.from({ length: 101 }, (_, index) => ({
+          providerThreadId: `native-${index}`,
+          title: null,
+          cwd: null,
+          projectId: null,
+          workspaceRoot: null,
+          status: "notLoaded",
+          createdAt: index,
+          updatedAt: index,
+          archived: false,
+          source: null,
+        })),
+        nextCursor: null,
+        backwardsCursor: null,
+      }).success,
+    ).toBe(false);
   });
 });
 

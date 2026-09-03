@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
+import { PROVIDER_BRIDGE_PROTOCOL_VERSION } from "@bb/provider-bridge-protocol";
 import { createAgentRuntime } from "./runtime.js";
 import { createProviderForId } from "./provider-registry.js";
 import { RuntimeProviderProcessManager } from "./runtime-provider-process.js";
@@ -491,7 +492,10 @@ describe("createAgentRuntime process lifecycle", () => {
             process.stdout.write(JSON.stringify({
               jsonrpc: "2.0",
               id: msg.id,
-              result: { protocolVersion: 2, capabilities: { grammarVersions: [3, 3] } },
+              result: {
+                protocolVersion: ${PROVIDER_BRIDGE_PROTOCOL_VERSION},
+                capabilities: { grammarVersions: [3, 3] },
+              },
             }) + "\\n");
           }
         });

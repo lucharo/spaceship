@@ -221,6 +221,10 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "project.inspect": {
     path: "/home/me/project",
     gitRemoteUrl: "git@example.com:me/project.git",
+    isGitRepo: true,
+    isWorktree: false,
+    branchName: "main",
+    defaultBranch: "main",
   },
   "project.clone_default_path": {
     path: "/home/me/.bb/checkouts/project",
@@ -246,6 +250,10 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         name: "review",
         description: "Review the current diff",
         filePath: "/home/user/.bb/skills/review/SKILL.md",
+        canonicalFilePath: "/home/user/.bb/skills/review/SKILL.md",
+        canonicalRootPath: "/home/user/.bb/skills/review",
+        sourceRepository: "example/skills",
+        sourceRelativePath: "skills/review/SKILL.md",
         rootKind: "bb-data-dir",
         linked: false,
       },
@@ -350,6 +358,52 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       },
     ],
     selectedOnlyModels: [],
+  },
+  "provider.native_sessions.list": {
+    sessions: [
+      {
+        providerThreadId: "native-1",
+        title: "Native session",
+        cwd: "/workspace",
+        projectId: "project-native",
+        workspaceRoot: "/workspace",
+        createdAt: 1_777_000_000,
+        updatedAt: 1_777_000_100,
+        archived: false,
+        source: "cli",
+        status: "idle",
+      },
+    ],
+    nextCursor: null,
+    backwardsCursor: null,
+  },
+  "provider.native_sessions.read": {
+    providerThreadId: "native-1",
+    title: "Native session",
+    cwd: "/workspace",
+    projectId: "project-native",
+    workspaceRoot: "/workspace",
+    createdAt: 1_777_000_000,
+    updatedAt: 1_777_000_100,
+    archived: false,
+    source: "cli",
+    status: "idle",
+  },
+  "provider.native_sessions.archive": {},
+  "provider.native_sessions.history": {
+    session: {
+      providerThreadId: "native-1",
+      title: "Native session",
+      cwd: "/workspace",
+      projectId: "project-native",
+      workspaceRoot: "/workspace",
+      createdAt: 1_777_000_000,
+      updatedAt: 1_777_000_100,
+      archived: false,
+      source: "cli",
+      status: "idle",
+    },
+    events: [],
   },
   "provider.health": {
     supported: true,
@@ -656,7 +710,13 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
   "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.title":
     "a tool_use approval's presentation has a title only when the call has a headline (a path, a query); absence means the label stands alone.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
-    "provider.list_models may omit cwd when only user-level provider configuration applies.",
+    "provider maintenance and native-session discovery may omit cwd when only user-level provider configuration applies.",
+  "hostDaemonOnlineRpcCommandSchema.cursor":
+    "provider-native session discovery omits cursor on the first page.",
+  "hostDaemonOnlineRpcCommandSchema.limit":
+    "provider-native session discovery may use the provider's bounded default page size.",
+  "hostDaemonOnlineRpcCommandSchema.searchTerm":
+    "provider-native session discovery omits searchTerm when listing without a title filter.",
   "hostDaemonOnlineRpcCommandSchema.query":
     "host.list_files may omit a search string to list files without filtering.",
   "hostDaemonOnlineRpcCommandSchema.path":
@@ -1018,6 +1078,9 @@ describe("host-daemon command schemas", () => {
   // Version 134 keeps replayed Codex resume/fork usage snapshots off turn ids
   // bb never stored a turn/started for (token usage dropped, context usage
   // thread-scoped).
+  // Version 179 confines a directly symlinked SKILL.md to that one file.
+  // Older daemons expose the target directory as the skill root, so enrolled
+  // machines must update before listing or reading such skills.
   // Version 140 reports the daemon's browser-local helper port during session
   // open so remote pages can discover helpers on non-primary machines.
   // Version 139 keeps resumed Claude task notifications from claiming newly
@@ -1046,8 +1109,72 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(171);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(181);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
+  });
+
+  it("accepts a bounded provider-native session catalogue request", () => {
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
+        type: "provider.native_sessions.list",
+        providerId: "codex",
+        bridgeLaunch: BRIDGE_LAUNCH,
+        archived: false,
+        limit: 50,
+      }),
+    ).toMatchObject({
+      type: "provider.native_sessions.list",
+      providerId: "codex",
+      archived: false,
+      limit: 50,
+    });
+  });
+
+  it("accepts a provider-native metadata read request", () => {
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
+        type: "provider.native_sessions.read",
+        providerId: "codex",
+        bridgeLaunch: BRIDGE_LAUNCH,
+        providerThreadId: "native-1",
+      }),
+    ).toMatchObject({
+      type: "provider.native_sessions.read",
+      providerId: "codex",
+      providerThreadId: "native-1",
+    });
+  });
+
+  it("accepts a provider-native archive request", () => {
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
+        type: "provider.native_sessions.archive",
+        providerId: "codex",
+        bridgeLaunch: BRIDGE_LAUNCH,
+        providerThreadId: "native-1",
+      }),
+    ).toMatchObject({
+      type: "provider.native_sessions.archive",
+      providerId: "codex",
+      providerThreadId: "native-1",
+    });
+  });
+
+  it("accepts a provider-native history request", () => {
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
+        type: "provider.native_sessions.history",
+        providerId: "codex",
+        bridgeLaunch: BRIDGE_LAUNCH,
+        providerThreadId: "native-1",
+        threadId: "thread-1",
+      }),
+    ).toMatchObject({
+      type: "provider.native_sessions.history",
+      providerId: "codex",
+      providerThreadId: "native-1",
+      threadId: "thread-1",
+    });
   });
 
   it("uses relative host-plugin timeouts and bounds artifact declarations", () => {

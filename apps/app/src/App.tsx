@@ -39,6 +39,7 @@ import {
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
+  NATIVE_SESSIONS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
   TOOLS_PLUGIN_BROWSE_ROUTE_PATH,
@@ -71,6 +72,11 @@ const ToolsView = lazy(() =>
 const MachineSettingsView = lazy(() =>
   import("./views/MachineSettingsView").then((m) => ({
     default: m.MachineSettingsView,
+  })),
+);
+const NativeSessionsView = lazy(() =>
+  import("./views/NativeSessionsView").then((m) => ({
+    default: m.NativeSessionsView,
   })),
 );
 const ProjectSettingsView = lazy(() =>
@@ -140,6 +146,10 @@ export function LegacySkillDetailRedirect() {
 }
 
 export function ExtensionsLandingRedirect() {
+  return <Navigate to={SKILLS_ROUTE_PATH} replace />;
+}
+
+export function LegacyPluginBrowseRedirect() {
   return <Navigate to={TOOLS_PLUGINS_ROUTE_PATH} replace />;
 }
 
@@ -229,6 +239,10 @@ function AppRoutes() {
         <Routes>
           <Route path={SETTINGS_ROUTE_PATH} element={<SettingsView />} />
           <Route
+            path={NATIVE_SESSIONS_ROUTE_PATH}
+            element={<NativeSessionsView />}
+          />
+          <Route
             path={SETTINGS_SECTION_ROUTE_PATH}
             element={<SettingsView />}
           />
@@ -317,7 +331,7 @@ function AppRoutes() {
           <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
           <Route
             path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
-            element={<ExtensionsLandingRedirect />}
+            element={<LegacyPluginBrowseRedirect />}
           />
           <Route
             path={LEGACY_SKILLS_ROUTE_PATH}
@@ -387,8 +401,8 @@ export function App() {
               {/* Outside <Routes>: a provider CLI install outlives the page that
                 started it, so its failure toast can be clicked from any route —
                 including auth callback, which renders no app shell. */}
-               <ProviderCliInstallLogDialogHost />
-             </AppFileExternalNavigationHost>
+              <ProviderCliInstallLogDialogHost />
+            </AppFileExternalNavigationHost>
           </AppNavigationUrlHost>
         </RouteNavigationProvider>
       </AppCommandProvider>

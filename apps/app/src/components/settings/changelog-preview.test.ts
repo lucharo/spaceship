@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CHANGELOG_ENTRIES,
+  fetchLatestChangelogEntry,
   LATEST_CHANGELOG_ENTRY,
   parseChangelogEntries,
 } from "./changelog-preview";
@@ -95,5 +96,18 @@ describe("LATEST_CHANGELOG_ENTRY", () => {
     expect(CHANGELOG_ENTRIES.length).toBeGreaterThan(0);
     expect(LATEST_CHANGELOG_ENTRY?.version).toMatch(/^\d+\.\d+\.\d+/);
     expect(LATEST_CHANGELOG_ENTRY?.sections.length).toBeGreaterThan(0);
+  });
+
+  it("refreshes from the Spaceship fork", async () => {
+    const fetchFn = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(SAMPLE, { status: 200 }));
+
+    await fetchLatestChangelogEntry(fetchFn);
+
+    expect(fetchFn).toHaveBeenCalledWith(
+      "https://raw.githubusercontent.com/lucharo/spaceship/main/CHANGELOG.md",
+      { signal: undefined },
+    );
   });
 });

@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import type { MarkdownProps, PluginSdkApp } from "@get-bb/plugin-sdk";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
+import { NativeSessionThreadList } from "@/components/sidebar/NativeCodexSidebar";
 import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderModelPicker";
 import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
@@ -76,6 +77,7 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
     // Experimental (see docs/api_to_audit.md): the create-side counterpart to
     // ThreadChat.
     experimental_NewThreadComposer: PluginNewThreadComposer,
+    experimental_NativeSessionThreadList: NativeSessionThreadList,
     // Experimental (see docs/api_to_audit.md): bb's compact execution picker
     // exposed as one controlled, atomic value.
     experimental_ProviderModelPicker: PluginProviderModelPicker,

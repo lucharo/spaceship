@@ -141,6 +141,17 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
+  useSystemProviders: () => ({
+    data: [
+      {
+        id: "codex",
+        capabilities: {
+          experimental_supportsNativeSessionHistory: true,
+        },
+      },
+      { id: "claude-code", capabilities: {} },
+    ],
+  }),
   useSystemProviderStates: () => ({ data: undefined, isPending: false }),
   // No roster in this suite's cache, which is the cold-cache answer.
   useKnownProviderModelCatalogScope: () => undefined,

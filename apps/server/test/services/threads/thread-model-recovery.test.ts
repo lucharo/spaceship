@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import { recoverThreadModelOverride } from "../../../src/services/threads/thread-execution-override.js";
 import { resolveExecutionOptions } from "../../../src/services/threads/thread-runtime-config.js";
 import { availableModelFixture } from "../../helpers/available-models.js";
-import { registerProviderHostRpcResponder } from "../../helpers/host-rpc.js";
+import {
+  registerHostRpcResponder,
+  registerProviderHostRpcResponder,
+  type HostRpcHandlerResult,
+} from "../../helpers/host-rpc.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -142,6 +146,102 @@ describe("stale model recovery", () => {
       expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
         modelOverride: "claude-mythos-5",
         reasoningLevelOverride: null,
+      });
+    });
+  });
+
+  it("rechecks the override after a concurrent patch before recovering it", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-stale-model-concurrent-patch",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/stale-model-concurrent-patch",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/stale-model-concurrent-patch",
+        status: "ready",
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        providerId: "claude-code",
+        status: "idle",
+      });
+      setThreadExecutionOverride(harness.db, {
+        threadId: thread.id,
+        modelOverride: "claude-opus-4-8[1m]",
+        reasoningLevelOverride: "high",
+      });
+
+      let markCatalogRequested!: () => void;
+      const catalogRequested = new Promise<void>((resolve) => {
+        markCatalogRequested = resolve;
+      });
+      let releaseCatalog!: () => void;
+      const catalogResult = new Promise<HostRpcHandlerResult>((resolve) => {
+        releaseCatalog = () =>
+          resolve({
+            ok: true,
+            result: {
+              models: [
+                availableModelFixture({
+                  model: "claude-mythos-5",
+                  reasoningLevels: ["high"],
+                }),
+                availableModelFixture({
+                  model: "claude-opus-4-8[1m]",
+                  reasoningLevels: ["high"],
+                }),
+              ],
+              selectedOnlyModels: [],
+            },
+          });
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.list_models") {
+            throw new Error(`Unexpected command ${request.command.type}`);
+          }
+          markCatalogRequested();
+          return catalogResult;
+        },
+      });
+
+      const patchResponsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-mythos-5" }),
+        },
+      );
+      await catalogRequested;
+
+      let recoverySettled = false;
+      const recoveryPromise = recoverThreadModelOverride(harness.deps, {
+        model: "claude-opus-4-8[1m]",
+        modelSource: "explicit",
+        thread,
+      }).then(() => {
+        recoverySettled = true;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const settledBeforePatch = recoverySettled;
+
+      releaseCatalog();
+      expect((await patchResponsePromise).status).toBe(200);
+      await recoveryPromise;
+
+      expect(settledBeforePatch).toBe(false);
+      expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
+        modelOverride: "claude-opus-4-8[1m]",
+        reasoningLevelOverride: "high",
       });
     });
   });

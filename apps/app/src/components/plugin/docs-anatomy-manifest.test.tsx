@@ -10,7 +10,7 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { Provider as JotaiProvider } from "jotai";
@@ -23,7 +23,10 @@ import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { QuickCreateProjectProvider } from "@/hooks/useQuickCreateProject";
 import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
-import { AppSidebar } from "@/components/sidebar/AppSidebar";
+import {
+  AppSidebar,
+  BUG_REPORT_NEW_ISSUE_URL,
+} from "@/components/sidebar/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { MessageActionBar } from "@/components/thread/timeline/MessageActionBar";
 import {
@@ -31,6 +34,19 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
+
+vi.mock("@/hooks/queries/native-session-queries", () => ({
+  useProviderNativeSessions: () => ({
+    hostId: "host_primary",
+    hostIsPending: false,
+    isPending: false,
+    isError: false,
+    sessions: [],
+    hasNextPage: false,
+    isFetchingNextPage: false,
+    fetchNextPage: vi.fn(),
+  }),
+}));
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../../../..");
 
@@ -152,7 +168,6 @@ function renderAppSidebar() {
                         isResizing={false}
                         showTopReserve
                         settingsRoutePath="/settings"
-                        toolsRoutePath="/tools"
                       />
                     </SidebarProvider>
                   </ThreadActionsProvider>
@@ -167,6 +182,24 @@ function renderAppSidebar() {
 }
 
 describe("docs anatomy manifest", () => {
+  it("routes bug reports to the Spaceship repository", () => {
+    expect(BUG_REPORT_NEW_ISSUE_URL).toBe(
+      "https://github.com/lucharo/spaceship/issues/new",
+    );
+  });
+
+  it("keeps Skills and Plugins in the primary Spaceship navigation", () => {
+    registerTestPlugin();
+    renderAppSidebar();
+
+    expect(
+      screen.getByRole("link", { name: "Skills" }).getAttribute("href"),
+    ).toBe("/extensions/skills?view=library");
+    expect(
+      screen.getByRole("link", { name: "Plugins" }).getAttribute("href"),
+    ).toBe("/extensions/plugins");
+  });
+
   it("keeps every surface fixture anchored to current product source", () => {
     for (const [fixtureId, fixture] of Object.entries(
       manifest.surfaceFixtures,
@@ -193,8 +226,7 @@ describe("docs anatomy manifest", () => {
     const sectionSelectors: Record<string, string> = {
       "top-reserve": '[data-testid="app-sidebar-top-reserve-row"]',
       "primary-actions": '[data-testid="app-sidebar-primary-actions"]',
-      "plugin-nav": '[data-testid="plugin-nav-sidebar-items"]',
-      "thread-list": '[data-sidebar="content"]',
+      "thread-list": '[data-testid="app-sidebar-thread-list"]',
       footer: '[data-sidebar="footer"]',
     };
     expect(Object.keys(sectionSelectors).sort()).toEqual(
@@ -217,8 +249,6 @@ describe("docs anatomy manifest", () => {
 
     const footerSelectors: Record<string, () => Element | null> = {
       settings: () => footer!.querySelector('a[aria-label^="Settings"]'),
-      "plugin-footer-actions": () =>
-        footer!.querySelector('button[aria-label="Anatomy footer action"]'),
       "bug-report": () => footer!.querySelector('[aria-label^="Report a bug"]'),
     };
     expect(Object.keys(footerSelectors).sort()).toEqual(

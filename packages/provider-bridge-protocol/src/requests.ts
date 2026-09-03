@@ -7,6 +7,7 @@ import {
 } from "@bb/domain";
 import { z } from "zod";
 import { bridgeExecutionOptionsSchema } from "./execution-options.js";
+import { threadDeltaSchema } from "./thread-delta.js";
 
 /**
  * Canonical runtime → bridge request methods. One vocabulary for every
@@ -18,6 +19,9 @@ import { bridgeExecutionOptionsSchema } from "./execution-options.js";
 export const BRIDGE_REQUEST_METHODS = {
   initialize: "initialize",
   modelList: "model/list",
+  nativeSessionList: "native/session/list",
+  nativeSessionRead: "native/session/read",
+  nativeSessionHistory: "native/session/history",
   providerHealth: "provider/health",
   providerUsage: "provider/usage",
   providerInstallationStatus: "provider/installation/status",
@@ -48,6 +52,37 @@ const sessionConstructionFields = {
 export const modelListParamsSchema = z
   .object({ cwd: z.string().min(1).optional() })
   .passthrough();
+
+/**
+ * Metadata-only discovery of sessions already owned by the provider.
+ * Conversation previews, storage paths, and turns are intentionally absent:
+ * callers must not receive transcript content before a user opens a session.
+ */
+export const nativeSessionListParamsSchema = z.object({
+  archived: z.boolean(),
+  cursor: z.string().min(1).optional(),
+  limit: z.number().int().positive().max(100).optional(),
+  cwd: z.string().min(1).optional(),
+  searchTerm: z.string().min(1).max(256).optional(),
+});
+
+export type NativeSessionListParams = z.infer<
+  typeof nativeSessionListParamsSchema
+>;
+
+export const nativeSessionReadParamsSchema = z.object({
+  providerThreadId: z.string().min(1),
+});
+
+export type NativeSessionReadParams = z.infer<
+  typeof nativeSessionReadParamsSchema
+>;
+
+export const nativeSessionHistoryParamsSchema = nativeSessionReadParamsSchema;
+
+export type NativeSessionHistoryParams = z.infer<
+  typeof nativeSessionHistoryParamsSchema
+>;
 
 export const threadStartParamsSchema = z
   .object({
@@ -191,3 +226,55 @@ export const modelListResultSchema = z
   .passthrough();
 
 export type ModelListResult = z.infer<typeof modelListResultSchema>;
+
+export const nativeSessionSummarySchema = z.object({
+  providerThreadId: z.string().min(1),
+  title: z.string().nullable(),
+  cwd: z.string().nullable(),
+  /** Provider-owned canonical project identity, when the provider exposes one. */
+  projectId: z.string().nullable(),
+  /** Provider-owned workspace root used to group linked worktrees. */
+  workspaceRoot: z.string().nullable(),
+  /** Repository identity used to group provider-managed worktrees. */
+  repositoryUrl: z.string().nullable().optional(),
+  /** Provider-owned runtime state; `notLoaded` is distinct from idle. */
+  status: z.enum(["notLoaded", "idle", "active", "error"]),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+  archived: z.boolean(),
+  source: z.string().nullable(),
+});
+
+export type NativeSessionSummary = z.infer<typeof nativeSessionSummarySchema>;
+
+export const nativeSessionReadResultSchema = nativeSessionSummarySchema;
+
+export type NativeSessionReadResult = z.infer<
+  typeof nativeSessionReadResultSchema
+>;
+
+export const nativeSessionHistoryTurnSchema = z.object({
+  providerTurnId: z.string().min(1),
+  startedAt: z.number().int().nonnegative().nullable(),
+  completedAt: z.number().int().nonnegative().nullable(),
+  deltas: z.array(threadDeltaSchema),
+});
+
+export const nativeSessionHistoryResultSchema = z.object({
+  session: nativeSessionSummarySchema,
+  turns: z.array(nativeSessionHistoryTurnSchema),
+});
+
+export type NativeSessionHistoryResult = z.infer<
+  typeof nativeSessionHistoryResultSchema
+>;
+
+export const nativeSessionListResultSchema = z.object({
+  sessions: z.array(nativeSessionSummarySchema).max(100),
+  nextCursor: z.string().min(1).nullable(),
+  backwardsCursor: z.string().min(1).nullable(),
+});
+
+export type NativeSessionListResult = z.infer<
+  typeof nativeSessionListResultSchema
+>;

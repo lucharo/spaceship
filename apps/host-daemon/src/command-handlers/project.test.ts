@@ -4,7 +4,11 @@ import path from "node:path";
 import { runGit } from "@bb/host-workspace";
 import { afterEach, describe, expect, it } from "vitest";
 import { isExpectedCommandDispatchError } from "../command-dispatch-support.js";
-import { cloneProject, resolveProjectCloneDefaultPath } from "./project.js";
+import {
+  cloneProject,
+  inspectProjectPath,
+  resolveProjectCloneDefaultPath,
+} from "./project.js";
 
 const tempDirs: string[] = [];
 
@@ -54,9 +58,12 @@ describe("project.clone", () => {
       projectSlug: "My Project",
       remoteUrl,
     });
+    const canonicalCheckoutPath = await fs.realpath(
+      path.join(root, "data", "checkouts", "my-project"),
+    );
 
     expect(result).toEqual({
-      path: path.join(root, "data", "checkouts", "my-project"),
+      path: canonicalCheckoutPath,
       gitRemoteUrl: remoteUrl,
     });
     await expect(
@@ -103,5 +110,54 @@ describe("project.clone", () => {
       path.join(dataDir, "checkouts", "project-name"),
     );
     await expect(fs.stat(dataDir)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+});
+
+describe("project.inspect", () => {
+  it("resolves symlinked directories to their canonical path", async () => {
+    const root = await tempDir();
+    const target = path.join(root, "target");
+    const link = path.join(root, "link");
+    await fs.mkdir(target);
+    await fs.symlink(target, link);
+    const canonicalTarget = await fs.realpath(target);
+
+    await expect(inspectProjectPath(link)).resolves.toMatchObject({
+      path: canonicalTarget,
+      isGitRepo: false,
+    });
+  });
+
+  it("rejects a missing project directory", async () => {
+    const root = await tempDir();
+
+    await expect(
+      inspectProjectPath(path.join(root, "missing")),
+    ).rejects.toMatchObject({ code: "path_not_found" });
+  });
+
+  it("rejects a project path that is not a directory", async () => {
+    const root = await tempDir();
+    const file = path.join(root, "file.txt");
+    await fs.writeFile(file, "not a directory");
+
+    await expect(inspectProjectPath(file)).rejects.toMatchObject({
+      code: "path_not_found",
+    });
+  });
+
+  it("recognises a local Git repository without an origin remote", async () => {
+    const root = await tempDir();
+    await runGit(["init", "-b", "main"], { cwd: root });
+    const canonicalRoot = await fs.realpath(root);
+
+    await expect(inspectProjectPath(root)).resolves.toEqual({
+      path: canonicalRoot,
+      gitRemoteUrl: null,
+      isGitRepo: true,
+      isWorktree: false,
+      branchName: "main",
+      defaultBranch: "main",
+    });
   });
 });

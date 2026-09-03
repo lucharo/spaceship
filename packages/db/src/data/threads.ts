@@ -9,6 +9,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  max,
   ne,
   or,
   sql,
@@ -36,12 +37,14 @@ import type { DbQueryConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
 import {
   environments,
+  events,
+  nativeSessionArchiveConfirmations,
   pendingInteractions,
   projects,
   threadSearchSegments,
   threads,
 } from "../schema.js";
-import { createThreadId } from "../ids.js";
+import { createEventId, createThreadId } from "../ids.js";
 import {
   createOrderKeyBetween,
 } from "./order-keys.js";
@@ -265,6 +268,7 @@ function upsertThreadTitleSearchSegments(
 export interface CreateThreadInput {
   projectId: string;
   environmentId?: string | null;
+  nativeSessionHostId?: string | null;
   providerId: string;
   title?: string | null;
   titleFallback?: string | null;
@@ -278,62 +282,233 @@ export interface CreateThreadInput {
   visibility?: ThreadVisibility;
 }
 
+export interface AdoptNativeThreadInput extends CreateThreadInput {
+  environmentId: string;
+  hostId: string;
+  providerThreadId: string;
+}
+
+export interface NativeThreadIdentity {
+  hostId: string;
+  providerId: string;
+  providerThreadId: string;
+}
+
+export interface NativeThreadIdentities {
+  hostId: string;
+  providerId: string;
+  providerThreadIds: readonly string[];
+}
+
+function insertThread(
+  db: ThreadWriteConnection,
+  input: CreateThreadInput,
+  now: number,
+) {
+  const visibility = input.visibility ?? "visible";
+  const id = createThreadId();
+  const originKind = input.originKind ?? null;
+  const nativeSessionHostId =
+    input.nativeSessionHostId ??
+    (input.environmentId === null || input.environmentId === undefined
+      ? null
+      : (db
+          .select({ hostId: environments.hostId })
+          .from(environments)
+          .where(eq(environments.id, input.environmentId))
+          .get()?.hostId ?? null));
+  const createdThread = db
+    .insert(threads)
+    .values({
+      id,
+      projectId: input.projectId,
+      environmentId: input.environmentId ?? null,
+      nativeSessionHostId,
+      providerId: input.providerId,
+      title: input.title ?? null,
+      titleFallback: input.titleFallback ?? null,
+      sectionId: input.sectionId ?? null,
+      status: input.status ?? "starting",
+      parentThreadId:
+        originKind === null ? input.parentThreadId ?? null : null,
+      sourceThreadId:
+        input.sourceThreadId ??
+        (originKind === null ? null : input.parentThreadId ?? null),
+      originKind,
+      originPluginId: input.originPluginId ?? null,
+      visibility,
+      lastReadAt: now,
+      latestAttentionAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get();
+  upsertThreadTitleSearchSegments(db, {
+    threadId: createdThread.id,
+    title: createdThread.title,
+    titleFallback: createdThread.titleFallback,
+    updatedAt: now,
+  });
+  return createdThread;
+}
+
 export function createThread(
   db: DbConnection,
   notifier: DbNotifier,
   input: CreateThreadInput,
 ) {
-  const visibility = input.visibility ?? "visible";
   const now = Date.now();
-  const id = createThreadId();
-  const originKind = input.originKind ?? null;
-  const thread = db.transaction(
-    (tx) => {
-      const createdThread = tx
-        .insert(threads)
-        .values({
-          id,
-          projectId: input.projectId,
-          environmentId: input.environmentId ?? null,
-          providerId: input.providerId,
-          title: input.title ?? null,
-          titleFallback: input.titleFallback ?? null,
-          sectionId: input.sectionId ?? null,
-          status: input.status ?? "starting",
-          parentThreadId:
-            originKind === null ? input.parentThreadId ?? null : null,
-          sourceThreadId:
-            input.sourceThreadId ??
-            (originKind === null ? null : input.parentThreadId ?? null),
-          originKind,
-          originPluginId: input.originPluginId ?? null,
-          visibility,
-          lastReadAt: now,
-          latestAttentionAt: now,
-          createdAt: now,
-          updatedAt: now,
-        })
-        .returning()
-        .get();
-      upsertThreadTitleSearchSegments(tx, {
-        threadId: createdThread.id,
-        title: createdThread.title,
-        titleFallback: createdThread.titleFallback,
-        updatedAt: now,
-      });
-      return createdThread;
-    },
-    { behavior: "immediate" },
-  );
-  notifier.notifyThread(id, ["thread-created"], {
+  const thread = db.transaction((tx) => insertThread(tx, input, now), {
+    behavior: "immediate",
+  });
+  notifier.notifyThread(thread.id, ["thread-created"], {
     projectId: input.projectId,
   });
   notifier.notifyProject(input.projectId, ["threads-changed"]);
   return thread;
 }
 
+export function adoptNativeThread(
+  db: DbConnection,
+  notifier: DbNotifier,
+  input: AdoptNativeThreadInput,
+): { created: boolean; thread: ThreadRow } {
+  const result = db.transaction(
+    (tx) => {
+      const existing = findThreadByNativeIdentity(tx, input);
+      if (existing) {
+        return { created: false, thread: existing };
+      }
+
+      const now = Date.now();
+      const thread = insertThread(
+        tx,
+        {
+          ...input,
+          nativeSessionHostId: input.hostId,
+          status: "idle",
+        },
+        now,
+      );
+      tx.insert(events)
+        .values({
+          id: createEventId(),
+          threadId: thread.id,
+          environmentId: input.environmentId,
+          scopeKind: "thread",
+          turnId: null,
+          providerThreadId: input.providerThreadId,
+          sequence: 1,
+          type: "thread/identity",
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({ providerThreadId: input.providerThreadId }),
+          createdAt: now,
+        })
+        .run();
+      return { created: true, thread };
+    },
+    { behavior: "immediate" },
+  );
+
+  if (result.created) {
+    notifier.notifyThread(
+      result.thread.id,
+      ["thread-created", "events-appended"],
+      {
+        eventTypes: ["thread/identity"],
+        projectId: result.thread.projectId,
+      },
+    );
+    notifier.notifyProject(result.thread.projectId, ["threads-changed"]);
+  }
+  return result;
+}
+
+export function findThreadByNativeIdentity(
+  db: ThreadWriteConnection,
+  identity: NativeThreadIdentity,
+): ThreadRow | null {
+  return (
+    findThreadsByNativeIdentities(db, {
+      hostId: identity.hostId,
+      providerId: identity.providerId,
+      providerThreadIds: [identity.providerThreadId],
+    }).get(identity.providerThreadId) ?? null
+  );
+}
+
+export function findThreadsByNativeIdentities(
+  db: ThreadWriteConnection,
+  identities: NativeThreadIdentities,
+): ReadonlyMap<string, ThreadRow> {
+  if (identities.providerThreadIds.length === 0) {
+    return new Map();
+  }
+  const latestProviderIdentities = db
+    .select({
+      threadId: events.threadId,
+      latestSequence: max(events.sequence).as("latest_sequence"),
+    })
+    .from(events)
+    .where(isNotNull(events.providerThreadId))
+    .groupBy(events.threadId)
+    .as("latest_provider_identities");
+
+  const matches = db
+      .select({
+        providerThreadId: events.providerThreadId,
+        thread: getTableColumns(threads),
+      })
+      .from(threads)
+      .innerJoin(events, eq(events.threadId, threads.id))
+      .innerJoin(
+        latestProviderIdentities,
+        and(
+          eq(latestProviderIdentities.threadId, threads.id),
+          eq(latestProviderIdentities.latestSequence, events.sequence),
+        ),
+      )
+      .where(
+        and(
+          eq(threads.nativeSessionHostId, identities.hostId),
+          eq(threads.providerId, identities.providerId),
+          inArray(events.providerThreadId, [...identities.providerThreadIds]),
+          isNull(threads.deletedAt),
+        ),
+      )
+      .orderBy(desc(threads.updatedAt))
+      .all();
+
+  const byProviderThreadId = new Map<string, ThreadRow>();
+  for (const match of matches) {
+    if (
+      match.providerThreadId !== null &&
+      !byProviderThreadId.has(match.providerThreadId)
+    ) {
+      byProviderThreadId.set(match.providerThreadId, match.thread);
+    }
+  }
+  return byProviderThreadId;
+}
+
 export function getThread(db: ThreadWriteConnection, id: string) {
   return db.select().from(threads).where(eq(threads.id, id)).get() ?? null;
+}
+
+export function getThreadNativeSessionHostId(
+  db: ThreadWriteConnection,
+  id: string,
+): string | null {
+  return (
+    db
+      .select({ hostId: threads.nativeSessionHostId })
+      .from(threads)
+      .where(eq(threads.id, id))
+      .get()?.hostId ?? null
+  );
 }
 
 export interface ThreadMentionRow {
@@ -1708,7 +1883,17 @@ export function updateThread(
   if ("sectionId" in input) {
     set.sectionId = input.sectionId;
   }
-  if ("environmentId" in input) set.environmentId = input.environmentId;
+  if ("environmentId" in input) {
+    set.environmentId = input.environmentId;
+    if (input.environmentId !== null && input.environmentId !== undefined) {
+      set.nativeSessionHostId =
+        db
+          .select({ hostId: environments.hostId })
+          .from(environments)
+          .where(eq(environments.id, input.environmentId))
+          .get()?.hostId ?? existing.nativeSessionHostId;
+    }
+  }
   if ("lastReadAt" in input) {
     set.lastReadAt = input.lastReadAt;
   }
@@ -1887,18 +2072,74 @@ export function archiveThread(
   return updated ?? null;
 }
 
+export function confirmNativeSessionArchive(
+  db: ThreadWriteConnection,
+  args: {
+    providerThreadId: string;
+    threadId: string;
+  },
+): void {
+  const confirmedAt = Date.now();
+  db.insert(nativeSessionArchiveConfirmations)
+    .values({
+      confirmedAt,
+      providerThreadId: args.providerThreadId,
+      threadId: args.threadId,
+    })
+    .onConflictDoUpdate({
+      target: nativeSessionArchiveConfirmations.threadId,
+      set: {
+        confirmedAt,
+        providerThreadId: args.providerThreadId,
+      },
+    })
+    .run();
+}
+
+export function hasNativeSessionArchiveConfirmation(
+  db: ThreadWriteConnection,
+  args: {
+    providerThreadId: string;
+    threadId: string;
+  },
+): boolean {
+  return (
+    db
+      .select({ threadId: nativeSessionArchiveConfirmations.threadId })
+      .from(nativeSessionArchiveConfirmations)
+      .where(
+        and(
+          eq(nativeSessionArchiveConfirmations.threadId, args.threadId),
+          eq(
+            nativeSessionArchiveConfirmations.providerThreadId,
+            args.providerThreadId,
+          ),
+        ),
+      )
+      .get() !== undefined
+  );
+}
+
 export function unarchiveThread(
   db: DbConnection,
   notifier: DbNotifier,
   id: string,
 ) {
   const now = Date.now();
-  const updated = db
-    .update(threads)
-    .set({ archivedAt: null, updatedAt: now })
-    .where(eq(threads.id, id))
-    .returning()
-    .get();
+  const updated = db.transaction((tx) => {
+    const row = tx
+      .update(threads)
+      .set({ archivedAt: null, updatedAt: now })
+      .where(eq(threads.id, id))
+      .returning()
+      .get();
+    if (row) {
+      tx.delete(nativeSessionArchiveConfirmations)
+        .where(eq(nativeSessionArchiveConfirmations.threadId, id))
+        .run();
+    }
+    return row;
+  });
   if (updated) {
     notifier.notifyThread(id, ["archived-changed"], {
       projectId: updated.projectId,

@@ -59,6 +59,7 @@ export default function plugin(bb: BbPluginApi) {
     ...CODEX_NATIVE_ROOTS_DECLARATION,
     maintenance: { health: true, usage: true, installation: true },
     capabilities: {
+      experimental_supportsNativeSessionHistory: true,
       supportsServiceTier: true,
       supportsNativeUserQuestion: false,
       fork: "checkpoint",
@@ -85,6 +86,7 @@ export default function plugin(bb: BbPluginApi) {
       { id: "fast", label: "Fast" },
     ],
     composerActions: ["plan", "goal"],
+    experimental_skillCommandAliases: ["$"],
     deriveProviderOptions(context) {
       return {
         memoryEnabled: context.settings.memoryEnabled !== false,

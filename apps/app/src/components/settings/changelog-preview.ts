@@ -1,7 +1,7 @@
 import changelogSource from "../../../../../CHANGELOG.md?raw";
 
 const LATEST_CHANGELOG_SOURCE_URL =
-  "https://raw.githubusercontent.com/get-bb/bb/main/CHANGELOG.md";
+  "https://raw.githubusercontent.com/lucharo/spaceship/main/CHANGELOG.md";
 
 export type ChangelogBlock =
   | { kind: "paragraph"; text: string }
@@ -13,8 +13,8 @@ interface ChangelogSection {
 }
 
 /**
- * The same release shape used by getbb.app/changelog: introductory blocks,
- * then titled sections containing paragraphs and lists.
+ * The release shape used by Spaceship's changelog: introductory blocks, then
+ * titled sections containing paragraphs and lists.
  */
 interface ChangelogEntry {
   version: string;
@@ -27,7 +27,7 @@ interface ChangelogReleaseMeta {
   headline: string;
 }
 
-/** Presentation metadata from the canonical changelog page. */
+/** Presentation metadata for the bundled Spaceship changelog. */
 export const CHANGELOG_RELEASE_META: Record<string, ChangelogReleaseMeta> = {
   "0.39.0": {
     date: "August 19, 2026",
@@ -149,7 +149,7 @@ export const CHANGELOG_ENTRIES = parseChangelogEntries(changelogSource);
 export const LATEST_CHANGELOG_ENTRY: ChangelogEntry | null =
   CHANGELOG_ENTRIES[0] ?? null;
 
-/** Read the same current changelog source that getbb.app builds from. */
+/** Read the current changelog from the Spaceship fork. */
 export async function fetchLatestChangelogEntry(
   fetchFn: typeof fetch,
   signal?: AbortSignal,

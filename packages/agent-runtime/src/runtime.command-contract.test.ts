@@ -101,6 +101,108 @@ describe("createAgentRuntime command contracts", () => {
     return { record, runtime };
   }
 
+  it("lists provider-native sessions through the metadata-only bridge seam", async () => {
+    const { record, runtime } = createContractRuntime();
+
+    try {
+      await expect(
+        runtime.listNativeSessions({
+          providerId: "fake",
+          archived: true,
+          cursor: "cursor-1",
+          limit: 25,
+          cwd: "/workspace",
+          searchTerm: "native",
+        }),
+      ).resolves.toEqual({
+        sessions: [
+          {
+            providerThreadId: "provider-native-1",
+            title: "Native session",
+            cwd: "/workspace",
+            projectId: "project-native",
+            workspaceRoot: "/workspace",
+            createdAt: 1_777_000_000,
+            updatedAt: 1_777_000_100,
+            archived: true,
+            source: "test",
+            status: "idle",
+          },
+        ],
+        nextCursor: null,
+        backwardsCursor: null,
+      });
+      expect(record.last("native/session/list")?.params).toEqual({
+        archived: true,
+        cursor: "cursor-1",
+        limit: 25,
+        cwd: "/workspace",
+        searchTerm: "native",
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("reads one provider-native session through the metadata-only bridge seam", async () => {
+    const { record, runtime } = createContractRuntime();
+
+    try {
+      await expect(
+        runtime.readNativeSession({
+          providerId: "fake",
+          providerThreadId: "provider-native-1",
+        }),
+      ).resolves.toEqual({
+        providerThreadId: "provider-native-1",
+        title: "Native session",
+        cwd: "/workspace",
+        projectId: "project-native",
+        workspaceRoot: "/workspace",
+        createdAt: 1_777_000_000,
+        updatedAt: 1_777_000_100,
+        archived: false,
+        source: "test",
+        status: "idle",
+      });
+      expect(record.last("native/session/read")?.params).toEqual({
+        providerThreadId: "provider-native-1",
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("preserves native turn start and completion timestamps in projected history", async () => {
+    const { runtime } = createContractRuntime();
+
+    try {
+      const readNativeSessionHistory = runtime.readNativeSessionHistory;
+      expect(readNativeSessionHistory).toBeTypeOf("function");
+      if (readNativeSessionHistory === undefined) {
+        throw new Error("Native session history is unavailable");
+      }
+      const history = await readNativeSessionHistory({
+        bridgeLaunch: createScriptedEchoLaunch(),
+        providerId: "fake",
+        providerThreadId: "provider-native-1",
+        threadId: "thread-native-1",
+      });
+
+      expect(
+        history.events.map(({ createdAt, event }) => ({
+          createdAt,
+          type: event.type,
+        })),
+      ).toEqual([
+        { createdAt: 1_777_000_010_000, type: "turn/started" },
+        { createdAt: 1_777_000_070_000, type: "turn/completed" },
+      ]);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
   it("passes runtime workspace-write roots to the provider as provider options", async () => {
     const additionalWorkspaceWriteRoots = [
       "/repo/.git/worktrees/bb13",

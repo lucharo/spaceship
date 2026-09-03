@@ -81,6 +81,7 @@ async function main() {
     const standaloneBaseEnv = buildStandaloneRuntimeEnv({
       baseEnv: process.env,
       overrides: {
+        BB_HOST_DAEMON_PORT: String(daemonPort),
         [STANDALONE_INSTANCE_ENV]: instanceId,
         [STANDALONE_PARENT_PID_ENV]: String(parentPid),
       },

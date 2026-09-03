@@ -223,7 +223,7 @@
   },
   "codex/stop-interrupt": {
     "events": 28,
-    "rows": 3,
+    "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },

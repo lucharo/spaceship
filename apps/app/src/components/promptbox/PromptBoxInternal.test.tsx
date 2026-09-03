@@ -138,12 +138,14 @@ function buildTypeaheadConfig({
   mentionTriggers,
   mentionSuggestions = [],
   onMentionQueryChange = () => {},
+  commandAliases = [],
   commandSuggestions = [],
   onCommandQueryChange = () => {},
 }: {
   mentionTriggers?: TypeaheadConfig["mention"]["triggers"];
   mentionSuggestions?: TypeaheadConfig["mention"]["suggestions"];
   onMentionQueryChange?: TypeaheadConfig["mention"]["onQueryChange"];
+  commandAliases?: TypeaheadConfig["command"]["aliases"];
   commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
   onCommandQueryChange?: (query: string | null) => void;
 } = {}): TypeaheadConfig {
@@ -157,6 +159,7 @@ function buildTypeaheadConfig({
     },
     command: {
       trigger: "/",
+      aliases: commandAliases,
       suggestions: commandSuggestions,
       isLoading: false,
       isError: false,
@@ -270,6 +273,7 @@ function renderPromptBox(
     initialMentionRanges?: PromptTextMention[];
     mentionTriggers?: TypeaheadConfig["mention"]["triggers"];
     mentionSuggestions?: TypeaheadConfig["mention"]["suggestions"];
+    commandAliases?: TypeaheadConfig["command"]["aliases"];
     commandSuggestions?: TypeaheadConfig["command"]["suggestions"];
   } = {},
 ) {
@@ -298,6 +302,7 @@ function renderPromptBox(
           mentionTriggers: options.mentionTriggers,
           mentionSuggestions: options.mentionSuggestions,
           onMentionQueryChange,
+          commandAliases: options.commandAliases,
           commandSuggestions: options.commandSuggestions,
           onCommandQueryChange,
         })}
@@ -3684,6 +3689,76 @@ describe("PromptBoxInternal prompt actions", () => {
         },
       },
     ]);
+  });
+
+  it("selects a native dollar skill without showing slash-only commands", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("$wra", {
+      commandAliases: ["$"],
+      commandSuggestions: [
+        {
+          kind: "command",
+          name: "wrapup",
+          source: "skill",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+        {
+          kind: "command",
+          name: "write",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    expect(await screen.findByText("wrapup")).toBeTruthy();
+    expect(screen.queryByText("write")).toBeNull();
+    await selectCommandSuggestion("wrapup");
+
+    await waitFor(() => expect(latestValue(changes)).toBe("$wrapup "));
+    expect(latestChange(changes)?.mentions).toEqual([
+      {
+        start: 0,
+        end: "$wrapup".length,
+        resource: {
+          kind: "command",
+          trigger: "$",
+          name: "wrapup",
+          source: "skill",
+          origin: "user",
+          label: "wrapup",
+          argumentHint: null,
+        },
+      },
+    ]);
+  });
+
+  it("keeps a dollar-prefixed command literal when no skills match", async () => {
+    const { onCommandQueryChange, promptBoxRef } = renderPromptBox("$write", {
+      commandAliases: ["$"],
+      commandSuggestions: [
+        {
+          kind: "command",
+          name: "write",
+          source: "command",
+          origin: "user",
+          description: null,
+          argumentHint: null,
+        },
+      ],
+    });
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(onCommandQueryChange).toHaveBeenLastCalledWith("write"),
+    );
+    expect(
+      document.querySelector("[data-promptbox-typeahead-menu]"),
+    ).toBeNull();
   });
 
   it("keeps typed content after a prompt action when selecting another action", async () => {

@@ -191,6 +191,7 @@ import {
   type RuntimeOwnership,
   type WindowStateKey,
 } from "./types.js";
+import { createSpaceshipRuntimeEnv } from "./spaceship-runtime.js";
 
 const OWNED_RUNTIME_STOP_TIMEOUT_MS = 6_000;
 const OWNED_RUNTIME_KILL_TIMEOUT_MS = 1_000;
@@ -565,9 +566,9 @@ function createDesktopLogger(): DesktopAutoUpdateLogger {
 }
 
 function resolveDataDirFromEnv(args: ResolveDataDirFromEnvArgs): string {
-  const rawDataDir = args.env.BB_DATA_DIR?.trim();
-  if (rawDataDir === undefined || rawDataDir.length === 0) {
-    return join(args.homeDir, ".bb");
+  const rawDataDir = createSpaceshipRuntimeEnv(args).BB_DATA_DIR;
+  if (rawDataDir === undefined) {
+    throw new Error("Spaceship runtime data directory is unavailable");
   }
   if (rawDataDir === "~") {
     return args.homeDir;
@@ -1803,7 +1804,7 @@ async function startOwnedRuntime(
     bridgePath: args.bridgePath,
     cwd: homedir(),
     env: {
-      ...process.env,
+      ...createSpaceshipRuntimeEnv({ env: process.env, homeDir: homedir() }),
       [APP_SURFACE_ENV_NAME]: APP_SURFACE_DESKTOP,
     },
     logLineLimit: PROCESS_LOG_LINE_LIMIT,
@@ -2087,7 +2088,7 @@ async function runDesktopApp(): Promise<void> {
 
   const applicationName = app.isPackaged
     ? DESKTOP_RELEASE_INFO.applicationName
-    : "bb-dev";
+    : "Spaceship Dev";
   app.setName(applicationName);
   installAboutPanel(applicationName);
 

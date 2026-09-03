@@ -1,18 +1,35 @@
+import path from "node:path";
 import {
+  adoptNativeThread,
+  confirmNativeSessionArchive,
+  createEnvironment,
+  findManagedEnvironmentAtHostPath,
+  findThreadByNativeIdentity,
+  findOrCreateProjectByLocalPathSource,
+  findProjectEnvironmentByHostPath,
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
   getEnvironment,
+  getThread,
   getThreadSectionById,
   listThreadMentionRowsByIds,
   listThreadsWithPendingInteractionState,
   markThreadDeleted,
   searchThreadsWithPendingInteractionState,
+  setThreadExecutionOverride,
   updateThread,
+  unarchiveThread,
   type ThreadSearchResultGroup as DbThreadSearchResultGroup,
   type UpdateThreadInput,
 } from "@bb/db";
-import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
+import {
+  getProjectPathValidationMessage,
+  normalizeProjectPathInput,
+  type Environment,
+  type Thread,
+  type ThreadListEntry,
+} from "@bb/domain";
 import {
   threadIncludeOptionSchema,
   publicApiRoutes,
@@ -28,20 +45,36 @@ import {
 import type { Hono } from "hono";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
+import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import { parseOptionalInteger } from "../../services/lib/validation.js";
+import { throwEnvironmentNotReady } from "../../services/lib/lifecycle-api-errors.js";
 import {
   requestEnvironmentCleanup,
   requestEnvironmentCleanupAdvance,
 } from "../../services/environments/environment-cleanup-internal.js";
+import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
 import {
   getNonDestroyedHostWithStatus,
+  findHostDataDir,
+  requireNonDestroyedHostWithStatus,
   requireEnvironment,
   requirePublicProject,
   requirePublicThread,
 } from "../../services/lib/entity-lookup.js";
-import { dispatchThreadRenameCommand } from "../../services/threads/thread-commands.js";
+import { callHostRetryableOnlineRpc } from "../../services/hosts/online-rpc.js";
+import { requireBridgeLaunchForProviderId } from "../../services/system/provider-bridge-launch.js";
+import {
+  archiveProviderNativeSession,
+  readProviderNativeSession,
+} from "../../services/system/native-sessions.js";
+import {
+  dispatchThreadRenameCommand,
+  waitForPendingThreadProviderArchiveCommand,
+} from "../../services/threads/thread-commands.js";
 import {
   finalizeStoppedThread,
+  hasLiveThreadStartInFlight,
+  hasLiveThreadStopInFlight,
   requestActiveRuntimeThreadStopIfNeeded,
 } from "../../services/threads/thread-lifecycle.js";
 import { createThreadFromRequest } from "../../services/threads/thread-create.js";
@@ -53,8 +86,23 @@ import {
 } from "../../services/threads/thread-runtime-display.js";
 import { assertValidParentThread } from "../../services/threads/thread-parent.js";
 import { handleThreadOwnershipChange } from "../../services/threads/thread-ownership.js";
-import { applyThreadExecutionOverride } from "../../services/threads/thread-execution-override.js";
-import { emitPluginThreadDeleted } from "../../services/plugins/plugin-thread-events.js";
+import {
+  resolveThreadExecutionOverrideForThread,
+  withThreadExecutionOverrideMutation,
+} from "../../services/threads/thread-execution-override.js";
+import { unmanagedAttachRefusal } from "../../services/threads/workspace-path-claims.js";
+import {
+  emitPluginThreadCreated,
+  emitPluginThreadDeleted,
+} from "../../services/plugins/plugin-thread-events.js";
+import {
+  archivePreparedThreadAndHiddenSourceForks,
+  nativeSessionMutationKey,
+  prepareThreadAndHiddenSourceForksArchive,
+  resolveArchiveThreadEnvironment,
+  withNativeSessionMutation,
+  withThreadArchiveMutation,
+} from "../../services/threads/thread-archive.js";
 
 function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
   const includes = new Set<ThreadIncludeOption>();
@@ -302,15 +350,350 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if (payload.sectionId) {
       requireThreadSection(deps, payload.sectionId);
     }
-    const thread = await createThreadFromRequest(deps, {
-      ...payload,
-      origin: payload.origin,
-    });
+    const createThread = () =>
+      createThreadFromRequest(deps, {
+        ...payload,
+        origin: payload.origin,
+      });
+    const sourceMutationId = payload.sourceThreadId ?? payload.parentThreadId;
+    const thread = sourceMutationId
+      ? await withNativeSessionMutation(() =>
+          withThreadArchiveMutation(sourceMutationId, createThread),
+        )
+      : await createThread();
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });
 
+  post(routes.adoptNative, async (context, payload) => {
+    return withNativeSessionMutation(() =>
+      withThreadArchiveMutation(nativeSessionMutationKey(payload), async () => {
+        requireNonDestroyedHostWithStatus(deps, payload.hostId);
+        requireBridgeLaunchForProviderId(deps, payload.providerId);
+        const existingBeforeRead = findThreadByNativeIdentity(deps.db, payload);
+        if (
+          existingBeforeRead !== null &&
+          existingBeforeRead.archivedAt !== null
+        ) {
+          if (
+            existingBeforeRead.status === "active" ||
+            existingBeforeRead.status === "stopping" ||
+            hasLiveThreadStartInFlight(existingBeforeRead.id) ||
+            hasLiveThreadStopInFlight(existingBeforeRead.id)
+          ) {
+            throw new ApiError(
+              409,
+              "native_session_archived",
+              "Wait for the native session archive to finish before reopening it",
+            );
+          }
+          const archiveSettled =
+            await waitForPendingThreadProviderArchiveCommand(
+              existingBeforeRead.id,
+              COMMAND_TIMEOUT_MS,
+            );
+          if (!archiveSettled) {
+            throw new ApiError(
+              409,
+              "native_session_archived",
+              "Wait for the native session archive to finish before reopening it",
+            );
+          }
+        }
+        const nativeSession = await readProviderNativeSession(deps, payload);
+        if (nativeSession.providerThreadId !== payload.providerThreadId) {
+          throw new ApiError(
+            409,
+            "native_session_identity_mismatch",
+            "The provider returned a different native session",
+          );
+        }
+        if (nativeSession.archived) {
+          throw new ApiError(
+            409,
+            "native_session_archived",
+            "Unarchive the native session before opening it in Spaceship",
+          );
+        }
+        if (nativeSession.cwd === null) {
+          throw new ApiError(
+            409,
+            "native_session_cwd_unavailable",
+            "The native session has no usable working directory",
+          );
+        }
+        const nativePath = normalizeProjectPathInput(nativeSession.cwd);
+        const pathValidationMessage =
+          getProjectPathValidationMessage(nativePath);
+        if (pathValidationMessage !== null) {
+          throw new ApiError(
+            409,
+            "native_session_cwd_invalid",
+            pathValidationMessage,
+          );
+        }
+        const inspection = await callHostRetryableOnlineRpc(deps, {
+          hostId: payload.hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: { type: "project.inspect", path: nativePath },
+        });
+        const inspectedPath = normalizeProjectPathInput(inspection.path);
+        const inspectedPathValidationMessage =
+          getProjectPathValidationMessage(inspectedPath);
+        if (inspectedPathValidationMessage !== null) {
+          throw new ApiError(
+            409,
+            "native_session_cwd_invalid",
+            inspectedPathValidationMessage,
+          );
+        }
+        const existing = findThreadByNativeIdentity(deps.db, payload);
+        if (existing) {
+          return withThreadArchiveMutation(existing.id, async () => {
+            let current = findThreadByNativeIdentity(deps.db, payload);
+            if (current === null || current.id !== existing.id) {
+              throw new ApiError(
+                409,
+                "native_session_projection_changed",
+                "The native session projection changed while it was opening",
+              );
+            }
+            if (
+              existingBeforeRead?.id === current.id &&
+              existingBeforeRead.archivedAt === null &&
+              current.archivedAt !== null
+            ) {
+              throw new ApiError(
+                409,
+                "native_session_archived",
+                "The native session was archived while it was opening",
+              );
+            }
+            let existingEnvironment =
+              current.environmentId === null
+                ? null
+                : getEnvironment(deps.db, current.environmentId);
+            const needsEnvironmentReattachment =
+              existingEnvironment === null && current.environmentId === null;
+            if (needsEnvironmentReattachment) {
+              existingEnvironment = findProjectEnvironmentByHostPath(
+                deps.db,
+                current.projectId,
+                payload.hostId,
+                inspectedPath,
+              );
+              if (existingEnvironment === null) {
+                const refusal = unmanagedAttachRefusal(deps.db, {
+                  allowUnclaimedManagedPathForProject: true,
+                  checksOutBranch: false,
+                  dataDir: findHostDataDir(deps, payload.hostId),
+                  hostId: payload.hostId,
+                  path: inspectedPath,
+                  projectId: current.projectId,
+                });
+                if (refusal) {
+                  throw new ApiError(409, "invalid_request", refusal.message);
+                }
+                existingEnvironment = createEnvironment(deps.db, deps.hub, {
+                  projectId: current.projectId,
+                  hostId: payload.hostId,
+                  workspaceProvisionType: "unmanaged",
+                  path: inspectedPath,
+                  managed: false,
+                  isGitRepo: inspection.isGitRepo,
+                  isWorktree: inspection.isWorktree,
+                  branchName: inspection.branchName,
+                  defaultBranch: inspection.defaultBranch,
+                  status: "ready",
+                });
+              }
+            }
+            if (
+              existingEnvironment === null ||
+              existingEnvironment.hostId !== payload.hostId ||
+              existingEnvironment.path !== inspectedPath
+            ) {
+              throw new ApiError(
+                409,
+                "native_session_workspace_changed",
+                "The native session workspace no longer matches its Spaceship projection",
+              );
+            }
+            let reopenEnvironment = existingEnvironment;
+            if (existingEnvironment.status === "retiring") {
+              applyLoggedEnvironmentLifecycleEvent(deps, {
+                environmentId: existingEnvironment.id,
+                event: { type: "retire.cancelled" },
+              });
+              reopenEnvironment =
+                getEnvironment(deps.db, existingEnvironment.id) ??
+                existingEnvironment;
+            }
+            if (
+              reopenEnvironment.status !== "ready" ||
+              reopenEnvironment.path === null
+            ) {
+              throwEnvironmentNotReady(reopenEnvironment);
+            }
+            if (needsEnvironmentReattachment) {
+              const reattached = updateThread(deps.db, deps.hub, current.id, {
+                environmentId: reopenEnvironment.id,
+              });
+              if (reattached === null) {
+                throw new ApiError(
+                  409,
+                  "native_session_projection_changed",
+                  "The native session projection changed while it was opening",
+                );
+              }
+              current = reattached;
+            }
+            const reconciled =
+              current.archivedAt === null
+                ? current
+                : (unarchiveThread(deps.db, deps.hub, current.id) ?? current);
+            return context.json(
+              {
+                created: false,
+                thread: toThreadResponseFromThread(deps, {
+                  thread: reconciled,
+                }),
+              },
+              200,
+            );
+          });
+        }
+        const managedEnvironment = findManagedEnvironmentAtHostPath(deps.db, {
+          hostId: payload.hostId,
+          path: inspectedPath,
+        });
+        const requestedProject = payload.projectId
+          ? requirePublicProject(deps.db, payload.projectId)
+          : null;
+        const refusal = unmanagedAttachRefusal(deps.db, {
+          checksOutBranch: false,
+          dataDir: findHostDataDir(deps, payload.hostId),
+          hostId: payload.hostId,
+          path: inspectedPath,
+          projectId:
+            requestedProject?.id ?? managedEnvironment?.projectId ?? null,
+        });
+        if (refusal) {
+          throw new ApiError(409, "invalid_request", refusal.message);
+        }
+        const project = payload.projectId
+          ? requestedProject!
+          : managedEnvironment
+            ? requirePublicProject(deps.db, managedEnvironment.projectId)
+            : findOrCreateProjectByLocalPathSource(deps.db, deps.hub, {
+                name: path.basename(inspectedPath) || "Workspace",
+                source: {
+                  type: "local_path",
+                  hostId: payload.hostId,
+                  path: inspectedPath,
+                },
+              }).project;
+        let environment = payload.environmentId
+          ? requireEnvironment(deps.db, payload.environmentId)
+          : findProjectEnvironmentByHostPath(
+              deps.db,
+              project.id,
+              payload.hostId,
+              inspectedPath,
+            );
+        if (!environment) {
+          environment = createEnvironment(deps.db, deps.hub, {
+            projectId: project.id,
+            hostId: payload.hostId,
+            workspaceProvisionType: "unmanaged",
+            path: inspectedPath,
+            managed: false,
+            isGitRepo: inspection.isGitRepo,
+            isWorktree: inspection.isWorktree,
+            branchName: inspection.branchName,
+            defaultBranch: inspection.defaultBranch,
+            status: "ready",
+          });
+        }
+        if (
+          environment.projectId !== project.id ||
+          environment.hostId !== payload.hostId ||
+          environment.path !== inspection.path ||
+          environment.status !== "ready" ||
+          environment.path === null
+        ) {
+          throw new ApiError(
+            409,
+            "environment_not_ready",
+            "Native sessions can only be adopted into a ready project environment",
+          );
+        }
+        const result = adoptNativeThread(deps.db, deps.hub, {
+          projectId: project.id,
+          environmentId: environment.id,
+          hostId: environment.hostId,
+          providerId: payload.providerId,
+          providerThreadId: payload.providerThreadId,
+          title: nativeSession.title,
+        });
+        if (result.created) {
+          emitPluginThreadCreated(result.thread);
+        }
+        return context.json(
+          {
+            created: result.created,
+            thread: toThreadResponseFromThread(deps, {
+              thread: result.thread,
+            }),
+          },
+          200,
+        );
+      }),
+    );
+  });
+
+  post(routes.archiveNative, async (context, payload) => {
+    return withNativeSessionMutation(() =>
+      withThreadArchiveMutation(nativeSessionMutationKey(payload), async () => {
+        requireNonDestroyedHostWithStatus(deps, payload.hostId);
+        const existing = findThreadByNativeIdentity(deps.db, payload);
+        if (existing === null) {
+          await archiveProviderNativeSession(deps, payload);
+          return context.json({ ok: true as const });
+        }
+
+        await withThreadArchiveMutation(existing.id, async () => {
+          const current = findThreadByNativeIdentity(deps.db, payload);
+          const prepared =
+            current !== null && current.archivedAt === null
+              ? prepareThreadAndHiddenSourceForksArchive(deps, {
+                  environment: resolveArchiveThreadEnvironment(deps, {
+                    thread: current,
+                  }),
+                  thread: current,
+                })
+              : null;
+          await archiveProviderNativeSession(deps, payload);
+          if (current !== null) {
+            confirmNativeSessionArchive(deps.db, {
+              providerThreadId: payload.providerThreadId,
+              threadId: current.id,
+            });
+            if (prepared !== null) {
+              archivePreparedThreadAndHiddenSourceForks(deps, prepared);
+            }
+          }
+        });
+        return context.json({ ok: true as const });
+      }),
+    );
+  });
+
   post(routes.fork, async (context, payload) => {
-    const thread = await createThreadForkFromRequest(deps, payload);
+    const thread = await withNativeSessionMutation(() =>
+      withThreadArchiveMutation(payload.sourceThreadId, () =>
+        createThreadForkFromRequest(deps, payload),
+      ),
+    );
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });
 
@@ -339,84 +722,147 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   });
 
   patch(routes.update, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (payload.parentThreadId) {
-      assertValidParentThread(deps, {
-        childThreadId: thread.id,
-        parentThreadId: payload.parentThreadId,
-      });
-    }
+    const update = async () => {
+      const thread = requirePublicThread(deps.db, context.req.param("id"));
+      const sourceThreadIdToRevalidate =
+        payload.visibility === "hidden" &&
+        thread.visibility !== "hidden" &&
+        thread.sourceThreadId !== null
+          ? thread.sourceThreadId
+          : null;
+      // Resolve sticky execution config first because model discovery may await
+      // the host. Persist it only after every metadata field has also validated,
+      // so a combined PATCH cannot leave half of its requested state behind.
+      const executionOverride =
+        "model" in payload || "reasoningLevel" in payload
+          ? await resolveThreadExecutionOverrideForThread(deps, {
+              thread,
+              patch: {
+                ...("model" in payload ? { model: payload.model } : {}),
+                ...("reasoningLevel" in payload
+                  ? { reasoningLevel: payload.reasoningLevel }
+                  : {}),
+              },
+            })
+          : null;
 
-    // Sticky execution override (model / reasoning level). Validated and
-    // persisted by a dedicated service — kept off the generic metadata update
-    // because execution config must not flow through `updateThread`.
-    if ("model" in payload || "reasoningLevel" in payload) {
-      await applyThreadExecutionOverride(deps, {
-        thread,
-        patch: {
-          ...("model" in payload ? { model: payload.model } : {}),
-          ...("reasoningLevel" in payload
-            ? { reasoningLevel: payload.reasoningLevel }
-            : {}),
-        },
-      });
-    }
-
-    const metadataUpdate: UpdateThreadInput = {};
-    if ("title" in payload) {
-      metadataUpdate.title = payload.title;
-    }
-    const sectionId = payload.sectionId;
-    if (sectionId !== undefined) {
-      if (sectionId !== null) {
-        requireThreadSection(deps, sectionId);
+      const metadataUpdate: UpdateThreadInput = {};
+      if ("title" in payload) {
+        metadataUpdate.title = payload.title;
       }
-      metadataUpdate.sectionId = sectionId;
-    }
-    if ("parentThreadId" in payload) {
-      metadataUpdate.parentThreadId = payload.parentThreadId;
-    }
-    if ("visibility" in payload) {
-      metadataUpdate.visibility = payload.visibility;
-    }
-    const updated =
-      Object.keys(metadataUpdate).length > 0
-        ? updateThread(deps.db, deps.hub, thread.id, metadataUpdate)
-        : requirePublicThread(deps.db, thread.id);
-    if (!updated) {
-      throw new ApiError(404, "thread_not_found", "Thread not found");
-    }
+      const sectionId = payload.sectionId;
+      if (sectionId !== undefined) {
+        metadataUpdate.sectionId = sectionId;
+      }
+      if ("parentThreadId" in payload) {
+        metadataUpdate.parentThreadId = payload.parentThreadId;
+      }
+      if ("visibility" in payload) {
+        metadataUpdate.visibility = payload.visibility;
+      }
 
-    if (
-      payload.title &&
-      payload.title !== thread.title &&
-      updated.environmentId
-    ) {
-      const environment = requireEnvironment(deps.db, updated.environmentId);
-      if (environment.status === "ready" && environment.path) {
-        dispatchThreadRenameCommand(deps, {
-          environment: {
-            id: environment.id,
-            hostId: environment.hostId,
-          },
-          providerId: updated.providerId,
-          threadId: updated.id,
-          title: payload.title,
+      const { previousThread, updated } = deps.db.transaction((transaction) => {
+        const currentThread = requirePublicThread(transaction, thread.id);
+        if (payload.parentThreadId) {
+          assertValidParentThread(
+            { db: transaction },
+            {
+              childThreadId: currentThread.id,
+              parentThreadId: payload.parentThreadId,
+            },
+          );
+        }
+        if (
+          sourceThreadIdToRevalidate !== null &&
+          currentThread.visibility !== "hidden"
+        ) {
+          const sourceThread = getThread(
+            transaction,
+            sourceThreadIdToRevalidate,
+          );
+          if (
+            currentThread.sourceThreadId !== sourceThreadIdToRevalidate ||
+            sourceThread === null ||
+            sourceThread.archivedAt !== null ||
+            sourceThread.deletedAt !== null
+          ) {
+            throw new ApiError(
+              400,
+              "invalid_request",
+              "Cannot hide a source-derived thread whose source is archived or deleted",
+            );
+          }
+        }
+        if (sectionId !== undefined && sectionId !== null) {
+          if (!getThreadSectionById(transaction, sectionId)) {
+            throw new ApiError(404, "section_not_found", "Section not found");
+          }
+        }
+
+        const executionUpdatedThread =
+          executionOverride !== null
+            ? setThreadExecutionOverride(transaction, {
+                threadId: currentThread.id,
+                modelOverride: executionOverride.modelOverride,
+                reasoningLevelOverride:
+                  executionOverride.reasoningLevelOverride,
+              })
+            : null;
+        const updatedThread =
+          Object.keys(metadataUpdate).length > 0
+            ? updateThread(
+                transaction,
+                deps.hub,
+                currentThread.id,
+                metadataUpdate,
+              )
+            : (executionUpdatedThread ?? currentThread);
+        return { previousThread: currentThread, updated: updatedThread };
+      });
+      if (!updated) {
+        throw new ApiError(404, "thread_not_found", "Thread not found");
+      }
+
+      if (
+        payload.title &&
+        payload.title !== previousThread.title &&
+        updated.environmentId
+      ) {
+        const environment = requireEnvironment(deps.db, updated.environmentId);
+        if (environment.status === "ready" && environment.path) {
+          dispatchThreadRenameCommand(deps, {
+            environment: {
+              id: environment.id,
+              hostId: environment.hostId,
+            },
+            providerId: updated.providerId,
+            threadId: updated.id,
+            title: payload.title,
+          });
+        }
+      }
+
+      if (
+        "parentThreadId" in payload &&
+        payload.parentThreadId !== previousThread.parentThreadId
+      ) {
+        await handleThreadOwnershipChange(deps, {
+          previousThread,
+          updatedThread: updated,
         });
       }
-    }
 
-    if (
-      "parentThreadId" in payload &&
-      payload.parentThreadId !== thread.parentThreadId
-    ) {
-      await handleThreadOwnershipChange(deps, {
-        previousThread: thread,
-        updatedThread: updated,
-      });
-    }
-
-    return context.json(toThreadResponseFromThread(deps, { thread: updated }));
+      return context.json(
+        toThreadResponseFromThread(deps, { thread: updated }),
+      );
+    };
+    const updateExecutionOverride = () =>
+      "model" in payload || "reasoningLevel" in payload
+        ? withThreadExecutionOverrideMutation(context.req.param("id"), update)
+        : update();
+    return "parentThreadId" in payload || "visibility" in payload
+      ? withNativeSessionMutation(updateExecutionOverride)
+      : updateExecutionOverride();
   });
 
   del(routes.delete, async (context, payload) => {

@@ -35,7 +35,11 @@ interface ArchiveThreadEnvironment {
 
 interface ArchiveThreadWithLifecycleEffectsArgs {
   environment: ArchiveThreadEnvironment | null;
-  thread: Pick<Thread, "environmentId" | "id" | "status">;
+  thread: Thread;
+}
+
+interface ArchiveThreadLifecycleOptions {
+  dispatchProviderArchive?: boolean;
 }
 
 interface ResolveArchiveThreadEnvironmentArgs {
@@ -48,6 +52,70 @@ interface ArchiveEnvironmentThreadsArgs {
 
 interface ArchiveThreadAndChildrenArgs {
   parentThread: Thread;
+}
+
+export interface PreparedArchiveThread {
+  environment: ArchiveThreadEnvironment | null;
+  thread: ArchiveThreadWithLifecycleEffectsArgs["thread"];
+}
+
+export interface PreparedThreadAndChildrenArchive {
+  rootThreadId: string;
+  threads: PreparedArchiveThread[];
+}
+
+const threadArchiveMutationChains = new Map<string, Promise<void>>();
+const nativeSessionMutationGlobalKey = "native-session-mutations";
+
+export function nativeSessionMutationKey(args: {
+  hostId: string;
+  providerId: string;
+  providerThreadId: string;
+}): string {
+  return JSON.stringify([
+    "native-session",
+    args.hostId,
+    args.providerId,
+    args.providerThreadId,
+  ]);
+}
+
+/**
+ * Serialize lifecycle mutations that share either a projected source thread or
+ * a provider-native session identity. Native archive waits on a provider RPC,
+ * so the lock keeps adoption, unarchive, or hidden-fork creation from
+ * invalidating its preflight snapshot.
+ */
+export function withThreadArchiveMutation<T>(
+  mutationKey: string,
+  mutate: () => Promise<T>,
+): Promise<T> {
+  const previous =
+    threadArchiveMutationChains.get(mutationKey) ?? Promise.resolve();
+  const result = previous.then(mutate);
+  const tail = result.then(
+    () => {},
+    () => {},
+  );
+  threadArchiveMutationChains.set(mutationKey, tail);
+  void tail.then(() => {
+    if (threadArchiveMutationChains.get(mutationKey) === tail) {
+      threadArchiveMutationChains.delete(mutationKey);
+    }
+  });
+  return result;
+}
+
+/**
+ * Native adoption, archive, unarchive, and source-derived creation all touch
+ * provider identity plus local projection state. Keep their lock ordering
+ * deterministic across single-thread and bulk routes. Provider RPC latency is
+ * acceptable here: these are explicit, low-frequency lifecycle operations.
+ */
+export function withNativeSessionMutation<T>(
+  mutate: () => Promise<T>,
+): Promise<T> {
+  return withThreadArchiveMutation(nativeSessionMutationGlobalKey, mutate);
 }
 
 /**
@@ -84,38 +152,61 @@ export function resolveArchiveThreadEnvironment(
 function archiveThreadWithLifecycleEffects(
   deps: AppDeps,
   args: ArchiveThreadWithLifecycleEffectsArgs,
+  options: ArchiveThreadLifecycleOptions = {},
 ): Thread | null {
   const archivedThread = archiveThreadAndReleaseChildren(deps, {
     threadId: args.thread.id,
   });
-  if (!archivedThread) {
-    return null;
+  if (archivedThread !== null) {
+    deps.terminalSessions.closeArchivedThreadTerminals({
+      threadId: archivedThread.id,
+    });
+    // Archive only stops active runtime work; manual stop is the pre-start
+    // provisioning cancellation entrypoint. A thread whose environment row was
+    // pruned has no runtime left to stop.
+    if (args.environment !== null) {
+      requestActiveRuntimeThreadStopIfNeeded(
+        deps,
+        archivedThread,
+        args.environment,
+      );
+    }
+    if (options.dispatchProviderArchive !== false) {
+      dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
+        threadId: archivedThread.id,
+      });
+    }
+    resetActiveThreadEventPruningState(archivedThread.id);
+    pruneThreadEventHistoryBestEffort(deps, {
+      mode: "archived",
+      threadId: archivedThread.id,
+    });
+    emitPluginThreadArchived(archivedThread);
   }
 
-  deps.terminalSessions.closeArchivedThreadTerminals({
-    threadId: archivedThread.id,
-  });
-  // Archive only stops active runtime work; manual stop is the pre-start
-  // provisioning cancellation entrypoint. A thread whose environment row was
-  // pruned has no runtime left to stop.
-  if (args.environment !== null) {
-    requestActiveRuntimeThreadStopIfNeeded(
-      deps,
-      archivedThread,
-      args.environment,
-    );
+  if (
+    args.environment !== null &&
+    wouldCleanupEnvironment(deps, {
+      environmentId: args.environment.id,
+    })
+  ) {
+    requestEnvironmentCleanup(deps, {
+      environmentId: args.environment.id,
+    });
+    requestEnvironmentCleanupAdvance(deps, {
+      environmentId: args.environment.id,
+    });
   }
-  dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
-    threadId: archivedThread.id,
-  });
-  resetActiveThreadEventPruningState(archivedThread.id);
-  pruneThreadEventHistoryBestEffort(deps, {
-    mode: "archived",
-    threadId: archivedThread.id,
-  });
-  emitPluginThreadArchived(archivedThread);
 
   return archivedThread;
+}
+
+export function archivePreparedThread(
+  deps: AppDeps,
+  prepared: PreparedArchiveThread,
+  options: ArchiveThreadLifecycleOptions = {},
+): Thread | null {
+  return archiveThreadWithLifecycleEffects(deps, prepared, options);
 }
 
 /**
@@ -128,19 +219,48 @@ export function archiveThreadAndHiddenSourceForks(
   deps: AppDeps,
   args: ArchiveThreadWithLifecycleEffectsArgs,
 ): Thread | null {
-  const archivedThread = archiveThreadWithLifecycleEffects(deps, args);
-  if (!archivedThread) {
-    return null;
+  return archivePreparedThreadAndHiddenSourceForks(
+    deps,
+    prepareThreadAndHiddenSourceForksArchive(deps, args),
+  );
+}
+
+export function prepareThreadAndHiddenSourceForksArchive(
+  deps: AppDeps,
+  args: ArchiveThreadWithLifecycleEffectsArgs,
+): PreparedThreadAndChildrenArchive {
+  const hiddenSourceThreads = listUnarchivedHiddenSourceThreads(deps.db, {
+    sourceThreadId: args.thread.id,
+  });
+  return {
+    rootThreadId: args.thread.id,
+    threads: [args.thread, ...hiddenSourceThreads].map((thread, index) => ({
+      environment:
+        index === 0
+          ? args.environment
+          : resolveArchiveThreadEnvironment(deps, { thread }),
+      thread,
+    })),
+  };
+}
+
+export function archivePreparedThreadAndHiddenSourceForks(
+  deps: AppDeps,
+  prepared: PreparedThreadAndChildrenArchive,
+  options: ArchiveThreadLifecycleOptions = {},
+): Thread | null {
+  let archivedSourceThread: Thread | null = null;
+  for (const entry of prepared.threads) {
+    const archivedThread = archiveThreadWithLifecycleEffects(
+      deps,
+      entry,
+      options,
+    );
+    if (entry.thread.id === prepared.rootThreadId) {
+      archivedSourceThread = archivedThread;
+    }
   }
-  for (const fork of listUnarchivedHiddenSourceThreads(deps.db, {
-    sourceThreadId: archivedThread.id,
-  })) {
-    archiveThreadWithLifecycleEffects(deps, {
-      environment: resolveArchiveThreadEnvironment(deps, { thread: fork }),
-      thread: fork,
-    });
-  }
-  return archivedThread;
+  return archivedSourceThread;
 }
 
 export function archiveEnvironmentThreads(
@@ -180,10 +300,10 @@ export function archiveEnvironmentThreads(
   return archivedThreadIds;
 }
 
-export function archiveThreadAndChildren(
+export function prepareThreadAndChildrenArchive(
   deps: AppDeps,
   args: ArchiveThreadAndChildrenArgs,
-): string[] {
+): PreparedThreadAndChildrenArchive {
   const childThreads = listUnarchivedAssignedChildThreads(deps.db, {
     parentThreadId: args.parentThread.id,
   });
@@ -196,37 +316,47 @@ export function archiveThreadAndChildren(
     ...childThreads,
     ...hiddenSourceThreads,
   ].filter((thread) => thread.id !== args.parentThread.id);
-  if (args.parentThread.archivedAt === null) {
-    threads.push(args.parentThread);
-  }
-  const archivedThreadIds: string[] = [];
-  const affectedEnvironmentIds = new Set<string>();
-
-  for (const thread of threads) {
-    const environment = resolveArchiveThreadEnvironment(deps, { thread });
-    const result = archiveThreadWithLifecycleEffects(deps, {
-      environment,
+  threads.push(args.parentThread);
+  return {
+    rootThreadId: args.parentThread.id,
+    threads: threads.map((thread) => ({
+      environment: resolveArchiveThreadEnvironment(deps, { thread }),
       thread,
-    });
+    })),
+  };
+}
+
+export function archivePreparedThreadAndChildren(
+  deps: AppDeps,
+  prepared: PreparedThreadAndChildrenArchive,
+  options: ArchiveThreadLifecycleOptions = {},
+): string[] {
+  const archivedThreadIds: string[] = [];
+
+  for (const { environment, thread } of prepared.threads) {
+    const result = archiveThreadWithLifecycleEffects(
+      deps,
+      {
+        environment,
+        thread,
+      },
+      options,
+    );
     if (!result) {
       continue;
     }
     archivedThreadIds.push(result.id);
-    if (environment !== null) {
-      affectedEnvironmentIds.add(environment.id);
-    }
-  }
-
-  for (const environmentId of affectedEnvironmentIds) {
-    if (
-      wouldCleanupEnvironment(deps, {
-        environmentId,
-      })
-    ) {
-      requestEnvironmentCleanup(deps, { environmentId });
-      requestEnvironmentCleanupAdvance(deps, { environmentId });
-    }
   }
 
   return archivedThreadIds;
+}
+
+export function archiveThreadAndChildren(
+  deps: AppDeps,
+  args: ArchiveThreadAndChildrenArgs,
+): string[] {
+  return archivePreparedThreadAndChildren(
+    deps,
+    prepareThreadAndChildrenArchive(deps, args),
+  );
 }

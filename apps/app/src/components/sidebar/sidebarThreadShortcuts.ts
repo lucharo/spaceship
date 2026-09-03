@@ -27,7 +27,7 @@ const MAX_SIDEBAR_THREAD_SHORTCUTS = 9;
 export interface SidebarThreadShortcutTarget {
   /** Null for a thread inside a windowed-out placeholder: there is no row
       to click, so callers navigate by `projectId` + `threadId` instead. */
-  element: HTMLAnchorElement | null;
+  element: HTMLElement | null;
   key: string;
   threadId: string;
   projectId: string | null;
@@ -60,7 +60,7 @@ function collectSidebarThreadTargets(
   const targets: SidebarThreadShortcutTarget[] = [];
 
   for (const element of elements) {
-    if (element instanceof HTMLAnchorElement) {
+    if (element.matches(SIDEBAR_THREAD_SHORTCUT_TARGET_SELECTOR)) {
       const threadId = element.dataset.sidebarThreadId;
       if (!threadId) {
         continue;

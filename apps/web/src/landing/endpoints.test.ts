@@ -4,6 +4,7 @@ import {
   DOWNLOAD_MACOS_FALLBACK_URL,
   DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL,
   DOWNLOAD_MACOS_VERSION_FEED_URL,
+  GITHUB_URL,
 } from "./site";
 import { handleDownloadMacos, handleSubscribe } from "./endpoints";
 
@@ -11,6 +12,14 @@ describe("marketing download redirect", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("keeps source and release links inside the Spaceship fork", () => {
+    expect(GITHUB_URL).toBe("https://github.com/lucharo/spaceship");
+    expect(DOWNLOAD_MACOS_FALLBACK_URL).toContain("lucharo/spaceship");
+    expect(DOWNLOAD_MACOS_RELEASE_ASSET_BASE_URL).toContain(
+      "lucharo/spaceship",
+    );
   });
 
   it("redirects macOS downloads to the current dmg asset", async () => {
@@ -59,25 +68,21 @@ describe("marketing download redirect", () => {
     expect(response.headers.get("Location")).toBe(DOWNLOAD_MACOS_FALLBACK_URL);
   });
 
-  it("tracks the click through waitUntil when a PostHog key is set", async () => {
+  it("does not emit analytics while resolving a download", async () => {
     const fetchMock = vi.fn(
-      async (..._args: Parameters<typeof fetch>) => new Response("{}"),
+      async () => new Response(JSON.stringify({ files: [] })),
     );
     vi.stubGlobal("fetch", fetchMock);
     const waitUntil = vi.fn<(promise: Promise<void>) => void>();
 
     await handleDownloadMacos(
       new Request("https://getbb.app/download/macos?placement=nav"),
-      { LANDING_POSTHOG_KEY: "phc_test" },
+      {},
       waitUntil,
     );
 
-    expect(waitUntil).toHaveBeenCalledTimes(1);
-    await waitUntil.mock.calls[0]?.[0];
-    const captureCall = fetchMock.mock.calls.find(
-      ([url]) => typeof url === "string" && url.includes("posthog"),
-    );
-    expect(captureCall).toBeTruthy();
+    expect(waitUntil).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

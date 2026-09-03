@@ -181,6 +181,8 @@ type LaunchBearingMethod =
   | "archiveThread"
   | "unarchiveThread"
   | "listModels"
+  | "listNativeSessions"
+  | "readNativeSession"
   | "providerHealth"
   | "providerUsage"
   | "providerInstallationStatus"
@@ -227,6 +229,10 @@ export function withBridgeLaunch(
     unarchiveThread: (args) =>
       runtime.unarchiveThread({ bridgeLaunch, ...args }),
     listModels: (args) => runtime.listModels({ bridgeLaunch, ...args }),
+    listNativeSessions: (args) =>
+      runtime.listNativeSessions({ bridgeLaunch, ...args }),
+    readNativeSession: (args) =>
+      runtime.readNativeSession({ bridgeLaunch, ...args }),
     providerHealth: (args) => runtime.providerHealth({ bridgeLaunch, ...args }),
     providerUsage: (args) => runtime.providerUsage({ bridgeLaunch, ...args }),
     providerInstallationStatus: (args) =>

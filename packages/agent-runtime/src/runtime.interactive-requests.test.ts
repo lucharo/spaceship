@@ -8,6 +8,7 @@ import type {
   PendingInteractionResolution,
   ThreadEvent,
 } from "@bb/domain";
+import { PROVIDER_BRIDGE_PROTOCOL_VERSION } from "@bb/provider-bridge-protocol";
 import { promptTextInput } from "./test/prompt-input.js";
 import { parseJsonRpcLine } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { JsonRpcMessage } from "@bb/provider-bridge-protocol/bridge-kit";
@@ -102,7 +103,7 @@ async function answerDirectRequest(args: {
   // The handshake decides where approval policy is enforced.
   const [initialize] = adapter.buildPostInitializeRequests();
   initialize?.onResult({
-    protocolVersion: 2,
+    protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
     capabilities: { grammarVersions: [3, 3], ...args.handshake },
   });
   const id = args.rawRequest.id;

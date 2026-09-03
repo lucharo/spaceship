@@ -67,9 +67,10 @@ Hygiene rules (each traces to incident #853):
 ## Versioning and capabilities
 
 `initialize` exchanges `{protocolVersion, capabilities}` in both directions.
-The current version is **2** (the narrow-grammar cutover: `thread/delta`
-replaced `thread/event`); the runtime rejects a bridge answering another
-version with a legible startup error, since a version-1 bridge would
+The current version is **3**. Version 2 was the narrow-grammar cutover where
+`thread/delta` replaced `thread/event`; version 3 adds the required native
+session metadata used for project identity and live status. The runtime rejects
+a bridge answering another version with a legible startup error, since an older bridge would
 otherwise connect and produce a silently empty timeline. The version bumps
 only for breaking changes; everything additive rides capability tolerance:
 unknown methods answer `-32601`, unknown notifications are ignored, unknown
@@ -225,9 +226,10 @@ The target provider-plugin surface ([provider-plugin-api.md](provider-plugin-api
 grew the delta vocabulary into grammar v3: new union members and optional
 fields beside the v2 grammar, plus one streaming dialect and one usage
 dialect replacing v2's two of each (`message.delta`/`message.close` and
-`usage.turn`/`usage.exact` are deleted). The protocol version stays at 2 —
-the envelope and the method vocabulary did not change — and the grammar
-range is what gates a bridge: every bridge in this repo reports
+`usage.turn`/`usage.exact` are deleted). Protocol version 3 is current because
+native-session catalogue responses now require stable identity and lifecycle
+metadata; the independently negotiated delta grammar remains version 3. The
+grammar range gates delta compatibility: every bridge in this repo reports
 `grammarVersions: [3, 3]`.
 
 - **Core item shapes** `fileRead`, `search` (`mode: content | path | list`),
@@ -293,13 +295,13 @@ may do about it. The `provider/error` delta beside it still carries the
 user-visible row; the hint carries the action. The runtime keys on `kind`
 only and never consults the provider id:
 
-| `kind` | Runtime action |
-| --- | --- |
-| `sessionArchived` | `thread/unarchive` the session, then retry the rejected request once (`retryable: true`). |
-| `authRequired` | Reject the request with a typed `auth_required` error (no text match anywhere downstream) and forward the hint so the host can re-check provider health. |
+| `kind`               | Runtime action                                                                                                                                                                                                                                                                                                                          |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sessionArchived`    | `thread/unarchive` the session, then retry the rejected request once (`retryable: true`).                                                                                                                                                                                                                                               |
+| `authRequired`       | Reject the request with a typed `auth_required` error (no text match anywhere downstream) and forward the hint so the host can re-check provider health.                                                                                                                                                                                |
 | `restartRecommended` | Stop the bridge process the thread runs on and resume the thread on a fresh one — right away when the thread is idle, otherwise before its next turn. The restart waits while another thread on the same process is mid-turn or holds open background work, and never re-resumes a sibling the host already resumed on the replacement. |
-| `staleTurn` | Drop the steer: the turn it targeted is gone, and the runtime reports the steer as stale instead of failing it. |
-| `rateLimited` | With `retryable: true` on a rejected request: retry on a short bounded ladder and surface the last failure. With `retryable: false` (a turn that already failed): forward only; the runtime never re-runs a user's turn on its own. |
+| `staleTurn`          | Drop the steer: the turn it targeted is gone, and the runtime reports the steer as stale instead of failing it.                                                                                                                                                                                                                         |
+| `rateLimited`        | With `retryable: true` on a rejected request: retry on a short bounded ladder and surface the last failure. With `retryable: false` (a turn that already failed): forward only; the runtime never re-runs a user's turn on its own.                                                                                                     |
 
 The action follows the hint whichever attempt it arrives on: a rung of the
 rate-limit ladder or the retry after an unarchive that is rejected with

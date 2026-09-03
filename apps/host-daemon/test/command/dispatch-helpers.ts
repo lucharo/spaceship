@@ -53,6 +53,9 @@ export const unexpectedProjectAttachmentFetch: FetchProjectAttachment =
 export const unexpectedProviderMaintenance: Pick<
   CommandDispatchOptions,
   | "listModels"
+  | "listNativeSessions"
+  | "readNativeSession"
+  | "archiveNativeSession"
   | "providerHealth"
   | "providerUsage"
   | "providerInstallationStatus"
@@ -61,6 +64,15 @@ export const unexpectedProviderMaintenance: Pick<
 > = {
   listModels: async () => {
     throw new Error("Unexpected provider.list_models call");
+  },
+  listNativeSessions: async () => {
+    throw new Error("Unexpected provider.native_sessions.list call");
+  },
+  readNativeSession: async () => {
+    throw new Error("Unexpected provider.native_sessions.read call");
+  },
+  archiveNativeSession: async () => {
+    throw new Error("Unexpected provider.native_sessions.archive call");
   },
   providerHealth: async () => {
     throw new Error("Unexpected provider.health call");
@@ -348,6 +360,27 @@ export function createFakeRuntime() {
   };
   const runtime: AgentRuntime = {
     async ensureProvider() {},
+    async listNativeSessions() {
+      return {
+        sessions: [],
+        nextCursor: null,
+        backwardsCursor: null,
+      };
+    },
+    async readNativeSession() {
+      return {
+        providerThreadId: "native-1",
+        title: null,
+        cwd: "/workspace",
+        projectId: null,
+        workspaceRoot: "/workspace",
+        status: "idle",
+        createdAt: 1,
+        updatedAt: 2,
+        archived: false,
+        source: null,
+      };
+    },
     async startThread(args) {
       state.startedBridgeLaunch = args.bridgeLaunch;
       state.startedEnvironmentId = args.environmentId;

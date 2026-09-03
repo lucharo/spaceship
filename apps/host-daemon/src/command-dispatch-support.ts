@@ -1,4 +1,7 @@
-import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
+import type {
+  AgentRuntimeBridgeLaunch,
+  AgentRuntimeNativeSessionHistoryResult,
+} from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
@@ -15,6 +18,8 @@ import type {
   ProviderInstallationCommand,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
+  NativeSessionListResult,
+  NativeSessionReadResult,
 } from "@bb/provider-bridge-protocol";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
 import { ensurePluginProcessDataDir } from "@bb/process-utils";
@@ -63,6 +68,31 @@ export interface CommandDispatchOptions {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
+  listNativeSessions: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    archived: boolean;
+    cursor?: string;
+    limit?: number;
+    cwd?: string;
+    searchTerm?: string;
+  }) => Promise<NativeSessionListResult>;
+  readNativeSession: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    providerThreadId: string;
+  }) => Promise<NativeSessionReadResult>;
+  archiveNativeSession: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    providerThreadId: string;
+  }) => Promise<void>;
+  readNativeSessionHistory?: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    providerThreadId: string;
+    threadId: string;
+  }) => Promise<AgentRuntimeNativeSessionHistoryResult>;
   providerHealth: (args: {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;

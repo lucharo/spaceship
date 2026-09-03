@@ -102,4 +102,23 @@ describe("useCommandSuggestions catalog prefetch", () => {
       expect(sdk.projects.commands).toHaveBeenCalledTimes(1);
     });
   });
+
+  it("uses aliases supplied by provider composer metadata", () => {
+    mockPointer(false);
+    const { wrapper } = createQueryClientTestHarness();
+
+    const { result, rerender } = renderHook(
+      (props: { aliases: readonly ("/" | "$")[] }) =>
+        useCommandSuggestions({
+          ...BASE_ARGS,
+          skillsAliases: props.aliases,
+          query: "",
+        }),
+      { wrapper, initialProps: { aliases: ["$"] } },
+    );
+
+    expect(result.current.aliases).toEqual(["$"]);
+    rerender({ aliases: [] });
+    expect(result.current.aliases).toEqual([]);
+  });
 });

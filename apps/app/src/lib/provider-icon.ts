@@ -39,7 +39,10 @@ function isIconName(name: string): name is IconName {
   return (ICON_NAMES as readonly string[]).includes(name);
 }
 
-const declaredGlyphIcons = new Map<string, ComponentType<{ className?: string }>>();
+const declaredGlyphIcons = new Map<
+  string,
+  ComponentType<{ className?: string }>
+>();
 
 /**
  * A provider's declared host glyph, rendered through the shared icon set so
@@ -158,8 +161,11 @@ function getPluginAwareProviderIcon(
     // snapshot callback to module scope, losing the capture — a live
     // ReferenceError in compiled builds only, invisible to vitest).
     "use no memo";
-    const pluginIcon = useSyncExternalStore(subscribePluginSlots, () =>
-      getRegisteredPluginProviderIcon(providerId),
+    const getSnapshot = () => getRegisteredPluginProviderIcon(providerId);
+    const pluginIcon = useSyncExternalStore(
+      subscribePluginSlots,
+      getSnapshot,
+      getSnapshot,
     );
     const ResolvedIcon = pluginIcon ?? staticIcon;
     return ResolvedIcon === undefined
@@ -209,7 +215,8 @@ export function getProviderIconInfo(
       resolvedSource,
       staticInfo?.icon,
     ),
-    ariaLabel: resolvedSource.displayName ?? staticInfo?.ariaLabel ?? providerId,
+    ariaLabel:
+      resolvedSource.displayName ?? staticInfo?.ariaLabel ?? providerId,
   };
 }
 
