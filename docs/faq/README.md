@@ -13,6 +13,19 @@ Spaceship asks for session metadata first. It reads a transcript only after the 
 
 _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
 
+## Is Codex app-server or ACP the source of truth?
+
+**Short answer:** Codex's native store is the source of truth; app-server is the native control interface Spaceship uses, while ACP is an optional transport contract rather than a session store.
+
+Spaceship therefore prefers app-server for Codex catalogue, history, continuation, and lifecycle operations. An ACP adapter can expose equivalent capabilities later, but merely connecting over ACP does not transfer ownership of native sessions.
+
+### Sources
+
+- [Codex app-server](../codex-app-server.md) — native interface and verified operations.
+- [Native harness interfaces](../../features/native_harness_interfaces.md) — provider authority rule.
+
+_Created: 2026-09-03 · Updated: 2026-09-03 · Verified: 2026-09-03 · Scope/version: Spaceship's current Codex provider_
+
 ## Does Spaceship copy or synchronise native histories?
 
 **Short answer:** No. The provider's native store remains authoritative; Spaceship keeps only the local projection and presentation state needed to open it.
@@ -71,7 +84,7 @@ _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02 · Scope/ver
 
 Archiving a native row does not adopt it, create a Spaceship thread, or require a working directory. When a lightweight local projection already exists, Spaceship archives Codex once and then reconciles that projection without sending a duplicate provider command. Existing local projections can recover through native unarchive. A direct unarchive action in the archived catalogue, plus rename and fork parity, remains tracked rather than being emulated in Spaceship.
 
-Before asking Codex to archive, Spaceship verifies that the matching local projection and every hidden source fork can be reconciled. Native adoption and both archive entry points are serialized by host, provider, and native session ID; local archive, unarchive, and every source-derived creation path are also serialized by projected source thread. A concurrent action therefore cannot adopt, reopen, or fork a session while its provider archive is in flight. BB-assigned child threads represent separate sessions, so they are released rather than archived with the parent. Once recorded, a durable confirmation prevents automatic settlement or process restart from sending the same provider archive command twice. An explicit archive request always reaches the provider again because the session may have been unarchived outside Spaceship. Crash recovery between provider success and the local confirmation write remains tracked separately. Unarchiving clears the confirmation.
+Before asking Codex to archive, Spaceship verifies that the matching local projection and every hidden source fork can be reconciled. Native lifecycle and source-derived operations share one ordering boundary, then use the provider identity and projected thread locks; a concurrent action therefore cannot adopt, reopen, or fork a session while its provider mutation is in flight. Projected archive and unarchive use the daemon's ordered environment lane and change local state only after a connected provider accepts the operation. BB-assigned child threads represent separate sessions, so they are released rather than archived with the parent. Once recorded, a durable confirmation prevents automatic settlement or process restart from sending the same provider archive command twice. The dedicated native archive endpoint always reaches the provider again because the session may have been unarchived outside Spaceship. Crash recovery between provider success and the local confirmation write remains tracked separately. Unarchiving clears the confirmation.
 
 ### Sources
 
@@ -95,6 +108,20 @@ Codex remains authoritative for messages, turns, errors, and continuation. Space
 
 _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
 
+## Do native Codex sessions use the normal Threads list?
+
+**Short answer:** Yes. A native row is adopted into one lightweight Spaceship projection and then opens in the ordinary thread route, composer, and sidebar.
+
+The projection provides navigation and local interface state; it does not become a second transcript store. Reopening the same host, provider, and native session identity reuses the projection. Spaceship persists the native host identity separately from the disposable workspace environment, so pruning a retired environment does not make the same native session look new.
+
+### Sources
+
+- [Native session architecture](../spaceship-native-sessions.md) — projection and continuation flow.
+- [Native thread adoption route](../../apps/server/src/routes/threads/base.ts) — idempotent identity adoption.
+- [Native identity lookup](../../packages/db/src/data/threads.ts) — host identity survives environment pruning.
+
+_Created: 2026-09-03 · Updated: 2026-09-03 · Verified: 2026-09-03_
+
 ## How are Codex worktrees grouped with their original project?
 
 **Short answer:** Spaceship prefers Codex's native project identity and workspace-root metadata, then groups worktree sessions under that canonical project.
@@ -107,6 +134,19 @@ The visible working directory is still retained on each row, but it is not treat
 - [Native Codex sidebar](../../apps/app/src/components/sidebar/NativeCodexSidebar.tsx) — project grouping and row presentation.
 
 _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
+
+## How does Spaceship display Codex references?
+
+**Short answer:** It normalises Codex citation markers into readable references without changing the provider-owned transcript.
+
+Readable markers are implemented in the native projection. Rich clickable source cards and deeper source navigation remain tracked in issue #13.
+
+### Sources
+
+- [Native references](../../features/native_references.md) — current behaviour and boundary.
+- [Richer native references issue](https://github.com/lucharo/spaceship/issues/13) — remaining interaction work.
+
+_Created: 2026-09-03 · Updated: 2026-09-03 · Verified: 2026-09-03_
 
 ## Where do installed skills come from?
 

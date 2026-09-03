@@ -52,6 +52,7 @@ import {
 } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createEnvironment } from "../../src/data/environments.js";
+import { pruneDestroyedEnvironments } from "../../src/data/sweeps.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
@@ -181,6 +182,45 @@ describe("threads", () => {
     expect(getLastStoredProviderThreadId(db, first.thread.id)).toBe(
       "native-thread-1",
     );
+  });
+
+  it("retains native identity after its environment is pruned", () => {
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "managed-worktree",
+      path: "/tmp/test-pruned-native-environment",
+      managed: true,
+      status: "destroyed",
+    });
+    const first = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      hostId: host.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-pruned-environment",
+    });
+
+    expect(
+      pruneDestroyedEnvironments(db, noopNotifier, {
+        limit: 1,
+        updatedBefore: Date.now() + 1,
+      }),
+    ).toEqual({ deleted: 1 });
+    expect(getThread(db, first.thread.id)?.environmentId).toBeNull();
+
+    const reopened = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      hostId: host.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-pruned-environment",
+    });
+
+    expect(reopened.created).toBe(false);
+    expect(reopened.thread.id).toBe(first.thread.id);
+    expect(reopened.thread.environmentId).toBeNull();
   });
 
   it("matches only the latest provider identity for an adopted thread", () => {

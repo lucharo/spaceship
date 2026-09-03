@@ -268,6 +268,7 @@ function upsertThreadTitleSearchSegments(
 export interface CreateThreadInput {
   projectId: string;
   environmentId?: string | null;
+  nativeSessionHostId?: string | null;
   providerId: string;
   title?: string | null;
   titleFallback?: string | null;
@@ -307,12 +308,22 @@ function insertThread(
   const visibility = input.visibility ?? "visible";
   const id = createThreadId();
   const originKind = input.originKind ?? null;
+  const nativeSessionHostId =
+    input.nativeSessionHostId ??
+    (input.environmentId === null || input.environmentId === undefined
+      ? null
+      : (db
+          .select({ hostId: environments.hostId })
+          .from(environments)
+          .where(eq(environments.id, input.environmentId))
+          .get()?.hostId ?? null));
   const createdThread = db
     .insert(threads)
     .values({
       id,
       projectId: input.projectId,
       environmentId: input.environmentId ?? null,
+      nativeSessionHostId,
       providerId: input.providerId,
       title: input.title ?? null,
       titleFallback: input.titleFallback ?? null,
@@ -375,6 +386,7 @@ export function adoptNativeThread(
         tx,
         {
           ...input,
+          nativeSessionHostId: input.hostId,
           status: "idle",
         },
         now,
@@ -451,7 +463,6 @@ export function findThreadsByNativeIdentities(
         thread: getTableColumns(threads),
       })
       .from(threads)
-      .innerJoin(environments, eq(environments.id, threads.environmentId))
       .innerJoin(events, eq(events.threadId, threads.id))
       .innerJoin(
         latestProviderIdentities,
@@ -462,7 +473,7 @@ export function findThreadsByNativeIdentities(
       )
       .where(
         and(
-          eq(environments.hostId, identities.hostId),
+          eq(threads.nativeSessionHostId, identities.hostId),
           eq(threads.providerId, identities.providerId),
           inArray(events.providerThreadId, [...identities.providerThreadIds]),
           isNull(threads.deletedAt),
@@ -485,6 +496,19 @@ export function findThreadsByNativeIdentities(
 
 export function getThread(db: ThreadWriteConnection, id: string) {
   return db.select().from(threads).where(eq(threads.id, id)).get() ?? null;
+}
+
+export function getThreadNativeSessionHostId(
+  db: ThreadWriteConnection,
+  id: string,
+): string | null {
+  return (
+    db
+      .select({ hostId: threads.nativeSessionHostId })
+      .from(threads)
+      .where(eq(threads.id, id))
+      .get()?.hostId ?? null
+  );
 }
 
 export interface ThreadMentionRow {
@@ -1859,7 +1883,17 @@ export function updateThread(
   if ("sectionId" in input) {
     set.sectionId = input.sectionId;
   }
-  if ("environmentId" in input) set.environmentId = input.environmentId;
+  if ("environmentId" in input) {
+    set.environmentId = input.environmentId;
+    if (input.environmentId !== null && input.environmentId !== undefined) {
+      set.nativeSessionHostId =
+        db
+          .select({ hostId: environments.hostId })
+          .from(environments)
+          .where(eq(environments.id, input.environmentId))
+          .get()?.hostId ?? existing.nativeSessionHostId;
+    }
+  }
   if ("lastReadAt" in input) {
     set.lastReadAt = input.lastReadAt;
   }

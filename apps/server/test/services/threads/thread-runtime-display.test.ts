@@ -211,6 +211,7 @@ function createThreadListEntry(
   return {
     ...args.thread,
     modelOverride: null,
+    nativeSessionHostId: null,
     reasoningLevelOverride: null,
     environmentBranchName: null,
     environmentHostId: args.environmentHostId,

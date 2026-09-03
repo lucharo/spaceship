@@ -60,6 +60,7 @@ export {
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
   getThread,
+  getThreadNativeSessionHostId,
   getThreadExecutionOverride,
   hasActiveThreadAttention,
   setThreadExecutionOverride,

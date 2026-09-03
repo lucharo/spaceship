@@ -35,7 +35,11 @@ interface ArchiveThreadEnvironment {
 
 interface ArchiveThreadWithLifecycleEffectsArgs {
   environment: ArchiveThreadEnvironment | null;
-  thread: Pick<Thread, "environmentId" | "id" | "status">;
+  thread: Thread;
+}
+
+interface ArchiveThreadLifecycleOptions {
+  dispatchProviderArchive?: boolean;
 }
 
 interface ResolveArchiveThreadEnvironmentArgs {
@@ -50,7 +54,7 @@ interface ArchiveThreadAndChildrenArgs {
   parentThread: Thread;
 }
 
-interface PreparedArchiveThread {
+export interface PreparedArchiveThread {
   environment: ArchiveThreadEnvironment | null;
   thread: ArchiveThreadWithLifecycleEffectsArgs["thread"];
 }
@@ -60,6 +64,7 @@ export interface PreparedThreadAndChildrenArchive {
 }
 
 const threadArchiveMutationChains = new Map<string, Promise<void>>();
+const nativeSessionMutationGlobalKey = "native-session-mutations";
 
 export function nativeSessionMutationKey(args: {
   hostId: string;
@@ -101,6 +106,18 @@ export function withThreadArchiveMutation<T>(
 }
 
 /**
+ * Native adoption, archive, unarchive, and source-derived creation all touch
+ * provider identity plus local projection state. Keep their lock ordering
+ * deterministic across single-thread and bulk routes. Provider RPC latency is
+ * acceptable here: these are explicit, low-frequency lifecycle operations.
+ */
+export function withNativeSessionMutation<T>(
+  mutate: () => Promise<T>,
+): Promise<T> {
+  return withThreadArchiveMutation(nativeSessionMutationGlobalKey, mutate);
+}
+
+/**
  * Resolve the environment archive needs to stop the thread's live work, or
  * null when there is nothing to stop. A thread loses its environment pointer
  * when the environment row is pruned (threads.environment_id is ON DELETE SET
@@ -134,6 +151,7 @@ export function resolveArchiveThreadEnvironment(
 function archiveThreadWithLifecycleEffects(
   deps: AppDeps,
   args: ArchiveThreadWithLifecycleEffectsArgs,
+  options: ArchiveThreadLifecycleOptions = {},
 ): Thread | null {
   const archivedThread = archiveThreadAndReleaseChildren(deps, {
     threadId: args.thread.id,
@@ -155,9 +173,11 @@ function archiveThreadWithLifecycleEffects(
       args.environment,
     );
   }
-  dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
-    threadId: archivedThread.id,
-  });
+  if (options.dispatchProviderArchive !== false) {
+    dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
+      threadId: archivedThread.id,
+    });
+  }
   resetActiveThreadEventPruningState(archivedThread.id);
   pruneThreadEventHistoryBestEffort(deps, {
     mode: "archived",
@@ -205,13 +225,18 @@ export function prepareThreadAndHiddenSourceForksArchive(
 export function archivePreparedThreadAndHiddenSourceForks(
   deps: AppDeps,
   prepared: PreparedThreadAndChildrenArchive,
+  options: ArchiveThreadLifecycleOptions = {},
 ): Thread | null {
   let archivedSourceThread: Thread | null = null;
   for (const [index, { environment, thread }] of prepared.threads.entries()) {
-    const archivedThread = archiveThreadWithLifecycleEffects(deps, {
-      environment,
-      thread,
-    });
+    const archivedThread = archiveThreadWithLifecycleEffects(
+      deps,
+      {
+        environment,
+        thread,
+      },
+      options,
+    );
     if (index === 0) {
       archivedSourceThread = archivedThread;
     }
@@ -286,15 +311,20 @@ export function prepareThreadAndChildrenArchive(
 export function archivePreparedThreadAndChildren(
   deps: AppDeps,
   prepared: PreparedThreadAndChildrenArchive,
+  options: ArchiveThreadLifecycleOptions = {},
 ): string[] {
   const archivedThreadIds: string[] = [];
   const affectedEnvironmentIds = new Set<string>();
 
   for (const { environment, thread } of prepared.threads) {
-    const result = archiveThreadWithLifecycleEffects(deps, {
-      environment,
-      thread,
-    });
+    const result = archiveThreadWithLifecycleEffects(
+      deps,
+      {
+        environment,
+        thread,
+      },
+      options,
+    );
     if (!result) {
       continue;
     }

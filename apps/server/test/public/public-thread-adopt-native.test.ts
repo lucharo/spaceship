@@ -22,6 +22,7 @@ import {
   type TimelineRow,
 } from "@bb/server-contract";
 import { describe, expect, it, vi } from "vitest";
+import { applyLoggedThreadLifecycleEvent } from "../../src/services/threads/lifecycle-outcome.js";
 import {
   listQueuedCommands,
   reportQueuedCommandSuccess,
@@ -159,6 +160,10 @@ describe("public native thread adoption", () => {
           },
         },
       });
+      applyLoggedThreadLifecycleEvent(harness.deps, {
+        event: { type: "run.started" },
+        threadId: adopted.thread.id,
+      });
 
       const response = await harness.app.request(
         `/api/v1/threads/${adopted.thread.id}/timeline?summaryOnly=true`,
@@ -174,7 +179,11 @@ describe("public native thread adoption", () => {
           items: [{ text: "Finish the native handoff", status: "in_progress" }],
         },
         activeWorkflows: [
-          { description: "Verify native summary state", status: "running" },
+          {
+            description: "Verify native summary state",
+            status: "pending",
+            taskStatus: "running",
+          },
         ],
       });
       expect(

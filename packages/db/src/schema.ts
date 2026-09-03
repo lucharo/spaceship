@@ -571,6 +571,9 @@ export const threads = sqliteTable(
     environmentId: text("environment_id").references(() => environments.id, {
       onDelete: "set null",
     }),
+    // Preserve the host side of a native-session identity after a managed
+    // environment is pruned and environment_id is cleared by the FK.
+    nativeSessionHostId: text("native_session_host_id"),
     providerId: text("provider_id").notNull(),
     // Sticky, thread-level execution overrides. NULL = no override (fall back to
     // the per-turn request, then the last turn, then project defaults). Consulted
@@ -626,6 +629,10 @@ export const threads = sqliteTable(
       .on(table.archivedAt, table.deletedAt, table.pinSortKey, table.id)
       .where(sql`${table.pinnedAt} IS NOT NULL`),
     index("threads_environment_idx").on(table.environmentId),
+    index("threads_native_session_host_provider_idx").on(
+      table.nativeSessionHostId,
+      table.providerId,
+    ),
     index("threads_parent_idx").on(table.parentThreadId),
     index("threads_source_origin_idx").on(
       table.sourceThreadId,

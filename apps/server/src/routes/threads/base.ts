@@ -49,6 +49,7 @@ import { throwEnvironmentNotReady } from "../../services/lib/lifecycle-api-error
 import {
   requestEnvironmentCleanup,
   requestEnvironmentCleanupAdvance,
+  wouldCleanupEnvironment,
 } from "../../services/environments/environment-cleanup-internal.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
 import {
@@ -90,6 +91,7 @@ import {
   nativeSessionMutationKey,
   prepareThreadAndHiddenSourceForksArchive,
   resolveArchiveThreadEnvironment,
+  withNativeSessionMutation,
   withThreadArchiveMutation,
 } from "../../services/threads/thread-archive.js";
 
@@ -348,15 +350,16 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
       payload.sourceThreadId ??
       (payload.originKind !== null ? payload.parentThreadId : undefined);
     const thread = sourceMutationId
-      ? await withThreadArchiveMutation(sourceMutationId, createThread)
+      ? await withNativeSessionMutation(() =>
+          withThreadArchiveMutation(sourceMutationId, createThread),
+        )
       : await createThread();
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });
 
   post(routes.adoptNative, async (context, payload) => {
-    return withThreadArchiveMutation(
-      nativeSessionMutationKey(payload),
-      async () => {
+    return withNativeSessionMutation(() =>
+      withThreadArchiveMutation(nativeSessionMutationKey(payload), async () => {
         requireNonDestroyedHostWithStatus(deps, payload.hostId);
         requireBridgeLaunchForProviderId(deps, payload.providerId);
         const nativeSession = await readProviderNativeSession(deps, payload);
@@ -548,14 +551,13 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
           },
           200,
         );
-      },
+      }),
     );
   });
 
   post(routes.archiveNative, async (context, payload) => {
-    return withThreadArchiveMutation(
-      nativeSessionMutationKey(payload),
-      async () => {
+    return withNativeSessionMutation(() =>
+      withThreadArchiveMutation(nativeSessionMutationKey(payload), async () => {
         requireNonDestroyedHostWithStatus(deps, payload.hostId);
         const existing = findThreadByNativeIdentity(deps.db, payload);
         if (existing === null) {
@@ -565,6 +567,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
 
         await withThreadArchiveMutation(existing.id, async () => {
           const current = findThreadByNativeIdentity(deps.db, payload);
+          const shouldRequestCleanup =
+            current !== null &&
+            wouldCleanupEnvironment(deps, {
+              environmentId: current.environmentId,
+              excludeThreadId: current.id,
+            });
           const prepared =
             current !== null && current.archivedAt === null
               ? prepareThreadAndHiddenSourceForksArchive(deps, {
@@ -583,16 +591,26 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
             if (prepared !== null) {
               archivePreparedThreadAndHiddenSourceForks(deps, prepared);
             }
+            if (shouldRequestCleanup) {
+              requestEnvironmentCleanup(deps, {
+                environmentId: current.environmentId,
+              });
+              requestEnvironmentCleanupAdvance(deps, {
+                environmentId: current.environmentId,
+              });
+            }
           }
         });
         return context.json({ ok: true as const });
-      },
+      }),
     );
   });
 
   post(routes.fork, async (context, payload) => {
-    const thread = await withThreadArchiveMutation(payload.sourceThreadId, () =>
-      createThreadForkFromRequest(deps, payload),
+    const thread = await withNativeSessionMutation(() =>
+      withThreadArchiveMutation(payload.sourceThreadId, () =>
+        createThreadForkFromRequest(deps, payload),
+      ),
     );
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });

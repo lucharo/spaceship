@@ -14,6 +14,7 @@ import {
   RuntimeThreadExecutionOptions,
   Thread,
   ClientTurnRequestId,
+  Environment,
   EnvironmentStatus,
   promptInputHasCommandMention,
 } from "@bb/domain";
@@ -27,8 +28,10 @@ import type { CommandResultSideEffectsDeps } from "../../internal/command-result
 import { ApiError } from "../../errors.js";
 import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+  runLiveHostCommand,
   startLiveHostCommand,
 } from "../hosts/live-command.js";
+import { isHostUnavailableApiError } from "../hosts/online-rpc.js";
 import { getLastProviderThreadId } from "./thread-events.js";
 import type { ThreadForkDescriptor } from "./thread-provisioning-context.js";
 import {
@@ -151,6 +154,13 @@ interface DispatchThreadRenameCommandArgs {
 
 interface DispatchThreadUnarchiveCommandArgs {
   environment: ThreadUnarchiveCommandEnvironment;
+  providerThreadId: string;
+  thread: Thread;
+}
+
+interface RunThreadProviderArchiveCommandArgs {
+  allowLiveChildren?: boolean;
+  environment: Environment;
   providerThreadId: string;
   thread: Thread;
 }
@@ -461,6 +471,82 @@ function threadHasCodexSpawnAgentToolCall(
   return row !== undefined;
 }
 
+function buildThreadProviderArchiveCommand(
+  deps: CommandResultSideEffectsDeps,
+  args: RunThreadProviderArchiveCommandArgs,
+): {
+  command: Extract<HostDaemonCommand, { type: "thread.archive" }>;
+  hostId: string;
+} | null {
+  if (
+    !providerSupportsThreadArchiveForwarding(
+      deps.providerRegistry,
+      args.thread.providerId,
+    ) ||
+    (args.environment.status !== "ready" &&
+      args.environment.status !== "retiring") ||
+    (!args.allowLiveChildren && threadHasLiveChildren(deps, args.thread.id)) ||
+    threadHasCodexSpawnAgentToolCall(deps, args.thread.id) ||
+    !args.environment.path
+  ) {
+    return null;
+  }
+
+  const bridgeLaunch = resolveBridgeLaunchForProviderId(
+    deps,
+    args.thread.providerId,
+  );
+  if (bridgeLaunch === null) {
+    return null;
+  }
+
+  return {
+    command: {
+      type: "thread.archive",
+      environmentId: args.environment.id,
+      threadId: args.thread.id,
+      workspaceContext: workspaceContextFromPath({
+        path: args.environment.path,
+        workspaceProvisionType: args.environment.workspaceProvisionType,
+      }),
+      providerId: args.thread.providerId,
+      providerThreadId: args.providerThreadId,
+      bridgeLaunch,
+    },
+    hostId: args.environment.hostId,
+  };
+}
+
+/**
+ * Await the provider-side archive for a projected thread. The daemon's
+ * per-environment write lane orders this with thread.unarchive. An offline
+ * host preserves the historical best-effort local archive behaviour; a host
+ * that receives and rejects the command fails the request before local state
+ * is changed.
+ */
+export async function runThreadProviderArchiveCommand(
+  deps: CommandResultSideEffectsDeps,
+  args: RunThreadProviderArchiveCommandArgs,
+): Promise<boolean> {
+  const prepared = buildThreadProviderArchiveCommand(deps, args);
+  if (prepared === null) {
+    return false;
+  }
+  try {
+    await runLiveHostCommand(deps, {
+      command: prepared.command,
+      hostId: prepared.hostId,
+      timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    });
+    return true;
+  } catch (error) {
+    if (isHostUnavailableApiError(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 export function dispatchThreadRenameCommand(
   deps: CommandResultSideEffectsDeps,
   args: DispatchThreadRenameCommandArgs,
@@ -525,53 +611,18 @@ export function dispatchArchivedThreadProviderArchiveCommand(
     return false;
   }
 
-  if (
-    !providerSupportsThreadArchiveForwarding(
-      deps.providerRegistry,
-      thread.providerId,
-    )
-  ) {
-    return false;
-  }
-
-  if (
-    threadHasLiveChildren(deps, thread.id) ||
-    threadHasCodexSpawnAgentToolCall(deps, thread.id)
-  ) {
-    return false;
-  }
-
-  if (!environment.path) {
-    return false;
-  }
-  const workspaceContext = workspaceContextFromPath({
-    path: environment.path,
-    workspaceProvisionType: environment.workspaceProvisionType,
+  const prepared = buildThreadProviderArchiveCommand(deps, {
+    environment,
+    providerThreadId,
+    thread,
   });
-
-  // Archive can have to spawn the provider bridge from scratch (fresh daemon,
-  // reaped idle session), so it carries the same launch spec as thread.start.
-  // Forwarding is best-effort: with no bridge there is nothing to mirror the
-  // archive onto, so skip rather than dispatch a command the daemon rejects.
-  const bridgeLaunch = resolveBridgeLaunchForProviderId(
-    deps,
-    thread.providerId,
-  );
-  if (bridgeLaunch === null) {
+  if (prepared === null) {
     return false;
   }
 
   startLiveHostCommand(deps, {
-    command: {
-      type: "thread.archive",
-      environmentId: environment.id,
-      threadId: thread.id,
-      workspaceContext,
-      providerId: thread.providerId,
-      providerThreadId,
-      bridgeLaunch,
-    },
-    hostId: environment.hostId,
+    command: prepared.command,
+    hostId: prepared.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
     onError: ({ error }) => {
       deps.logger.warn(
@@ -595,7 +646,10 @@ export function dispatchThreadUnarchiveCommand(
   ) {
     return false;
   }
-  if (args.environment.status !== "ready") {
+  if (
+    args.environment.status !== "ready" &&
+    args.environment.status !== "retiring"
+  ) {
     return false;
   }
 
@@ -629,6 +683,51 @@ export function dispatchThreadUnarchiveCommand(
     },
   });
   return true;
+}
+
+export async function runThreadUnarchiveCommand(
+  deps: CommandResultSideEffectsDeps,
+  args: DispatchThreadUnarchiveCommandArgs,
+): Promise<boolean> {
+  if (
+    !providerSupportsThreadArchiveForwarding(
+      deps.providerRegistry,
+      args.thread.providerId,
+    ) ||
+    (args.environment.status !== "ready" &&
+      args.environment.status !== "retiring")
+  ) {
+    return false;
+  }
+
+  const bridgeLaunch = resolveBridgeLaunchForProviderId(
+    deps,
+    args.thread.providerId,
+  );
+  if (bridgeLaunch === null) {
+    return false;
+  }
+
+  try {
+    await runLiveHostCommand(deps, {
+      command: {
+        type: "thread.unarchive",
+        environmentId: args.environment.id,
+        threadId: args.thread.id,
+        providerId: args.thread.providerId,
+        providerThreadId: args.providerThreadId,
+        bridgeLaunch,
+      },
+      hostId: args.environment.hostId,
+      timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    });
+    return true;
+  } catch (error) {
+    if (isHostUnavailableApiError(error)) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 export function buildThreadStopCommand(
