@@ -98,17 +98,20 @@ it("forwards pane callbacks and scopes outline navigation to one thread", () => 
     "row-target:42",
   );
 
+  view.rerender(<ThreadTimelinePane {...props} threadId="thr_2" />);
+  expect(screen.getByTestId("navigation-target").textContent).toBe("none:none");
+  view.rerender(<ThreadTimelinePane {...props} threadId="thr_1" />);
+  expect(screen.getByTestId("navigation-target").textContent).toBe("none:none");
+
+  fireEvent.click(screen.getByRole("button", { name: "Jump to first row" }));
   fireEvent.click(screen.getByRole("button", { name: "Jump to newer row" }));
   expect(screen.getByTestId("navigation-target").textContent).toBe(
     "newer-target:84",
   );
-  act(() => navigationSettlers[0]?.());
+  act(() => navigationSettlers[1]?.());
   expect(screen.getByTestId("navigation-target").textContent).toBe(
     "newer-target:84",
   );
-  act(() => navigationSettlers[1]?.());
-  expect(screen.getByTestId("navigation-target").textContent).toBe("none:none");
-
-  view.rerender(<ThreadTimelinePane {...props} threadId="thr_2" />);
+  act(() => navigationSettlers[2]?.());
   expect(screen.getByTestId("navigation-target").textContent).toBe("none:none");
 });

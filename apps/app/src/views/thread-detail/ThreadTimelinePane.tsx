@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { ThreadTimelineUnreadDividerPlacement } from "@/components/thread/timeline";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { EmbeddedThreadChat } from "@/components/thread/embedded-chat";
@@ -27,9 +27,15 @@ export function ThreadTimelinePane({
     rowId: string;
     sourceSeq?: number;
     token: symbol;
+    visit: symbol;
   } | null>(null);
+  const navigationVisit = useMemo(
+    () => Symbol(surface.threadId),
+    [surface.threadId],
+  );
   const activeTimelineNavigationTarget =
-    timelineNavigationTarget?.threadId === surface.threadId
+    timelineNavigationTarget?.threadId === surface.threadId &&
+    timelineNavigationTarget.visit === navigationVisit
       ? timelineNavigationTarget
       : null;
   return (
@@ -49,6 +55,7 @@ export function ThreadTimelinePane({
               rowId,
               sourceSeq,
               token,
+              visit: navigationVisit,
             });
             return () => {
               setTimelineNavigationTarget((current) =>
