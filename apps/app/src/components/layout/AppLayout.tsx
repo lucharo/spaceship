@@ -283,7 +283,7 @@ function SidebarTriggerOverlay({
 }
 
 const routeTitles: Record<string, { title: string }> = {
-  "/": { title: "bb" },
+  "/": { title: "Spaceship" },
   "/settings": { title: "Settings" },
   "/automations": { title: "Automations" },
   "/skills": { title: "Skills" },
@@ -659,7 +659,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       return pluginPanel.title;
     }
     if (documentTitleBreadcrumbs) {
-      const sectionLabel = documentTitleBreadcrumbs[0]?.label ?? "BB";
+      const sectionLabel = documentTitleBreadcrumbs[0]?.label ?? "Spaceship";
       const pageLabel = documentTitleBreadcrumbs.at(-1)?.label ?? sectionLabel;
       return pageLabel === sectionLabel
         ? sectionLabel
@@ -680,7 +680,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       return projectLabel ?? projectId;
     }
     const routeTitle = resolveRouteTitle(location.pathname)?.title;
-    return routeTitle && routeTitle.length > 0 ? routeTitle : "BB";
+    return routeTitle && routeTitle.length > 0 ? routeTitle : "Spaceship";
   })();
   // The sidebar list omits archived threads and side chats, so it can't answer
   // whether the currently-viewed thread is blocked on input. Read the current
