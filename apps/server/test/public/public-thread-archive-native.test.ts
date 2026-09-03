@@ -24,6 +24,7 @@ import {
   seedThreadFixture,
   seedThreadRuntimeState,
 } from "../helpers/seed.js";
+import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("public native thread archive", () => {
@@ -745,6 +746,10 @@ describe("public native thread archive", () => {
         threadId: thread.id,
       });
       archiveThread(harness.db, harness.deps.hub, thread.id);
+      confirmNativeSessionArchive(harness.db, {
+        providerThreadId,
+        threadId: thread.id,
+      });
 
       const responsePromise = harness.app.request(
         `/api/v1/threads/${thread.id}/unarchive`,
@@ -793,6 +798,45 @@ describe("public native thread archive", () => {
         code: "host_unavailable",
       });
       expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
+    });
+  });
+
+  it("does not contact a supported provider when an attached archive was only local", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, environment, thread } = seedThreadFixture(
+        harness,
+        {
+          session: { id: "host-local-unarchive-attached-supported" },
+        },
+      );
+      const responder = registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: () => ({
+          ok: false,
+          errorCode: "provider_unarchive_failed",
+          errorMessage: "Provider rejected an unexpected unarchive",
+        }),
+      });
+      const providerThreadId = "local-thread-unarchive-attached-supported";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+      archiveThread(harness.db, harness.deps.hub, thread.id);
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/unarchive`,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.archivedAt).toBeNull();
+      expect(responder.requests).toEqual([]);
+      expect(
+        listQueuedThreadCommands(harness, "thread.unarchive", thread.id),
+      ).toEqual([]);
     });
   });
 

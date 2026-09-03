@@ -700,7 +700,11 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
             providerThreadId,
             thread,
           });
-        } else if (providerThreadId && environment) {
+        } else if (
+          providerThreadId &&
+          environment &&
+          providerArchiveConfirmed
+        ) {
           await runThreadUnarchiveCommand(deps, {
             environment,
             providerThreadId,
