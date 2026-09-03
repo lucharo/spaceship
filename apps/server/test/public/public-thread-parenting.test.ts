@@ -446,7 +446,7 @@ describe("public thread parenting routes", () => {
       const providerArchive = await waitForQueuedCommand(
         harness,
         ({ command }) =>
-          command.type === "provider.native_sessions.archive" &&
+          command.type === "thread.archive" &&
           command.providerThreadId === providerThreadId,
       );
 
@@ -518,7 +518,7 @@ describe("public thread parenting routes", () => {
       const providerArchive = await waitForQueuedCommand(
         harness,
         ({ command }) =>
-          command.type === "provider.native_sessions.archive" &&
+          command.type === "thread.archive" &&
           command.providerThreadId === providerThreadId,
       );
 
@@ -583,7 +583,7 @@ describe("public thread parenting routes", () => {
       const providerArchive = await waitForQueuedCommand(
         harness,
         ({ command }) =>
-          command.type === "provider.native_sessions.archive" &&
+          command.type === "thread.archive" &&
           command.providerThreadId === providerThreadId,
       );
 

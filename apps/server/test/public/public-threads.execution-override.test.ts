@@ -271,6 +271,21 @@ describe("PATCH /threads/:id execution override", () => {
       while (releases.length < 1) {
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
+      const providerRegistration = harness.deps.providerRegistry.get(
+        thread.providerId,
+      );
+      if (providerRegistration === null) {
+        throw new Error(`Missing provider registration ${thread.providerId}`);
+      }
+      const registrationRevision = harness.deps.providerRegistry.register({
+        ...providerRegistration,
+        pluginId: "test-provider-revision",
+        info: {
+          ...providerRegistration.info,
+          id: "test-provider-revision",
+          displayName: "Test provider revision",
+        },
+      });
       const reasoningResponse = patchThread(harness, thread.id, {
         reasoningLevel: "high",
       });
@@ -286,6 +301,7 @@ describe("PATCH /threads/:id execution override", () => {
         modelOverride: "claude-opus-4-8",
         reasoningLevelOverride: "high",
       });
+      registrationRevision.dispose();
     });
   });
 });

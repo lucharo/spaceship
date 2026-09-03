@@ -682,16 +682,16 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         const environment = thread.environmentId
           ? getEnvironment(deps.db, thread.environmentId)
           : null;
-        if (providerThreadId && environment) {
-          await runThreadUnarchiveCommand(deps, {
-            environment,
+        if (providerThreadId && nativeIdentity !== null) {
+          await runRetainedNativeSessionUnarchiveCommand(deps, {
+            hostId: nativeIdentity.hostId,
+            laneId: environment?.id ?? nativeSessionMutationKey(nativeIdentity),
             providerThreadId,
             thread,
           });
-        } else if (providerThreadId && nativeIdentity !== null) {
-          await runRetainedNativeSessionUnarchiveCommand(deps, {
-            hostId: nativeIdentity.hostId,
-            laneId: nativeSessionMutationKey(nativeIdentity),
+        } else if (providerThreadId && environment) {
+          await runThreadUnarchiveCommand(deps, {
+            environment,
             providerThreadId,
             thread,
           });

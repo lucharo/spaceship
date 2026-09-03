@@ -678,6 +678,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   patch(routes.update, async (context, payload) => {
     const update = async () => {
       const thread = requirePublicThread(deps.db, context.req.param("id"));
+      const sourceThreadIdToRevalidate =
+        payload.visibility === "hidden" &&
+        thread.visibility !== "hidden" &&
+        thread.sourceThreadId !== null
+          ? thread.sourceThreadId
+          : null;
       // Resolve sticky execution config first because model discovery may await
       // the host. Persist it only after every metadata field has also validated,
       // so a combined PATCH cannot leave half of its requested state behind.
@@ -721,15 +727,15 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
           );
         }
         if (
-          payload.visibility === "hidden" &&
-          currentThread.visibility !== "hidden" &&
-          currentThread.sourceThreadId !== null
+          sourceThreadIdToRevalidate !== null &&
+          currentThread.visibility !== "hidden"
         ) {
           const sourceThread = getThread(
             transaction,
-            currentThread.sourceThreadId,
+            sourceThreadIdToRevalidate,
           );
           if (
+            currentThread.sourceThreadId !== sourceThreadIdToRevalidate ||
             sourceThread === null ||
             sourceThread.archivedAt !== null ||
             sourceThread.deletedAt !== null

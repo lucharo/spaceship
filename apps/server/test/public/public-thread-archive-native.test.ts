@@ -761,6 +761,89 @@ describe("public native thread archive", () => {
     });
   });
 
+  it("keeps an attached native projection archived when its host is offline", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, environment, thread } = seedThreadFixture(harness, {
+        session: { id: "host-native-unarchive-offline" },
+      });
+      const providerThreadId = "native-thread-unarchive-offline";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+      archiveThread(harness.db, harness.deps.hub, thread.id);
+      harness.hub.unregisterDaemon(session.id);
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/unarchive`,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(502);
+      expect(await readJson(response)).toMatchObject({
+        code: "host_unavailable",
+      });
+      expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
+    });
+  });
+
+  it("keeps an attached native projection archived when unarchive is unsupported", async () => {
+    await withTestHarness(
+      {
+        seedFirstPartyProviders: false,
+        extraProviders: [
+          {
+            pluginId: "provider-codex",
+            declaration: {
+              id: "codex",
+              displayName: "Codex",
+              maintenance: {
+                health: false,
+                usage: false,
+                installation: false,
+              },
+              capabilities: {
+                supportsServiceTier: false,
+                supportsNativeUserQuestion: false,
+                fork: "none",
+                supportsManualCompaction: false,
+                supportsThreadArchive: false,
+                supportsThreadRename: false,
+                permissionModes: ["full"],
+                reasoningLevels: ["medium"],
+              },
+              composerActions: [],
+            },
+          },
+        ],
+      },
+      async (harness) => {
+        const { environment, thread } = seedThreadFixture(harness, {
+          session: { id: "host-native-unarchive-attached-unsupported" },
+        });
+        const providerThreadId = "native-thread-unarchive-attached-unsupported";
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId,
+          threadId: thread.id,
+        });
+        archiveThread(harness.db, harness.deps.hub, thread.id);
+
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/unarchive`,
+          { method: "POST" },
+        );
+
+        expect(response.status).toBe(400);
+        expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
+        expect(
+          listQueuedThreadCommands(harness, "thread.unarchive", thread.id),
+        ).toEqual([]);
+      },
+    );
+  });
+
   it("unarchives a native projection through its retained host after environment pruning", async () => {
     await withTestHarness(async (harness) => {
       const { host, environment, thread } = seedThreadFixture(harness, {

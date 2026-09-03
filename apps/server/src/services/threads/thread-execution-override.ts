@@ -188,14 +188,21 @@ export async function applyThreadExecutionOverride(
   deps: LoggedWorkSessionDeps,
   args: ApplyThreadExecutionOverrideArgs,
 ): Promise<void> {
-  await withThreadExecutionOverrideMutation(args.thread.id, async () => {
-    const next = await resolveThreadExecutionOverrideForThread(deps, args);
+  await withThreadExecutionOverrideMutation(args.thread.id, () =>
+    applyThreadExecutionOverrideUnlocked(deps, args),
+  );
+}
 
-    setThreadExecutionOverride(deps.db, {
-      threadId: args.thread.id,
-      modelOverride: next.modelOverride,
-      reasoningLevelOverride: next.reasoningLevelOverride,
-    });
+async function applyThreadExecutionOverrideUnlocked(
+  deps: LoggedWorkSessionDeps,
+  args: ApplyThreadExecutionOverrideArgs,
+): Promise<void> {
+  const next = await resolveThreadExecutionOverrideForThread(deps, args);
+
+  setThreadExecutionOverride(deps.db, {
+    threadId: args.thread.id,
+    modelOverride: next.modelOverride,
+    reasoningLevelOverride: next.reasoningLevelOverride,
   });
 }
 
@@ -209,20 +216,24 @@ export async function recoverThreadModelOverride(
   deps: LoggedWorkSessionDeps,
   args: RecoverThreadModelOverrideArgs,
 ): Promise<void> {
-  const existing = getThreadExecutionOverride(deps.db, args.thread.id);
-  if (
-    args.model === undefined ||
-    args.modelSource !== "explicit" ||
-    existing?.modelOverride === null ||
-    existing?.modelOverride === undefined ||
-    existing.modelOverride === args.model
-  ) {
+  if (args.model === undefined || args.modelSource !== "explicit") {
     return;
   }
 
-  await applyThreadExecutionOverride(deps, {
-    thread: args.thread,
-    patch: { model: args.model },
+  await withThreadExecutionOverrideMutation(args.thread.id, async () => {
+    const existing = getThreadExecutionOverride(deps.db, args.thread.id);
+    if (
+      existing?.modelOverride === null ||
+      existing?.modelOverride === undefined ||
+      existing.modelOverride === args.model
+    ) {
+      return;
+    }
+
+    await applyThreadExecutionOverrideUnlocked(deps, {
+      thread: args.thread,
+      patch: { model: args.model },
+    });
   });
 }
 
