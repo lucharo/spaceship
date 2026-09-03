@@ -223,7 +223,7 @@ export function findOrCreateProjectByLocalPathSource(
   return { project, source: toProjectSource(source) };
 }
 
-export function getProject(db: DbConnection, id: string) {
+export function getProject(db: DbQueryConnection, id: string) {
   return db.select().from(projects).where(eq(projects.id, id)).get() ?? null;
 }
 

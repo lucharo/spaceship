@@ -675,27 +675,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   patch(routes.update, async (context, payload) => {
     const update = async () => {
       const thread = requirePublicThread(deps.db, context.req.param("id"));
-      const validateVisibility = () => {
-        if (
-          payload.visibility !== "hidden" ||
-          thread.visibility === "hidden" ||
-          thread.sourceThreadId === null
-        ) {
-          return;
-        }
-        const sourceThread = getThread(deps.db, thread.sourceThreadId);
-        if (
-          sourceThread === null ||
-          sourceThread.archivedAt !== null ||
-          sourceThread.deletedAt !== null
-        ) {
-          throw new ApiError(
-            400,
-            "invalid_request",
-            "Cannot hide a source-derived thread whose source is archived or deleted",
-          );
-        }
-      };
       // Resolve sticky execution config first because model discovery may await
       // the host. Persist it only after every metadata field has also validated,
       // so a combined PATCH cannot leave half of its requested state behind.
@@ -712,23 +691,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
             })
           : null;
 
-      if (payload.parentThreadId) {
-        assertValidParentThread(deps, {
-          childThreadId: thread.id,
-          parentThreadId: payload.parentThreadId,
-        });
-      }
-      validateVisibility();
-
       const metadataUpdate: UpdateThreadInput = {};
       if ("title" in payload) {
         metadataUpdate.title = payload.title;
       }
       const sectionId = payload.sectionId;
       if (sectionId !== undefined) {
-        if (sectionId !== null) {
-          requireThreadSection(deps, sectionId);
-        }
         metadataUpdate.sectionId = sectionId;
       }
       if ("parentThreadId" in payload) {
@@ -738,17 +706,61 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         metadataUpdate.visibility = payload.visibility;
       }
 
-      const updated = deps.db.transaction((transaction) => {
+      const { previousThread, updated } = deps.db.transaction((transaction) => {
+        const currentThread = requirePublicThread(transaction, thread.id);
+        if (payload.parentThreadId) {
+          assertValidParentThread(
+            { db: transaction },
+            {
+              childThreadId: currentThread.id,
+              parentThreadId: payload.parentThreadId,
+            },
+          );
+        }
+        if (
+          payload.visibility === "hidden" &&
+          currentThread.visibility !== "hidden" &&
+          currentThread.sourceThreadId !== null
+        ) {
+          const sourceThread = getThread(
+            transaction,
+            currentThread.sourceThreadId,
+          );
+          if (
+            sourceThread === null ||
+            sourceThread.archivedAt !== null ||
+            sourceThread.deletedAt !== null
+          ) {
+            throw new ApiError(
+              400,
+              "invalid_request",
+              "Cannot hide a source-derived thread whose source is archived or deleted",
+            );
+          }
+        }
+        if (sectionId !== undefined && sectionId !== null) {
+          if (!getThreadSectionById(transaction, sectionId)) {
+            throw new ApiError(404, "section_not_found", "Section not found");
+          }
+        }
+
         if (executionOverride !== null) {
           setThreadExecutionOverride(transaction, {
-            threadId: thread.id,
+            threadId: currentThread.id,
             modelOverride: executionOverride.modelOverride,
             reasoningLevelOverride: executionOverride.reasoningLevelOverride,
           });
         }
-        return Object.keys(metadataUpdate).length > 0
-          ? updateThread(transaction, deps.hub, thread.id, metadataUpdate)
-          : getThread(transaction, thread.id);
+        const updatedThread =
+          Object.keys(metadataUpdate).length > 0
+            ? updateThread(
+                transaction,
+                deps.hub,
+                currentThread.id,
+                metadataUpdate,
+              )
+            : currentThread;
+        return { previousThread: currentThread, updated: updatedThread };
       });
       if (!updated) {
         throw new ApiError(404, "thread_not_found", "Thread not found");
@@ -756,7 +768,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
 
       if (
         payload.title &&
-        payload.title !== thread.title &&
+        payload.title !== previousThread.title &&
         updated.environmentId
       ) {
         const environment = requireEnvironment(deps.db, updated.environmentId);
@@ -775,10 +787,10 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
 
       if (
         "parentThreadId" in payload &&
-        payload.parentThreadId !== thread.parentThreadId
+        payload.parentThreadId !== previousThread.parentThreadId
       ) {
         await handleThreadOwnershipChange(deps, {
-          previousThread: thread,
+          previousThread,
           updatedThread: updated,
         });
       }

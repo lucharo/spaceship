@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getThreadExecutionOverride } from "@bb/db";
-import { registerProviderHostRpcResponder } from "../helpers/host-rpc.js";
+import { getThreadExecutionOverride, markThreadDeleted } from "@bb/db";
+import {
+  registerHostRpcResponder,
+  registerProviderHostRpcResponder,
+  type HostRpcHandlerResult,
+} from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -153,6 +157,63 @@ describe("PATCH /threads/:id execution override", () => {
       });
 
       expect(response.status).toBe(404);
+      expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
+        modelOverride: null,
+        reasoningLevelOverride: null,
+      });
+    });
+  });
+
+  it("rejects a thread deleted during model discovery without persisting its override", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedProviderThread(harness);
+      let markCatalogRequested!: () => void;
+      const catalogRequested = new Promise<void>((resolve) => {
+        markCatalogRequested = resolve;
+      });
+      let releaseCatalog!: () => void;
+      const catalogResult = new Promise<HostRpcHandlerResult>((resolve) => {
+        releaseCatalog = () =>
+          resolve({
+            ok: true,
+            result: {
+              models: [
+                {
+                  id: "claude-opus-4-8",
+                  model: "claude-opus-4-8",
+                  displayName: "claude-opus-4-8",
+                  description: "",
+                  supportedReasoningEfforts: [
+                    { reasoningEffort: "high", description: "" },
+                  ],
+                  defaultReasoningEffort: "high",
+                  isDefault: true,
+                },
+              ],
+              selectedOnlyModels: [],
+            },
+          });
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type !== "provider.list_models") {
+            throw new Error(`Unexpected command ${request.command.type}`);
+          }
+          markCatalogRequested();
+          return catalogResult;
+        },
+      });
+
+      const responsePromise = patchThread(harness, thread.id, {
+        model: "claude-opus-4-8",
+      });
+      await catalogRequested;
+      markThreadDeleted(harness.db, harness.hub, { threadId: thread.id });
+      releaseCatalog();
+
+      expect((await responsePromise).status).toBe(404);
       expect(getThreadExecutionOverride(harness.db, thread.id)).toEqual({
         modelOverride: null,
         reasoningLevelOverride: null,
