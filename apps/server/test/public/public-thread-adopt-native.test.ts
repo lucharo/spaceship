@@ -201,11 +201,19 @@ describe("public native thread adoption", () => {
         id: "host-native-history",
       });
       const providerThreadId = "native-thread-history";
-      const adoptionResponse = await postAdoptNativeThread(harness, {
-        hostId: host.id,
-        providerId: "codex",
-        providerThreadId,
-      });
+      const adoptionResponse = await postAdoptNativeThread(
+        harness,
+        {
+          hostId: host.id,
+          providerId: "codex",
+          providerThreadId,
+        },
+        {
+          providerThreadId,
+          title: "Recovered session",
+          cwd: "/tmp/native-adoption-worktree",
+        },
+      );
       expect(adoptionResponse.status).toBe(200);
       const adopted = adoptNativeThreadResponseSchema.parse(
         await readJson(adoptionResponse),
@@ -215,9 +223,9 @@ describe("public native thread adoption", () => {
         session: {
           providerThreadId,
           title: "Recovered session",
-          cwd: "/tmp/native-adoption",
+          cwd: "/tmp/native-adoption-worktree",
           projectId: null,
-          workspaceRoot: "/tmp/native-adoption",
+          workspaceRoot: "/tmp/native-adoption-origin",
           status: "idle",
           createdAt: 1_777_000_000,
           updatedAt: 1_777_000_100,
@@ -321,7 +329,7 @@ describe("public native thread adoption", () => {
                 id: "native-file-2",
                 changes: [
                   {
-                    path: "/tmp/native-adoption/src/native.ts",
+                    path: "/tmp/native-adoption-worktree/src/native.ts",
                     kind: "update",
                     diff: "@@ -1 +1 @@\n-old\n+new",
                   },
@@ -456,6 +464,56 @@ describe("public native thread adoption", () => {
         expect(outlineIds.has(id)).toBe(true);
       }
 
+      const refreshedNativeHistory = {
+        ...nativeHistory,
+        events: nativeHistory.events.map((entry) => {
+          const item = entry.event.item;
+          if (
+            entry.event.type !== "item/completed" ||
+            item?.type !== "agentMessage" ||
+            item.id !== "native-agent-2"
+          ) {
+            return entry;
+          }
+          return {
+            ...entry,
+            event: {
+              ...entry.event,
+              item: {
+                ...item,
+                text: "Synthetic revised answer",
+              },
+            },
+          };
+        }),
+      };
+      const refreshedOutlineResponsePromise = harness.app.request(
+        `/api/v1/threads/${adopted.thread.id}/conversation-outline`,
+      );
+      const refreshedOutlineHistory = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.history" &&
+          command.providerThreadId === providerThreadId,
+      );
+      await reportQueuedCommandSuccess(
+        harness,
+        refreshedOutlineHistory as never,
+        refreshedNativeHistory as never,
+      );
+      const refreshedOutlineResponse = await refreshedOutlineResponsePromise;
+      expect(refreshedOutlineResponse.status).toBe(200);
+      expect(
+        threadConversationOutlineResponseSchema
+          .parse(await readJson(refreshedOutlineResponse))
+          .items.map((item) => item.preview),
+      ).toEqual([
+        "Synthetic question",
+        "Synthetic answer",
+        "Synthetic follow-up",
+        "Synthetic revised answer",
+      ]);
+
       const prunedTimelineResponsePromise = harness.app.request(
         `/api/v1/threads/${adopted.thread.id}/timeline?includeNestedRows=true&segmentLimit=1`,
       );
@@ -481,7 +539,7 @@ describe("public native thread adoption", () => {
         '"path":"src/native.ts"',
       );
       expect(JSON.stringify(prunedTimeline)).not.toContain(
-        "/tmp/native-adoption/src/native.ts",
+        "/tmp/native-adoption-worktree/src/native.ts",
       );
 
       const storedEventsResponse = await harness.app.request(

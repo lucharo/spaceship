@@ -354,11 +354,10 @@ async function readNativeThreadProjection(
   return {
     events: [...nativeEvents, ...localHeadEvents],
     maxSeq: Math.max(localMaxSeq, history.session.updatedAt),
-    providerUpdatedAt: history.session.updatedAt,
     workspaceRoot:
-      history.session.workspaceRoot ??
+      attachedWorkspaceRoot ??
       history.session.cwd ??
-      attachedWorkspaceRoot,
+      history.session.workspaceRoot,
   };
 }
 
@@ -682,23 +681,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         nativeHistoryIdentity,
         maxSeq,
       );
-      const nativeCacheKey = JSON.stringify([
-        "native",
-        thread.id,
-        nativeHistoryIdentity.hostId,
-        nativeHistoryIdentity.providerThreadId,
-        projection.providerUpdatedAt,
-        outlineSequence,
-        thread.status,
-        thread.title,
-        thread.titleFallback,
-      ]);
-      const cachedNative = conversationOutlineCache.get(nativeCacheKey);
-      if (cachedNative !== undefined) {
-        conversationOutlineCache.delete(nativeCacheKey);
-        conversationOutlineCache.set(nativeCacheKey, cachedNative);
-        return context.json({ items: cachedNative, maxSeq: projection.maxSeq });
-      }
       const timeline = buildNativeThreadTimeline(deps, thread, projection, {
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
@@ -710,16 +692,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         timeline.rows,
         projection.maxSeq,
       );
-      conversationOutlineCache.set(nativeCacheKey, response.items);
-      while (
-        conversationOutlineCache.size > CONVERSATION_OUTLINE_CACHE_MAX_ENTRIES
-      ) {
-        const oldest = conversationOutlineCache.keys().next().value;
-        if (oldest === undefined) {
-          break;
-        }
-        conversationOutlineCache.delete(oldest);
-      }
       return context.json(response);
     }
     const cacheKey = JSON.stringify([
