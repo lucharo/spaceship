@@ -51,6 +51,11 @@ import {
   createProject,
   markProjectDeleted,
 } from "../../src/data/projects.js";
+import {
+  createProjectSource,
+  deleteProjectSource,
+  listProjectSources,
+} from "../../src/data/project-sources.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import { pruneDestroyedEnvironments } from "../../src/data/sweeps.js";
@@ -222,6 +227,72 @@ describe("threads", () => {
     expect(reopened.thread.id).toBe(first.thread.id);
     expect(reopened.thread.environmentId).toBeNull();
     expect(getThreadNativeSessionHostId(db, first.thread.id)).toBe(host.id);
+  });
+
+  it("does not guess a legacy null-host identity after project source replacement", () => {
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "managed-worktree",
+      path: "/tmp/test-legacy-native-environment",
+      managed: true,
+      status: "destroyed",
+    });
+    const original = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      hostId: host.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-source-replacement",
+    });
+    expect(
+      pruneDestroyedEnvironments(db, noopNotifier, {
+        limit: 1,
+        updatedBefore: Date.now() + 1,
+      }),
+    ).toEqual({ deleted: 1 });
+    db.$client
+      .prepare(
+        "UPDATE threads SET native_session_host_id = NULL WHERE id = ?",
+      )
+      .run(original.thread.id);
+
+    const [originalSource] = listProjectSources(db, project.id);
+    expect(originalSource).toBeDefined();
+    deleteProjectSource(db, noopNotifier, originalSource.id);
+    const replacementHost = upsertHost(db, noopNotifier, {
+      name: "replacement-host",
+      type: "persistent",
+    });
+    createProjectSource(db, noopNotifier, {
+      projectId: project.id,
+      type: "local_path",
+      hostId: replacementHost.id,
+      path: "/tmp/test-replacement-host",
+    });
+    const replacementEnvironment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: replacementHost.id,
+      workspaceProvisionType: "unmanaged",
+      path: "/tmp/test-replacement-host",
+      status: "ready",
+    });
+
+    const reopened = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: replacementEnvironment.id,
+      hostId: replacementHost.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-source-replacement",
+    });
+
+    expect(reopened.created).toBe(true);
+    expect(reopened.thread.id).not.toBe(original.thread.id);
+    expect(getThreadNativeSessionHostId(db, original.thread.id)).toBeNull();
+    expect(getThreadNativeSessionHostId(db, reopened.thread.id)).toBe(
+      replacementHost.id,
+    );
   });
 
   it("matches only the latest provider identity for an adopted thread", () => {

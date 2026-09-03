@@ -113,7 +113,7 @@ _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02_
 
 **Short answer:** Yes. A native row is adopted into one lightweight Spaceship projection and then opens in the ordinary thread route, composer, and sidebar.
 
-The projection provides navigation and local interface state; it does not become a second transcript store. Reopening the same host, provider, and native session identity reuses the projection. Spaceship persists the native host identity separately from the disposable workspace environment, so pruning a retired environment does not make the same native session look new. A projection pruned before that identity migration is not silently relinked because its original host cannot be proven safely; explicit legacy recovery is tracked in issue #18.
+The projection provides navigation and local interface state; it does not become a second transcript store. Reopening the same host, provider, and native session identity reuses the projection. Spaceship persists the native host identity separately from the disposable workspace environment, so pruning a retired environment does not make the same native session look new. A projection whose environment was pruned before that identity migration is not silently relinked because its original host cannot be proven safely; explicit legacy recovery is tracked in issue #18.
 
 ### Sources
 
