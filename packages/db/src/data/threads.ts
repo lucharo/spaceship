@@ -40,6 +40,7 @@ import {
   events,
   nativeSessionArchiveConfirmations,
   pendingInteractions,
+  projectSources,
   projects,
   threadSearchSegments,
   threads,
@@ -495,9 +496,8 @@ export function findThreadsByNativeIdentities(
 }
 
 /**
- * Repair projections created before native host identity was persisted. A
- * provider thread id is globally stable for a provider, so a single legacy
- * null-host match can be safely attached to the host that rediscovered it.
+ * Repair projections created before native host identity was persisted only
+ * when the project's durable source metadata proves a single original host.
  * Ambiguous legacy matches remain untouched rather than guessing.
  */
 export function findOrRepairThreadsByNativeIdentities(
@@ -557,8 +557,39 @@ export function findOrRepairThreadsByNativeIdentities(
     candidatesByProviderThreadId.set(legacyMatch.providerThreadId, candidates);
   }
 
+  const candidateProjectIds = [
+    ...new Set(
+      legacyMatches.map((legacyMatch) => legacyMatch.thread.projectId),
+    ),
+  ];
+  const sourceHostIdsByProjectId = new Map<string, Set<string>>();
+  if (candidateProjectIds.length > 0) {
+    const sourceHosts = db
+      .select({
+        hostId: projectSources.hostId,
+        projectId: projectSources.projectId,
+      })
+      .from(projectSources)
+      .where(inArray(projectSources.projectId, candidateProjectIds))
+      .all();
+    for (const sourceHost of sourceHosts) {
+      if (sourceHost.hostId === null) continue;
+      const hostIds =
+        sourceHostIdsByProjectId.get(sourceHost.projectId) ?? new Set<string>();
+      hostIds.add(sourceHost.hostId);
+      sourceHostIdsByProjectId.set(sourceHost.projectId, hostIds);
+    }
+  }
+
   for (const [providerThreadId, candidates] of candidatesByProviderThreadId) {
     if (candidates.length !== 1) continue;
+    const sourceHostIds = sourceHostIdsByProjectId.get(candidates[0].projectId);
+    if (
+      sourceHostIds?.size !== 1 ||
+      !sourceHostIds.has(identities.hostId)
+    ) {
+      continue;
+    }
     const repaired = db
       .update(threads)
       .set({ nativeSessionHostId: identities.hostId })

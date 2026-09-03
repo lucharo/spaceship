@@ -1,4 +1,4 @@
-import { getEnvironment, getThread } from "@bb/db";
+import { archiveThread, getEnvironment, getThread } from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import {
   apiErrorSchema,
@@ -444,6 +444,37 @@ describe("public thread parenting routes", () => {
       expect(
         getThread(harness.db, sideChatThread.id)?.archivedAt,
       ).not.toBeNull();
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+        "retiring",
+      );
+    });
+  });
+
+  it("retires an unused managed environment when archive is repeated", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        managed: true,
+        projectId: project.id,
+        workspaceProvisionType: "managed-worktree",
+      });
+      const thread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      archiveThread(harness.db, harness.hub, thread.id);
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe("ready");
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/archive`,
+        { method: "POST" },
+      );
+
+      expect(response.status).toBe(200);
       expect(getEnvironment(harness.db, environment.id)?.status).toBe(
         "retiring",
       );

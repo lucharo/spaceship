@@ -157,34 +157,32 @@ function archiveThreadWithLifecycleEffects(
   const archivedThread = archiveThreadAndReleaseChildren(deps, {
     threadId: args.thread.id,
   });
-  if (!archivedThread) {
-    return null;
-  }
-
-  deps.terminalSessions.closeArchivedThreadTerminals({
-    threadId: archivedThread.id,
-  });
-  // Archive only stops active runtime work; manual stop is the pre-start
-  // provisioning cancellation entrypoint. A thread whose environment row was
-  // pruned has no runtime left to stop.
-  if (args.environment !== null) {
-    requestActiveRuntimeThreadStopIfNeeded(
-      deps,
-      archivedThread,
-      args.environment,
-    );
-  }
-  if (options.dispatchProviderArchive !== false) {
-    dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
+  if (archivedThread !== null) {
+    deps.terminalSessions.closeArchivedThreadTerminals({
       threadId: archivedThread.id,
     });
+    // Archive only stops active runtime work; manual stop is the pre-start
+    // provisioning cancellation entrypoint. A thread whose environment row was
+    // pruned has no runtime left to stop.
+    if (args.environment !== null) {
+      requestActiveRuntimeThreadStopIfNeeded(
+        deps,
+        archivedThread,
+        args.environment,
+      );
+    }
+    if (options.dispatchProviderArchive !== false) {
+      dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
+        threadId: archivedThread.id,
+      });
+    }
+    resetActiveThreadEventPruningState(archivedThread.id);
+    pruneThreadEventHistoryBestEffort(deps, {
+      mode: "archived",
+      threadId: archivedThread.id,
+    });
+    emitPluginThreadArchived(archivedThread);
   }
-  resetActiveThreadEventPruningState(archivedThread.id);
-  pruneThreadEventHistoryBestEffort(deps, {
-    mode: "archived",
-    threadId: archivedThread.id,
-  });
-  emitPluginThreadArchived(archivedThread);
 
   if (
     args.environment !== null &&
@@ -318,9 +316,7 @@ export function prepareThreadAndChildrenArchive(
     ...childThreads,
     ...hiddenSourceThreads,
   ].filter((thread) => thread.id !== args.parentThread.id);
-  if (args.parentThread.archivedAt === null) {
-    threads.push(args.parentThread);
-  }
+  threads.push(args.parentThread);
   return {
     rootThreadId: args.parentThread.id,
     threads: threads.map((thread) => ({

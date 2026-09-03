@@ -605,12 +605,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       withThreadArchiveMutation(threadId, async () => {
         const thread = requirePublicThread(deps.db, threadId);
         const sourceAlreadyArchived = thread.archivedAt !== null;
-        if (sourceAlreadyArchived && nativeIdentity === null) {
-          deps.terminalSessions.closeArchivedThreadTerminals({
-            threadId: thread.id,
-          });
-          return context.json({ ok: true });
-        }
         const environment = resolveArchiveThreadEnvironment(deps, { thread });
         const prepared = prepareThreadAndHiddenSourceForksArchive(deps, {
           environment,

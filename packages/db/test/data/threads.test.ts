@@ -51,6 +51,7 @@ import {
   createProject,
   markProjectDeleted,
 } from "../../src/data/projects.js";
+import { createProjectSource } from "../../src/data/project-sources.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import { pruneDestroyedEnvironments } from "../../src/data/sweeps.js";
@@ -229,6 +230,68 @@ describe("threads", () => {
     expect(reopened.thread.id).toBe(first.thread.id);
     expect(reopened.thread.environmentId).toBeNull();
     expect(getThreadNativeSessionHostId(db, first.thread.id)).toBe(host.id);
+  });
+
+  it("does not repair a legacy native identity across project hosts", () => {
+    const { db, host, project } = setup();
+    const otherHost = upsertHost(db, noopNotifier, {
+      name: "other-host",
+      type: "persistent",
+    });
+    createProjectSource(db, noopNotifier, {
+      projectId: project.id,
+      type: "local_path",
+      hostId: otherHost.id,
+      path: "/tmp/test-other-host",
+    });
+    const otherEnvironment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: otherHost.id,
+      workspaceProvisionType: "unmanaged",
+      path: "/tmp/test-other-host",
+      status: "ready",
+    });
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      workspaceProvisionType: "managed-worktree",
+      path: "/tmp/test-cross-host-native-environment",
+      managed: true,
+      status: "destroyed",
+    });
+    const original = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: environment.id,
+      hostId: host.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-cross-host",
+    });
+    expect(
+      pruneDestroyedEnvironments(db, noopNotifier, {
+        limit: 1,
+        updatedBefore: Date.now() + 1,
+      }),
+    ).toEqual({ deleted: 1 });
+    db.$client
+      .prepare(
+        "UPDATE threads SET native_session_host_id = NULL WHERE id = ?",
+      )
+      .run(original.thread.id);
+
+    const reopened = adoptNativeThread(db, noopNotifier, {
+      projectId: project.id,
+      environmentId: otherEnvironment.id,
+      hostId: otherHost.id,
+      providerId: "codex",
+      providerThreadId: "native-thread-cross-host",
+    });
+
+    expect(reopened.created).toBe(true);
+    expect(reopened.thread.id).not.toBe(original.thread.id);
+    expect(getThreadNativeSessionHostId(db, original.thread.id)).toBeNull();
+    expect(getThreadNativeSessionHostId(db, reopened.thread.id)).toBe(
+      otherHost.id,
+    );
   });
 
   it("matches only the latest provider identity for an adopted thread", () => {
