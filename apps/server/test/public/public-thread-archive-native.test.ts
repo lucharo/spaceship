@@ -1,5 +1,6 @@
 import {
   archiveThread,
+  confirmNativeSessionArchive,
   findThreadByNativeIdentity,
   getThread,
   hasNativeSessionArchiveConfirmation,
@@ -284,7 +285,7 @@ describe("public native thread archive", () => {
             input: [],
             visibility: "hidden",
             originKind: "fork",
-            sourceThreadId: thread.id,
+            parentThreadId: thread.id,
             environment: {
               type: "reuse",
               environmentId: environment.id,
@@ -307,6 +308,83 @@ describe("public native thread archive", () => {
       expect((await archiveResponsePromise).status).toBe(200);
 
       expect((await creationResponsePromise).status).toBe(400);
+      expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
+    });
+  });
+
+  it("serializes ordinary archive and native adoption for the same projection", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, environment, thread } = seedThreadFixture(harness, {
+        session: { id: "host-native-local-archive-adopt" },
+      });
+      const providerThreadId = "native-thread-local-archive-adopt";
+      const identity = {
+        hostId: host.id,
+        providerId: "codex",
+        providerThreadId,
+      };
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+
+      const archiveResponsePromise = harness.app.request(
+        `/api/v1/threads/${thread.id}/archive`,
+        { method: "POST" },
+      );
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.archive" &&
+          command.providerThreadId === providerThreadId,
+      );
+
+      let adoptionSettled = false;
+      const adoptionResponsePromise = Promise.resolve(
+        harness.app.request("/api/v1/threads/adopt-native", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(identity),
+        }),
+      ).then((response) => {
+        adoptionSettled = true;
+        return response;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(adoptionSettled).toBe(false);
+      expect(
+        listQueuedCommands(harness, "provider.native_sessions.read"),
+      ).toEqual([]);
+
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+      expect((await archiveResponsePromise).status).toBe(200);
+
+      const providerRead = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.read" &&
+          command.providerThreadId === providerThreadId,
+      );
+      await reportQueuedCommandSuccess(harness, providerRead, {
+        providerThreadId,
+        title: "Locally archived native session",
+        cwd: environment.path,
+        projectId: null,
+        workspaceRoot: environment.path,
+        status: "idle",
+        createdAt: 1_777_000_000,
+        updatedAt: 1_777_000_100,
+        archived: true,
+        source: "cli",
+      });
+
+      expect((await adoptionResponsePromise).status).toBe(409);
       expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
     });
   });
@@ -552,6 +630,51 @@ describe("public native thread archive", () => {
           threadId: thread.id,
         }),
       ).toBe(false);
+    });
+  });
+
+  it("retries explicit provider archive after a stale local confirmation", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, environment, thread } = seedThreadFixture(harness, {
+        session: { id: "host-native-archive-stale-confirmation" },
+      });
+      const providerThreadId = "native-thread-stale-confirmation";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+      confirmNativeSessionArchive(harness.db, {
+        providerThreadId,
+        threadId: thread.id,
+      });
+
+      const responsePromise = harness.app.request(
+        "/api/v1/threads/archive-native",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            hostId: host.id,
+            providerId: "codex",
+            providerThreadId,
+          }),
+        },
+      );
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.archive" &&
+          command.providerThreadId === providerThreadId,
+      );
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+
+      expect((await responsePromise).status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
     });
   });
 

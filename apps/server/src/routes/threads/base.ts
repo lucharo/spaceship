@@ -7,7 +7,6 @@ import {
   findThreadByNativeIdentity,
   findOrCreateProjectByLocalPathSource,
   findProjectEnvironmentByHostPath,
-  hasNativeSessionArchiveConfirmation,
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
@@ -88,6 +87,7 @@ import {
 } from "../../services/plugins/plugin-thread-events.js";
 import {
   archivePreparedThreadAndHiddenSourceForks,
+  nativeSessionMutationKey,
   prepareThreadAndHiddenSourceForksArchive,
   resolveArchiveThreadEnvironment,
   withThreadArchiveMutation,
@@ -102,19 +102,6 @@ function parseThreadIncludes(query: ThreadGetQuery): Set<ThreadIncludeOption> {
     includes.add(threadIncludeOptionSchema.parse(value));
   }
   return includes;
-}
-
-function nativeSessionMutationKey(args: {
-  hostId: string;
-  providerId: string;
-  providerThreadId: string;
-}): string {
-  return JSON.stringify([
-    "native-session",
-    args.hostId,
-    args.providerId,
-    args.providerThreadId,
-  ]);
 }
 
 interface BuildThreadResponseArgs {
@@ -357,8 +344,11 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         ...payload,
         origin: payload.origin,
       });
-    const thread = payload.sourceThreadId
-      ? await withThreadArchiveMutation(payload.sourceThreadId, createThread)
+    const sourceMutationId =
+      payload.sourceThreadId ??
+      (payload.originKind !== null ? payload.parentThreadId : undefined);
+    const thread = sourceMutationId
+      ? await withThreadArchiveMutation(sourceMutationId, createThread)
       : await createThread();
     return context.json(toThreadResponseFromThread(deps, { thread }), 201);
   });
@@ -418,50 +408,60 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         }
         const existing = findThreadByNativeIdentity(deps.db, payload);
         if (existing) {
-          const existingEnvironment =
-            existing.environmentId === null
-              ? null
-              : getEnvironment(deps.db, existing.environmentId);
-          if (
-            existingEnvironment === null ||
-            existingEnvironment.hostId !== payload.hostId ||
-            existingEnvironment.path !== inspectedPath
-          ) {
-            throw new ApiError(
-              409,
-              "native_session_workspace_changed",
-              "The native session workspace no longer matches its Spaceship projection",
+          return withThreadArchiveMutation(existing.id, async () => {
+            const current = findThreadByNativeIdentity(deps.db, payload);
+            if (current === null || current.id !== existing.id) {
+              throw new ApiError(
+                409,
+                "native_session_projection_changed",
+                "The native session projection changed while it was opening",
+              );
+            }
+            const existingEnvironment =
+              current.environmentId === null
+                ? null
+                : getEnvironment(deps.db, current.environmentId);
+            if (
+              existingEnvironment === null ||
+              existingEnvironment.hostId !== payload.hostId ||
+              existingEnvironment.path !== inspectedPath
+            ) {
+              throw new ApiError(
+                409,
+                "native_session_workspace_changed",
+                "The native session workspace no longer matches its Spaceship projection",
+              );
+            }
+            let reopenEnvironment = existingEnvironment;
+            if (existingEnvironment.status === "retiring") {
+              applyLoggedEnvironmentLifecycleEvent(deps, {
+                environmentId: existingEnvironment.id,
+                event: { type: "retire.cancelled" },
+              });
+              reopenEnvironment =
+                getEnvironment(deps.db, existingEnvironment.id) ??
+                existingEnvironment;
+            }
+            if (
+              reopenEnvironment.status !== "ready" ||
+              reopenEnvironment.path === null
+            ) {
+              throwEnvironmentNotReady(reopenEnvironment);
+            }
+            const reconciled =
+              current.archivedAt === null
+                ? current
+                : (unarchiveThread(deps.db, deps.hub, current.id) ?? current);
+            return context.json(
+              {
+                created: false,
+                thread: toThreadResponseFromThread(deps, {
+                  thread: reconciled,
+                }),
+              },
+              200,
             );
-          }
-          let reopenEnvironment = existingEnvironment;
-          if (existingEnvironment.status === "retiring") {
-            applyLoggedEnvironmentLifecycleEvent(deps, {
-              environmentId: existingEnvironment.id,
-              event: { type: "retire.cancelled" },
-            });
-            reopenEnvironment =
-              getEnvironment(deps.db, existingEnvironment.id) ??
-              existingEnvironment;
-          }
-          if (
-            reopenEnvironment.status !== "ready" ||
-            reopenEnvironment.path === null
-          ) {
-            throwEnvironmentNotReady(reopenEnvironment);
-          }
-          const reconciled =
-            existing.archivedAt === null
-              ? existing
-              : (unarchiveThread(deps.db, deps.hub, existing.id) ?? existing);
-          return context.json(
-            {
-              created: false,
-              thread: toThreadResponseFromThread(deps, {
-                thread: reconciled,
-              }),
-            },
-            200,
-          );
+          });
         }
         const managedEnvironment = findManagedEnvironmentAtHostPath(deps.db, {
           hostId: payload.hostId,
@@ -574,15 +574,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
                   thread: current,
                 })
               : null;
-          const providerAlreadyArchived =
-            current !== null &&
-            hasNativeSessionArchiveConfirmation(deps.db, {
-              providerThreadId: payload.providerThreadId,
-              threadId: current.id,
-            });
-          if (!providerAlreadyArchived) {
-            await archiveProviderNativeSession(deps, payload);
-          }
+          await archiveProviderNativeSession(deps, payload);
           if (current !== null) {
             confirmNativeSessionArchive(deps.db, {
               providerThreadId: payload.providerThreadId,

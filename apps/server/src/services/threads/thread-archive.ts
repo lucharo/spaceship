@@ -61,6 +61,19 @@ export interface PreparedThreadAndChildrenArchive {
 
 const threadArchiveMutationChains = new Map<string, Promise<void>>();
 
+export function nativeSessionMutationKey(args: {
+  hostId: string;
+  providerId: string;
+  providerThreadId: string;
+}): string {
+  return JSON.stringify([
+    "native-session",
+    args.hostId,
+    args.providerId,
+    args.providerThreadId,
+  ]);
+}
+
 /**
  * Serialize lifecycle mutations that share either a projected source thread or
  * a provider-native session identity. Native archive waits on a provider RPC,
