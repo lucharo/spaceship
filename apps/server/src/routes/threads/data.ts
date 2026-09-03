@@ -566,7 +566,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         includeProviderUnhandledOperations,
         isLatestPage: page.kind === "latest",
         providerDisplayName,
-        turnMessageDetail: includeNestedRows ? "full" : "summary",
+        // Native history has no separate persisted turn-details source. Keep
+        // the full message projection behind the collapsed rows so outline
+        // targets remain present even on the default summary request.
+        turnMessageDetail: "full",
       });
       const paginated = paginateNativeHistoryRows(timeline.rows, page);
       const response = {

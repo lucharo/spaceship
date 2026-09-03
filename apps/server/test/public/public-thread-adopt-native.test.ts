@@ -343,7 +343,7 @@ describe("public native thread adoption", () => {
       };
 
       const timelineResponsePromise = harness.app.request(
-        `/api/v1/threads/${adopted.thread.id}/timeline?segmentLimit=1&includeNestedRows=true`,
+        `/api/v1/threads/${adopted.thread.id}/timeline?segmentLimit=1`,
       );
       const history = await waitForQueuedCommand(
         harness,
@@ -377,7 +377,7 @@ describe("public native thread adoption", () => {
       const olderCursor = timeline.timelinePage.olderCursor;
       if (olderCursor === null) throw new Error("Expected an older cursor");
       const olderTimelineResponsePromise = harness.app.request(
-        `/api/v1/threads/${adopted.thread.id}/timeline?segmentLimit=1&includeNestedRows=true&beforeAnchorSeq=${olderCursor.anchorSeq}&beforeAnchorId=${encodeURIComponent(olderCursor.anchorId)}`,
+        `/api/v1/threads/${adopted.thread.id}/timeline?segmentLimit=1&beforeAnchorSeq=${olderCursor.anchorSeq}&beforeAnchorId=${encodeURIComponent(olderCursor.anchorId)}`,
       );
       const olderHistory = await waitForQueuedCommand(
         harness,
