@@ -18,6 +18,7 @@ export interface TocItem {
   id: string;
   label: string;
   role: "user" | "assistant";
+  sourceSeq?: number;
 }
 
 type TocTab = "user" | "agent";
@@ -39,7 +40,7 @@ interface ThreadTableOfContentsProps {
   /** Loads the next older timeline page; awaited while jumping to an unloaded row. */
   loadOlderTimelineRows: () => void | Promise<void>;
   /** Lets timeline windowing mount an offscreen destination before scrolling. */
-  onNavigateToRow?: (rowId: string) => void;
+  onNavigateToRow?: (rowId: string, sourceSeq?: number) => void;
 }
 
 // Matches `@container scroll-overlay (min-width: 56rem)` in app.css.
@@ -101,6 +102,7 @@ function outlineItemToTocItem(item: ThreadConversationOutlineItem): TocItem {
     id: item.id,
     label: item.preview || toAttachmentSummaryLabel(item.attachmentSummary),
     role: item.role,
+    sourceSeq: item.sourceSeq,
   };
 }
 
@@ -276,6 +278,7 @@ function useConversationTocItems({
         id: row.id,
         label: toTocLabel({ attachments: row.attachments, text: row.text }),
         role: row.role,
+        sourceSeq: row.sourceSeqStart,
       };
       if (row.role === "user") {
         userItems.push(item);
@@ -663,7 +666,8 @@ export function ThreadTableOfContents({
   }, [activeId, open, scrollRef, tocVisible]);
 
   const handleSelect = useCallback(
-    async (id: string) => {
+    async (item: TocItem) => {
+      const { id, sourceSeq } = item;
       const getScrollElement = () => bottomAnchor?.getScrollElement() ?? null;
       const scrollToRow = (element: HTMLElement) => {
         bottomAnchor?.scrollElementIntoView({
@@ -671,7 +675,7 @@ export function ThreadTableOfContents({
           options: { block: "start", inline: "nearest" },
         });
       };
-      onNavigateToRow?.(id);
+      onNavigateToRow?.(id, sourceSeq);
 
       let row = findTimelineRowElement(getScrollElement(), id);
       if (row) {
@@ -814,7 +818,7 @@ export function ThreadTableOfContents({
                               type="button"
                               aria-busy={pending}
                               onClick={() => {
-                                void handleSelect(item.id);
+                                void handleSelect(item);
                               }}
                               className={cn(
                                 "flex w-full cursor-pointer rounded-md px-2 py-1.5 text-left transition-colors",

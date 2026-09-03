@@ -1959,6 +1959,7 @@ export function buildThreadConversationOutlineFromRows(
       if (row.kind === "conversation") {
         items.push({
           id: row.id,
+          sourceSeq: row.sourceSeqStart,
           role: row.role,
           preview: toConversationOutlinePreview(row.text),
           attachmentSummary: toConversationOutlineAttachmentSummary(

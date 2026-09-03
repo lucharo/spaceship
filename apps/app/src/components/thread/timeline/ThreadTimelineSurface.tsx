@@ -72,6 +72,8 @@ export interface ThreadTimelineSurfaceProps {
   timelineRows: TimelineRow[];
   /** Outline destination kept mounted while timeline windowing is enabled. */
   timelineNavigationTargetRowId?: string | null;
+  /** Event sequence used to expand collapsed ancestors of an outline target. */
+  timelineNavigationTargetSeq?: number | null;
   threadId: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   unreadDividerAutoScroll?: boolean;
@@ -173,6 +175,7 @@ export function ThreadTimelineSurface({
   timelineErrorClassName = "mt-6 text-destructive",
   timelineRows,
   timelineNavigationTargetRowId,
+  timelineNavigationTargetSeq,
   threadId,
   threadRuntimeDisplayStatus,
   unreadDividerAutoScroll,
@@ -246,6 +249,7 @@ export function ThreadTimelineSurface({
           onLoadOlderRows={onLoadOlderRows}
           timelineRows={timelineRowsWithPendingStop}
           timelineNavigationTargetRowId={timelineNavigationTargetRowId}
+          timelineNavigationTargetSeq={timelineNavigationTargetSeq}
           timelineWindowingEnabled={timelineWindowingEnabled}
           threadId={threadId}
           threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}

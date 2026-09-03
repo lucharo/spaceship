@@ -11,7 +11,8 @@ vi.mock("@/components/thread/timeline/ThreadTimelineSurface", () => ({
         {props.onOpenPluginPanel === undefined ? "missing" : "available"}
       </span>
       <span data-testid="navigation-target">
-        {props.timelineNavigationTargetRowId ?? "none"}
+        {props.timelineNavigationTargetRowId ?? "none"}:
+        {props.timelineNavigationTargetSeq ?? "none"}
       </span>
     </div>
   ),
@@ -21,9 +22,9 @@ vi.mock("@/components/thread/toc/ThreadTableOfContents", () => ({
   ThreadTableOfContents: ({
     onNavigateToRow,
   }: {
-    onNavigateToRow?: (rowId: string) => void;
+    onNavigateToRow?: (rowId: string, sourceSeq?: number) => void;
   }) => (
-    <button type="button" onClick={() => onNavigateToRow?.("row-target")}>
+    <button type="button" onClick={() => onNavigateToRow?.("row-target", 42)}>
       Jump to row
     </button>
   ),
@@ -62,9 +63,9 @@ it("forwards pane callbacks to the timeline and conversation outline", () => {
   expect(screen.getByTestId("plugin-panel-opener").textContent).toBe(
     "available",
   );
-  expect(screen.getByTestId("navigation-target").textContent).toBe("none");
+  expect(screen.getByTestId("navigation-target").textContent).toBe("none:none");
   fireEvent.click(screen.getByRole("button", { name: "Jump to row" }));
   expect(screen.getByTestId("navigation-target").textContent).toBe(
-    "row-target",
+    "row-target:42",
   );
 });

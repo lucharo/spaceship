@@ -211,6 +211,8 @@ export interface ThreadTimelineRowsProps {
   timelineRows: TimelineRow[];
   /** Outline destination kept mounted while timeline windowing is enabled. */
   timelineNavigationTargetRowId?: string | null;
+  /** Event sequence used to expand collapsed ancestors of an outline target. */
+  timelineNavigationTargetSeq?: number | null;
   threadId?: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   /** Omit for standalone initial-unread rendering, pass false for live updates. */
@@ -293,6 +295,7 @@ interface TimelineRowsListProps {
   hasOlderTimelineRows?: boolean;
   isLoadingOlderTimelineRows?: boolean;
   navigationTargetRowId?: string | null;
+  navigationTargetSeq?: number | null;
   onLoadOlderRows?: () => Promise<void> | void;
   rows: readonly ThreadTimelineViewRow[];
   scopeActive: boolean;
@@ -622,32 +625,38 @@ function useStableReadonlySet(
 
 function useTimelineSearchExpansionRowIds(
   rows: readonly ThreadTimelineViewRow[],
+  navigationTargetSeq?: number | null,
 ): ReadonlySet<string> {
   const inheritedRowIds = useContext(TimelineSearchExpansionContext);
   const { threadId } = useTimelineRendererStaticContext();
   const location = useLocation();
   return useMemo(() => {
     const target = readSearchMessageTarget(location.state);
-    if (target === null) {
-      return inheritedRowIds;
-    }
+    const targetSeqs: number[] = [];
     if (
-      threadId !== undefined &&
-      target.threadId !== null &&
-      target.threadId !== threadId
+      target !== null &&
+      !(
+        threadId !== undefined &&
+        target.threadId !== null &&
+        target.threadId !== threadId
+      )
     ) {
-      return inheritedRowIds;
+      targetSeqs.push(target.seq);
     }
-    const localRowIds = collectSearchedMessageAncestorRowIds(rows, target.seq);
-    if (localRowIds.size === 0) {
+    if (navigationTargetSeq != null) {
+      targetSeqs.push(navigationTargetSeq);
+    }
+    if (targetSeqs.length === 0) {
       return inheritedRowIds;
     }
     const combinedRowIds = new Set<string>(inheritedRowIds);
-    for (const id of localRowIds) {
-      combinedRowIds.add(id);
+    for (const targetSeq of targetSeqs) {
+      for (const id of collectSearchedMessageAncestorRowIds(rows, targetSeq)) {
+        combinedRowIds.add(id);
+      }
     }
     return combinedRowIds;
-  }, [inheritedRowIds, location.state, rows, threadId]);
+  }, [inheritedRowIds, location.state, navigationTargetSeq, rows, threadId]);
 }
 
 function buildTurnSummaryDetailsIdentity({
@@ -2068,6 +2077,7 @@ function TimelineRowsList({
   hasOlderTimelineRows,
   isLoadingOlderTimelineRows,
   navigationTargetRowId,
+  navigationTargetSeq,
   onLoadOlderRows,
   rows,
   scopeActive,
@@ -2088,7 +2098,10 @@ function TimelineRowsList({
   );
   const [standaloneMeasurements] = useState(() => new Map<string, number>());
   const measurements = inheritedMeasurements ?? standaloneMeasurements;
-  const searchExpandedRowIds = useTimelineSearchExpansionRowIds(rows);
+  const searchExpandedRowIds = useTimelineSearchExpansionRowIds(
+    rows,
+    navigationTargetSeq,
+  );
   const stableSearchExpandedRowIds = useStableReadonlySet(searchExpandedRowIds);
   useScrollToSearchedMessage(rows, threadId, {
     hasOlderRows: hasOlderTimelineRows,
@@ -2534,6 +2547,9 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                           }
                           navigationTargetRowId={
                             props.timelineNavigationTargetRowId
+                          }
+                          navigationTargetSeq={
+                            props.timelineNavigationTargetSeq
                           }
                           onLoadOlderRows={props.onLoadOlderRows}
                           rows={rows}

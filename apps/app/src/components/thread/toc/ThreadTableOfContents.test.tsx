@@ -114,7 +114,7 @@ function TocHost({
   hostPaddingX?: number;
   hostWidth?: number;
   loadOlderTimelineRows?: () => void | Promise<void>;
-  onNavigateToRow?: (rowId: string) => void;
+  onNavigateToRow?: (rowId: string, sourceSeq?: number) => void;
   threadId?: string;
   timelineRows: readonly TimelineRow[];
 }) {
@@ -847,6 +847,7 @@ describe("ThreadTableOfContents", () => {
       },
       {
         id: "u2",
+        sourceSeq: 22,
         role: "user",
         preview: "Loaded question",
         attachmentSummary: null,
@@ -871,7 +872,7 @@ describe("ThreadTableOfContents", () => {
     fireEvent.click(await screen.findByText("Loaded question"));
 
     await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalledTimes(1));
-    expect(onNavigateToRow).toHaveBeenCalledWith("u2");
+    expect(onNavigateToRow).toHaveBeenCalledWith("u2", 22);
     expect(loadOlder).not.toHaveBeenCalled();
   });
 
@@ -1038,14 +1039,11 @@ describe("ThreadTableOfContents", () => {
   });
 
   it("finds active items with logarithmic row measurements", () => {
-    const allItems = Array.from(
-      { length: 256 },
-      (_, index): TocItem => ({
-        id: `item-${index}`,
-        label: `Message ${index}`,
-        role: index % 2 === 0 ? "user" : "assistant",
-      }),
-    );
+    const allItems = Array.from({ length: 256 }, (_, index): TocItem => ({
+      id: `item-${index}`,
+      label: `Message ${index}`,
+      role: index % 2 === 0 ? "user" : "assistant",
+    }));
     const manyUserItems = allItems.filter((item) => item.role === "user");
     const manyAgentItems = allItems.filter((item) => item.role === "assistant");
     const visibleIndex = 200;

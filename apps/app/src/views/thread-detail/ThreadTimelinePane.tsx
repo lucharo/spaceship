@@ -22,8 +22,10 @@ export function ThreadTimelinePane({
   footer,
   ...surface
 }: ThreadTimelinePaneProps) {
-  const [timelineNavigationTargetRowId, setTimelineNavigationTargetRowId] =
-    useState<string | null>(null);
+  const [timelineNavigationTarget, setTimelineNavigationTarget] = useState<{
+    rowId: string;
+    sourceSeq?: number;
+  } | null>(null);
   return (
     <EmbeddedThreadChat
       variant="hosted-footer"
@@ -34,10 +36,17 @@ export function ThreadTimelinePane({
           timelineRows={surface.timelineRows}
           hasOlderTimelineRows={surface.hasOlderTimelineRows}
           loadOlderTimelineRows={surface.onLoadOlderRows}
-          onNavigateToRow={setTimelineNavigationTargetRowId}
+          onNavigateToRow={(rowId, sourceSeq) =>
+            setTimelineNavigationTarget({ rowId, sourceSeq })
+          }
         />
       }
-      surface={{ ...surface, timelineNavigationTargetRowId }}
+      surface={{
+        ...surface,
+        timelineNavigationTargetRowId: timelineNavigationTarget?.rowId ?? null,
+        timelineNavigationTargetSeq:
+          timelineNavigationTarget?.sourceSeq ?? null,
+      }}
     />
   );
 }

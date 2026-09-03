@@ -918,13 +918,15 @@ export type ThreadConversationOutlineAttachmentSummary = z.infer<
  * A single conversation message in the thread's full table-of-contents
  * outline. `id` matches the corresponding timeline row id (both are projected
  * by the same builder), so the minimap can scroll-spy and jump to a row once
- * it is paginated into the loaded window. `preview` is already whitespace-
- * normalized and length-clamped server-side to keep the payload small for
- * very long threads.
+ * it is paginated into the loaded window. `sourceSeq` lets the timeline expand
+ * collapsed ancestors before that row is mounted. `preview` is already
+ * whitespace-normalized and length-clamped server-side to keep the payload
+ * small for very long threads.
  */
 export const threadConversationOutlineItemSchema = z
   .object({
     id: z.string().min(1),
+    sourceSeq: z.number().int().nonnegative().optional(),
     role: z.enum(["user", "assistant"]),
     preview: z.string(),
     attachmentSummary:
