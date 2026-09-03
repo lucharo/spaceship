@@ -425,6 +425,90 @@ describe("public native thread archive", () => {
     });
   });
 
+  it("does not reopen a projection archived during native adoption", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, environment, thread } = seedThreadFixture(harness, {
+        session: { id: "host-adopt-environment-archive" },
+        environment: {
+          managed: true,
+          workspaceProvisionType: "managed-worktree",
+        },
+      });
+      const providerThreadId = "native-thread-adopt-environment-archive";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+
+      const adoptionResponsePromise = harness.app.request(
+        "/api/v1/threads/adopt-native",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            hostId: host.id,
+            providerId: "codex",
+            providerThreadId,
+          }),
+        },
+      );
+      const providerRead = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.read" &&
+          command.providerThreadId === providerThreadId,
+      );
+
+      const archiveResponse = await harness.app.request(
+        `/api/v1/environments/${environment.id}/archive-threads`,
+        { method: "POST" },
+      );
+      expect(archiveResponse.status).toBe(200);
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.archive" && command.threadId === thread.id,
+      );
+
+      await reportQueuedCommandSuccess(harness, providerRead, {
+        providerThreadId,
+        title: "Session archived during adoption",
+        cwd: environment.path,
+        projectId: null,
+        workspaceRoot: environment.path,
+        status: "idle",
+        createdAt: 1_777_000_000,
+        updatedAt: 1_777_000_100,
+        archived: false,
+        source: "cli",
+      });
+      const inspection = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "project.inspect" &&
+          command.path === environment.path,
+      );
+      await reportQueuedCommandSuccess(harness, inspection, {
+        path: environment.path,
+        gitRemoteUrl: null,
+        isGitRepo: true,
+        isWorktree: false,
+        branchName: "main",
+        defaultBranch: "main",
+      });
+
+      expect((await adoptionResponsePromise).status).toBe(409);
+      expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
+
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+    });
+  });
+
   it("starts managed-environment cleanup after native archive reconciliation", async () => {
     await withTestHarness(async (harness) => {
       const { host, environment, thread } = seedThreadFixture(harness, {

@@ -457,6 +457,17 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
                 "The native session projection changed while it was opening",
               );
             }
+            if (
+              existingBeforeRead?.id === current.id &&
+              existingBeforeRead.archivedAt === null &&
+              current.archivedAt !== null
+            ) {
+              throw new ApiError(
+                409,
+                "native_session_archived",
+                "The native session was archived while it was opening",
+              );
+            }
             let existingEnvironment =
               current.environmentId === null
                 ? null
