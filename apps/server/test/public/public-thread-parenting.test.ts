@@ -1,4 +1,10 @@
-import { archiveThread, getEnvironment, getThread } from "@bb/db";
+import {
+  archiveThread,
+  getEnvironment,
+  getThread,
+  getThreadExecutionOverride,
+  setThreadExecutionOverride,
+} from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import {
   apiErrorSchema,
@@ -631,6 +637,11 @@ describe("public thread parenting routes", () => {
         sourceThreadId: sourceThread.id,
         visibility: "visible",
       });
+      setThreadExecutionOverride(harness.db, {
+        threadId: visibleFork.id,
+        modelOverride: "gpt-5.5",
+        reasoningLevelOverride: "medium",
+      });
 
       let markCatalogRequested!: () => void;
       const catalogRequested = new Promise<void>((resolve) => {
@@ -699,6 +710,10 @@ describe("public thread parenting routes", () => {
       expect(getThread(harness.db, visibleFork.id)).toMatchObject({
         archivedAt: null,
         visibility: "visible",
+      });
+      expect(getThreadExecutionOverride(harness.db, visibleFork.id)).toEqual({
+        modelOverride: "gpt-5.5",
+        reasoningLevelOverride: "medium",
       });
     });
   });

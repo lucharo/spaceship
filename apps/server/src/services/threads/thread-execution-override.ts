@@ -46,6 +46,7 @@ interface ResolveThreadExecutionOverrideUpdateArgs {
 interface ApplyThreadExecutionOverrideArgs {
   thread: Thread;
   patch: ThreadExecutionOverridePatch;
+  validateBeforePersist?: () => void;
 }
 
 interface RecoverThreadModelOverrideArgs {
@@ -162,6 +163,7 @@ export async function applyThreadExecutionOverride(
     fallbackModel: resolveFallbackModel(deps, thread),
   });
 
+  args.validateBeforePersist?.();
   setThreadExecutionOverride(deps.db, {
     threadId: thread.id,
     modelOverride: next.modelOverride,

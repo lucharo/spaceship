@@ -680,26 +680,14 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
           parentThreadId: payload.parentThreadId,
         });
       }
-      // Sticky execution override (model / reasoning level). Validated and
-      // persisted by a dedicated service — kept off the generic metadata update
-      // because execution config must not flow through `updateThread`.
-      if ("model" in payload || "reasoningLevel" in payload) {
-        await applyThreadExecutionOverride(deps, {
-          thread,
-          patch: {
-            ...("model" in payload ? { model: payload.model } : {}),
-            ...("reasoningLevel" in payload
-              ? { reasoningLevel: payload.reasoningLevel }
-              : {}),
-          },
-        });
-      }
-
-      if (
-        payload.visibility === "hidden" &&
-        thread.visibility !== "hidden" &&
-        thread.sourceThreadId !== null
-      ) {
+      const validateVisibility = () => {
+        if (
+          payload.visibility !== "hidden" ||
+          thread.visibility === "hidden" ||
+          thread.sourceThreadId === null
+        ) {
+          return;
+        }
         const sourceThread = getThread(deps.db, thread.sourceThreadId);
         if (
           sourceThread === null ||
@@ -712,6 +700,23 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
             "Cannot hide a source-derived thread whose source is archived or deleted",
           );
         }
+      };
+      // Sticky execution override (model / reasoning level). Validated and
+      // persisted by a dedicated service — kept off the generic metadata update
+      // because execution config must not flow through `updateThread`.
+      if ("model" in payload || "reasoningLevel" in payload) {
+        await applyThreadExecutionOverride(deps, {
+          thread,
+          patch: {
+            ...("model" in payload ? { model: payload.model } : {}),
+            ...("reasoningLevel" in payload
+              ? { reasoningLevel: payload.reasoningLevel }
+              : {}),
+          },
+          validateBeforePersist: validateVisibility,
+        });
+      } else {
+        validateVisibility();
       }
 
       const metadataUpdate: UpdateThreadInput = {};
