@@ -8,7 +8,10 @@ import {
   threadListResponseSchema,
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
-import { waitForQueuedCommand } from "../helpers/commands.js";
+import {
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -404,6 +407,136 @@ describe("public thread parenting routes", () => {
       const archivedChildThread = getThread(harness.db, childThread.id);
       expect(archivedChildThread?.archivedAt).not.toBeNull();
       expect(archivedChildThread?.parentThreadId).toBe(parentThread.id);
+    });
+  });
+
+  it("serializes child creation behind archive-all", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const providerThreadId = "provider-parent-create-during-archive";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: parentThread.id,
+      });
+
+      const archiveResponsePromise = harness.app.request(
+        `/api/v1/threads/${parentThread.id}/archive-all`,
+        { method: "POST" },
+      );
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.archive" &&
+          command.providerThreadId === providerThreadId,
+      );
+
+      let creationSettled = false;
+      const creationResponsePromise = Promise.resolve(
+        harness.app.request("/api/v1/threads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            origin: "app",
+            projectId: project.id,
+            providerId: "codex",
+            model: "gpt-5",
+            input: [{ type: "text", text: "Create child work" }],
+            environment: {
+              type: "reuse",
+              environmentId: environment.id,
+            },
+            parentThreadId: parentThread.id,
+          }),
+        }),
+      ).then((response) => {
+        creationSettled = true;
+        return response;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(creationSettled).toBe(false);
+
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+      expect((await archiveResponsePromise).status).toBe(200);
+      expect((await creationResponsePromise).status).toBe(400);
+      expect(getThread(harness.db, parentThread.id)?.archivedAt).not.toBeNull();
+    });
+  });
+
+  it("serializes reparenting behind archive-all", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const parentThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+      });
+      const childThread = seedThread(harness.deps, {
+        projectId: project.id,
+      });
+      const providerThreadId = "provider-parent-reparent-during-archive";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: parentThread.id,
+      });
+
+      const archiveResponsePromise = harness.app.request(
+        `/api/v1/threads/${parentThread.id}/archive-all`,
+        { method: "POST" },
+      );
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.archive" &&
+          command.providerThreadId === providerThreadId,
+      );
+
+      let reparentSettled = false;
+      const reparentResponsePromise = Promise.resolve(
+        harness.app.request(`/api/v1/threads/${childThread.id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ parentThreadId: parentThread.id }),
+        }),
+      ).then((response) => {
+        reparentSettled = true;
+        return response;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(reparentSettled).toBe(false);
+
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+      expect((await archiveResponsePromise).status).toBe(200);
+      expect((await reparentResponsePromise).status).toBe(400);
+      expect(getThread(harness.db, childThread.id)?.parentThreadId).toBeNull();
     });
   });
 

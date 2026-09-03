@@ -345,9 +345,7 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         ...payload,
         origin: payload.origin,
       });
-    const sourceMutationId =
-      payload.sourceThreadId ??
-      (payload.originKind !== null ? payload.parentThreadId : undefined);
+    const sourceMutationId = payload.sourceThreadId ?? payload.parentThreadId;
     const thread = sourceMutationId
       ? await withNativeSessionMutation(() =>
           withThreadArchiveMutation(sourceMutationId, createThread),
@@ -673,84 +671,91 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
   });
 
   patch(routes.update, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (payload.parentThreadId) {
-      assertValidParentThread(deps, {
-        childThreadId: thread.id,
-        parentThreadId: payload.parentThreadId,
-      });
-    }
-
-    // Sticky execution override (model / reasoning level). Validated and
-    // persisted by a dedicated service — kept off the generic metadata update
-    // because execution config must not flow through `updateThread`.
-    if ("model" in payload || "reasoningLevel" in payload) {
-      await applyThreadExecutionOverride(deps, {
-        thread,
-        patch: {
-          ...("model" in payload ? { model: payload.model } : {}),
-          ...("reasoningLevel" in payload
-            ? { reasoningLevel: payload.reasoningLevel }
-            : {}),
-        },
-      });
-    }
-
-    const metadataUpdate: UpdateThreadInput = {};
-    if ("title" in payload) {
-      metadataUpdate.title = payload.title;
-    }
-    const sectionId = payload.sectionId;
-    if (sectionId !== undefined) {
-      if (sectionId !== null) {
-        requireThreadSection(deps, sectionId);
-      }
-      metadataUpdate.sectionId = sectionId;
-    }
-    if ("parentThreadId" in payload) {
-      metadataUpdate.parentThreadId = payload.parentThreadId;
-    }
-    if ("visibility" in payload) {
-      metadataUpdate.visibility = payload.visibility;
-    }
-    const updated =
-      Object.keys(metadataUpdate).length > 0
-        ? updateThread(deps.db, deps.hub, thread.id, metadataUpdate)
-        : requirePublicThread(deps.db, thread.id);
-    if (!updated) {
-      throw new ApiError(404, "thread_not_found", "Thread not found");
-    }
-
-    if (
-      payload.title &&
-      payload.title !== thread.title &&
-      updated.environmentId
-    ) {
-      const environment = requireEnvironment(deps.db, updated.environmentId);
-      if (environment.status === "ready" && environment.path) {
-        dispatchThreadRenameCommand(deps, {
-          environment: {
-            id: environment.id,
-            hostId: environment.hostId,
-          },
-          providerId: updated.providerId,
-          threadId: updated.id,
-          title: payload.title,
+    const update = async () => {
+      const thread = requirePublicThread(deps.db, context.req.param("id"));
+      if (payload.parentThreadId) {
+        assertValidParentThread(deps, {
+          childThreadId: thread.id,
+          parentThreadId: payload.parentThreadId,
         });
       }
-    }
 
-    if (
-      "parentThreadId" in payload &&
-      payload.parentThreadId !== thread.parentThreadId
-    ) {
-      await handleThreadOwnershipChange(deps, {
-        previousThread: thread,
-        updatedThread: updated,
-      });
-    }
+      // Sticky execution override (model / reasoning level). Validated and
+      // persisted by a dedicated service — kept off the generic metadata update
+      // because execution config must not flow through `updateThread`.
+      if ("model" in payload || "reasoningLevel" in payload) {
+        await applyThreadExecutionOverride(deps, {
+          thread,
+          patch: {
+            ...("model" in payload ? { model: payload.model } : {}),
+            ...("reasoningLevel" in payload
+              ? { reasoningLevel: payload.reasoningLevel }
+              : {}),
+          },
+        });
+      }
 
-    return context.json(toThreadResponseFromThread(deps, { thread: updated }));
+      const metadataUpdate: UpdateThreadInput = {};
+      if ("title" in payload) {
+        metadataUpdate.title = payload.title;
+      }
+      const sectionId = payload.sectionId;
+      if (sectionId !== undefined) {
+        if (sectionId !== null) {
+          requireThreadSection(deps, sectionId);
+        }
+        metadataUpdate.sectionId = sectionId;
+      }
+      if ("parentThreadId" in payload) {
+        metadataUpdate.parentThreadId = payload.parentThreadId;
+      }
+      if ("visibility" in payload) {
+        metadataUpdate.visibility = payload.visibility;
+      }
+      const updated =
+        Object.keys(metadataUpdate).length > 0
+          ? updateThread(deps.db, deps.hub, thread.id, metadataUpdate)
+          : requirePublicThread(deps.db, thread.id);
+      if (!updated) {
+        throw new ApiError(404, "thread_not_found", "Thread not found");
+      }
+
+      if (
+        payload.title &&
+        payload.title !== thread.title &&
+        updated.environmentId
+      ) {
+        const environment = requireEnvironment(deps.db, updated.environmentId);
+        if (environment.status === "ready" && environment.path) {
+          dispatchThreadRenameCommand(deps, {
+            environment: {
+              id: environment.id,
+              hostId: environment.hostId,
+            },
+            providerId: updated.providerId,
+            threadId: updated.id,
+            title: payload.title,
+          });
+        }
+      }
+
+      if (
+        "parentThreadId" in payload &&
+        payload.parentThreadId !== thread.parentThreadId
+      ) {
+        await handleThreadOwnershipChange(deps, {
+          previousThread: thread,
+          updatedThread: updated,
+        });
+      }
+
+      return context.json(
+        toThreadResponseFromThread(deps, { thread: updated }),
+      );
+    };
+    return "parentThreadId" in payload || "visibility" in payload
+      ? withNativeSessionMutation(update)
+      : update();
   });
 
   del(routes.delete, async (context, payload) => {
