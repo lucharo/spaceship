@@ -700,7 +700,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         return context.json({ items: cachedNative, maxSeq: projection.maxSeq });
       }
       const timeline = buildNativeThreadTimeline(deps, thread, projection, {
-        includeNestedRows: false,
+        includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
         providerDisplayName,

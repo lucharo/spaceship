@@ -1946,19 +1946,29 @@ export function buildThreadConversationOutlineFromRows(
   maxSeq: number,
 ): ThreadConversationOutlineResponse {
   const items: ThreadConversationOutlineItem[] = [];
-  for (const row of rows) {
-    if (row.kind !== "conversation") {
-      continue;
+  const appendRows = (candidateRows: readonly TimelineRow[]): void => {
+    for (const row of candidateRows) {
+      if (row.kind === "turn") {
+        appendRows(row.children ?? []);
+        continue;
+      }
+      if (row.kind === "work" && row.workKind === "delegation") {
+        appendRows(row.childRows);
+        continue;
+      }
+      if (row.kind === "conversation") {
+        items.push({
+          id: row.id,
+          role: row.role,
+          preview: toConversationOutlinePreview(row.text),
+          attachmentSummary: toConversationOutlineAttachmentSummary(
+            row.attachments,
+          ),
+        });
+      }
     }
-    items.push({
-      id: row.id,
-      role: row.role,
-      preview: toConversationOutlinePreview(row.text),
-      attachmentSummary: toConversationOutlineAttachmentSummary(
-        row.attachments,
-      ),
-    });
-  }
+  };
+  appendRows(rows);
   return { items, maxSeq };
 }
 
