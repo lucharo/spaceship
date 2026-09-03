@@ -41,7 +41,7 @@ The full-branch review also caught the other half of environment pruning: reads 
 
 The last interaction review caught a subtler consequence of lazy native history. Opening a collapsed turn can start an asynchronous detail request, so counting render frames was not a reliable way to decide that an outline destination was unavailable. Outline jumps now observe the actual timeline subtree until the target mounts, inherit the target sequence through lazily fetched nested rows, cancel on thread or destination changes, and stop after a bounded wait. Each pane-issued target also carries an ownership-aware settlement callback, so a completed or failed jump releases forced expansion without allowing an older jump to clear a newer one. Replacement jumps clear the previous busy indicator immediately, and visit-scoped state prevents an A→B→A navigation from reviving it. The regressions were first demonstrated against the unfixed paths, then passed through the real pane, outline, lazy-detail, and row-rendering callers.
 
-The final branch-wide review found two edges outside the native row itself. Archive-all took a stable child snapshot, but ordinary child creation, reparenting, and visibility changes did not share its lifecycle boundary; those mutations now serialize with archive preparation so they cannot make the cascade stale. Settings also refreshed release notes and opened links from BB upstream, which made a fork build describe a different product. Both the live source and full-changelog action now belong to the Spaceship repository.
+The final branch-wide review found three edges outside the native row itself. Archive-all took a stable child snapshot, but ordinary child creation, reparenting, and visibility changes did not share its lifecycle boundary; those mutations now serialize with archive preparation so they cannot make the cascade stale. A pruned projection could also clear its local archive state after discovering that its provider no longer supported native unarchive; that path now fails closed. Settings refreshed release notes and opened links from BB upstream, which made a fork build describe a different product. Both the live source and full-changelog action now belong to the Spaceship repository.
 
 It also exposed two existing macOS test assumptions: Linux process supervision expected `/proc`, and temporary paths could compare as `/tmp` versus `/private/tmp`. Those checks now use portable behaviour. The Electron window smoke itself cannot be torn down by this agent host because macOS denies signalling the spawned process; that test remains a runtime-environment exception rather than a product assertion.
 
@@ -58,6 +58,7 @@ It also exposed two existing macOS test assumptions: Linux process supervision e
 - Human date groups are calendar boundaries, not elapsed 24-hour windows; local `setDate` arithmetic keeps yesterday and rolling-day buckets correct across DST transitions.
 - Navigation into lazy provider history must wait for the destination itself, not an assumed number of renders. The destination sequence must propagate through every lazy subtree, and every wait needs ownership, cancellation, settlement, and a timeout.
 - A lifecycle snapshot is valid only when every mutation that changes its membership shares the same ordering boundary, including ordinary child creation, reparenting, and visibility changes.
+- Native maintenance is fail-closed: losing provider capability or routing must not silently turn a rejected provider operation into a local-only state change.
 - Fork-owned release surfaces must read and link to the fork's own changelog; an upstream changelog is useful provenance, not the current product state.
 - Exact provider and app tests caught semantic failures that typechecking could not; the live visual pass remained necessary for interaction and presentation confidence.
 
@@ -73,4 +74,4 @@ The session's durable Spaceship product questions now have concise, source-linke
 
 ---
 
-Native Codex integration retrospective · Complete · Spaceship PR #9 · 2026-09-02 · `docs/retrospectives/2026-09-02-native-codex-integration.md`
+Native Codex integration retrospective · Complete · Spaceship PR #9 · 2026-09-03 · `docs/retrospectives/2026-09-02-native-codex-integration.md`

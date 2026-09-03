@@ -746,14 +746,18 @@ export async function runThreadUnarchiveCommand(
 export async function runRetainedNativeSessionUnarchiveCommand(
   deps: CommandResultSideEffectsDeps,
   args: RunRetainedNativeSessionUnarchiveCommandArgs,
-): Promise<boolean> {
+): Promise<void> {
   if (
     !providerSupportsThreadArchiveForwarding(
       deps.providerRegistry,
       args.thread.providerId,
     )
   ) {
-    return false;
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Provider ${args.thread.providerId} does not support native thread unarchive`,
+    );
   }
 
   const bridgeLaunch = requireBridgeLaunchForProviderId(
@@ -772,7 +776,6 @@ export async function runRetainedNativeSessionUnarchiveCommand(
     hostId: args.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   });
-  return true;
 }
 
 export function buildThreadStopCommand(

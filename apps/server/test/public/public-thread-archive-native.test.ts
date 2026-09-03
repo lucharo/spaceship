@@ -818,6 +818,72 @@ describe("public native thread archive", () => {
     });
   });
 
+  it("keeps a pruned projection archived when native unarchive is unsupported", async () => {
+    await withTestHarness(
+      {
+        seedFirstPartyProviders: false,
+        extraProviders: [
+          {
+            pluginId: "provider-codex",
+            declaration: {
+              id: "codex",
+              displayName: "Codex",
+              maintenance: {
+                health: false,
+                usage: false,
+                installation: false,
+              },
+              capabilities: {
+                supportsServiceTier: false,
+                supportsNativeUserQuestion: false,
+                fork: "none",
+                supportsManualCompaction: false,
+                supportsThreadArchive: false,
+                supportsThreadRename: false,
+                permissionModes: ["full"],
+                reasoningLevels: ["medium"],
+              },
+              composerActions: [],
+            },
+          },
+        ],
+      },
+      async (harness) => {
+        const { host, environment, thread } = seedThreadFixture(harness, {
+          session: { id: "host-native-unarchive-pruned-unsupported" },
+        });
+        const providerThreadId = "native-thread-unarchive-pruned-unsupported";
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId,
+          threadId: thread.id,
+        });
+        archiveThread(harness.db, harness.deps.hub, thread.id);
+        harness.db
+          .delete(environments)
+          .where(eq(environments.id, environment.id))
+          .run();
+
+        expect(getThread(harness.db, thread.id)).toMatchObject({
+          archivedAt: expect.any(Number),
+          environmentId: null,
+          nativeSessionHostId: host.id,
+        });
+
+        const response = await harness.app.request(
+          `/api/v1/threads/${thread.id}/unarchive`,
+          { method: "POST" },
+        );
+
+        expect(response.status).toBe(400);
+        expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
+        expect(
+          listQueuedThreadCommands(harness, "thread.unarchive", thread.id),
+        ).toEqual([]);
+      },
+    );
+  });
+
   it("releases assigned child threads instead of archiving their separate sessions", async () => {
     await withTestHarness(async (harness) => {
       const { host, project, environment, thread } = seedThreadFixture(
