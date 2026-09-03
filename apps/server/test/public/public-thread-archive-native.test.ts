@@ -198,6 +198,83 @@ describe("public native thread archive", () => {
     });
   });
 
+  it("waits for an environment archive to settle before provider unarchive", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness, {
+        session: { id: "host-environment-archive-unarchive" },
+        environment: {
+          managed: true,
+          workspaceProvisionType: "managed-worktree",
+        },
+      });
+      const providerThreadId = "native-thread-environment-archive-unarchive";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+
+      const archiveResponse = await harness.app.request(
+        `/api/v1/environments/${environment.id}/archive-threads`,
+        { method: "POST" },
+      );
+      expect(archiveResponse.status).toBe(200);
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.archive" && command.threadId === thread.id,
+      );
+
+      let unarchiveSettled = false;
+      const unarchiveResponsePromise = Promise.resolve(
+        harness.app.request(`/api/v1/threads/${thread.id}/unarchive`, {
+          method: "POST",
+        }),
+      ).then((response) => {
+        unarchiveSettled = true;
+        return response;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const settledBeforeArchive = unarchiveSettled;
+
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+
+      if (!settledBeforeArchive) {
+        const providerUnarchive = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.unarchive" &&
+            command.threadId === thread.id,
+        );
+        expect(
+          hasNativeSessionArchiveConfirmation(harness.db, {
+            providerThreadId,
+            threadId: thread.id,
+          }),
+        ).toBe(true);
+        await reportQueuedCommandSuccess(
+          harness,
+          providerUnarchive as never,
+          {} as never,
+        );
+      }
+
+      expect(settledBeforeArchive).toBe(false);
+      expect((await unarchiveResponsePromise).status).toBe(200);
+      expect(getThread(harness.db, thread.id)?.archivedAt).toBeNull();
+      expect(
+        hasNativeSessionArchiveConfirmation(harness.db, {
+          providerThreadId,
+          threadId: thread.id,
+        }),
+      ).toBe(false);
+    });
+  });
+
   it("starts managed-environment cleanup after native archive reconciliation", async () => {
     await withTestHarness(async (harness) => {
       const { host, environment, thread } = seedThreadFixture(harness, {

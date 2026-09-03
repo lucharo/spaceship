@@ -1,4 +1,5 @@
 import {
+  confirmNativeSessionArchive,
   environments,
   events,
   hasNativeSessionArchiveConfirmation,
@@ -627,18 +628,55 @@ export function dispatchArchivedThreadProviderArchiveCommand(
     return false;
   }
 
-  startLiveHostCommand(deps, {
+  if (pendingThreadProviderArchiveCommands.has(thread.id)) {
+    return false;
+  }
+
+  const pending = runLiveHostCommand(deps, {
     command: prepared.command,
     hostId: prepared.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
-    onError: ({ error }) => {
+  })
+    .then(() => {
+      const currentThread = deps.db
+        .select()
+        .from(threads)
+        .where(eq(threads.id, thread.id))
+        .get();
+      if (
+        !currentThread ||
+        currentThread.archivedAt === null ||
+        currentThread.deletedAt !== null ||
+        getLastProviderThreadId(deps, thread.id) !== providerThreadId
+      ) {
+        return;
+      }
+      confirmNativeSessionArchive(deps.db, {
+        providerThreadId,
+        threadId: thread.id,
+      });
+    })
+    .catch((error) => {
       deps.logger.warn(
         { err: error, threadId: thread.id },
         "Live thread archive command failed",
       );
-    },
+    });
+  pendingThreadProviderArchiveCommands.set(thread.id, pending);
+  void pending.then(() => {
+    if (pendingThreadProviderArchiveCommands.get(thread.id) === pending) {
+      pendingThreadProviderArchiveCommands.delete(thread.id);
+    }
   });
   return true;
+}
+
+const pendingThreadProviderArchiveCommands = new Map<string, Promise<void>>();
+
+export async function waitForPendingThreadProviderArchiveCommand(
+  threadId: string,
+): Promise<void> {
+  await pendingThreadProviderArchiveCommands.get(threadId);
 }
 
 export function dispatchThreadUnarchiveCommand(

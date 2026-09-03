@@ -54,6 +54,7 @@ import {
   runRetainedNativeSessionUnarchiveCommand,
   runThreadProviderArchiveCommand,
   runThreadUnarchiveCommand,
+  waitForPendingThreadProviderArchiveCommand,
 } from "../../services/threads/thread-commands.js";
 import { getLastProviderThreadId } from "../../services/threads/thread-events.js";
 import { stopThreadForCurrentState } from "../../services/threads/thread-lifecycle.js";
@@ -679,6 +680,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const unarchive = () =>
       withThreadArchiveMutation(threadId, async () => {
         const thread = requirePublicThread(deps.db, threadId);
+        await waitForPendingThreadProviderArchiveCommand(thread.id);
         const providerThreadId = getLastProviderThreadId(deps, thread.id);
         const environment = thread.environmentId
           ? getEnvironment(deps.db, thread.environmentId)
