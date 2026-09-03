@@ -606,7 +606,10 @@ export function ThreadTableOfContents({
   const [tab, setTab] = useState<TocTab>("user");
   const [activeUserId, setActiveUserId] = useState<string | null>(null);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
-  const [pendingJumpId, setPendingJumpId] = useState<string | null>(null);
+  const [pendingJump, setPendingJump] = useState<{
+    rowId: string;
+    threadId: string;
+  } | null>(null);
   const {
     aboveOverflow,
     belowOverflow,
@@ -635,12 +638,13 @@ export function ThreadTableOfContents({
   const loadOlderRef = useRef(loadOlderTimelineRows);
   loadOlderRef.current = loadOlderTimelineRows;
   const timelineRowsRef = useRef(timelineRows);
-  timelineRowsRef.current = timelineRows;
+  useEffect(() => {
+    timelineRowsRef.current = timelineRows;
+  }, [timelineRows]);
   const activeJumpAbortRef = useRef<AbortController | null>(null);
   useEffect(() => {
     activeJumpAbortRef.current?.abort();
     activeJumpAbortRef.current = null;
-    setPendingJumpId(null);
     return () => {
       activeJumpAbortRef.current?.abort();
     };
@@ -737,7 +741,7 @@ export function ThreadTableOfContents({
         }
         return;
       }
-      setPendingJumpId(id);
+      setPendingJump({ rowId: id, threadId });
       const mountedRow = waitForTimelineRowElement({
         rowId: id,
         scrollElement: getScrollElement(),
@@ -798,11 +802,11 @@ export function ThreadTableOfContents({
         jumpAbort.abort();
         if (activeJumpAbortRef.current === jumpAbort) {
           activeJumpAbortRef.current = null;
-          setPendingJumpId(null);
+          setPendingJump(null);
         }
       }
     },
-    [bottomAnchor, onNavigateToRow],
+    [bottomAnchor, onNavigateToRow, threadId],
   );
 
   if (userItems.length < TOC_MIN_USER_MESSAGES) {
@@ -887,7 +891,9 @@ export function ThreadTableOfContents({
                     <ul className="flex flex-col">
                       {items.map((item) => {
                         const active = item.id === activeId;
-                        const pending = item.id === pendingJumpId;
+                        const pending =
+                          pendingJump?.threadId === threadId &&
+                          item.id === pendingJump.rowId;
                         return (
                           <li key={item.id}>
                             <button
