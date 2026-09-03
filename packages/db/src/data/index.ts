@@ -53,6 +53,7 @@ export {
 } from "./project-sources.js";
 export {
   adoptNativeThread,
+  findOrRepairThreadsByNativeIdentities,
   findThreadByNativeIdentity,
   findThreadsByNativeIdentities,
   createThread,

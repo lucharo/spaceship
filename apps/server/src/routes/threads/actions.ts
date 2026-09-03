@@ -32,11 +32,6 @@ import {
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
-import {
-  requestEnvironmentCleanup,
-  requestEnvironmentCleanupAdvance,
-  wouldCleanupEnvironment,
-} from "../../services/environments/environment-cleanup-internal.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
@@ -52,7 +47,6 @@ import {
 } from "../../services/threads/thread-send.js";
 import { acceptThreadSendRequest } from "../../services/threads/thread-send-request.js";
 import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
-import { archiveProviderNativeSession } from "../../services/system/native-sessions.js";
 import {
   buildExecutionOptions,
   prepareTurnSubmitCommandPayload,
@@ -67,8 +61,7 @@ import {
   toThreadResponseFromThread,
 } from "../../services/threads/thread-runtime-display.js";
 import {
-  archivePreparedThreadAndChildren,
-  archivePreparedThreadAndHiddenSourceForks,
+  archivePreparedThread,
   nativeSessionMutationKey,
   prepareThreadAndChildrenArchive,
   prepareThreadAndHiddenSourceForksArchive,
@@ -150,53 +143,52 @@ function resolveThreadNativeSessionIdentity(
     : null;
 }
 
-async function archivePreparedProviderSessions(
+async function archivePreparedProviderThreads(
   deps: AppDeps,
   prepared: PreparedThreadAndChildrenArchive,
   options: { allowLiveChildren?: boolean } = {},
-): Promise<void> {
-  for (const { environment: archiveEnvironment, thread } of prepared.threads) {
+): Promise<ReadonlyMap<string, Thread | null>> {
+  const archivedThreads = new Map<string, Thread | null>();
+  const root = prepared.threads.find(
+    ({ thread }) => thread.id === prepared.rootThreadId,
+  );
+  const orderedThreads = [
+    ...prepared.threads.filter(
+      ({ thread }) => thread.id !== prepared.rootThreadId,
+    ),
+    ...(root === undefined ? [] : [root]),
+  ];
+
+  for (const preparedThread of orderedThreads) {
+    const { environment: archiveEnvironment, thread } = preparedThread;
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
-    if (providerThreadId === null) {
-      continue;
-    }
     const environment =
       archiveEnvironment === null
         ? null
         : getEnvironment(deps.db, archiveEnvironment.id);
-    if (environment === null) {
-      const hostId = getThreadNativeSessionHostId(deps.db, thread.id);
-      const providerRegistration = deps.providerRegistry.get(thread.providerId);
-      if (
-        hostId === null ||
-        providerRegistration?.info.capabilities.supportsThreadArchive !== true
-      ) {
-        continue;
+    if (providerThreadId !== null && environment !== null) {
+      const archived = await runThreadProviderArchiveCommand(deps, {
+        allowLiveChildren: options.allowLiveChildren,
+        environment,
+        providerThreadId,
+        thread,
+      });
+      if (archived) {
+        confirmNativeSessionArchive(deps.db, {
+          providerThreadId,
+          threadId: thread.id,
+        });
       }
-      await archiveProviderNativeSession(deps, {
-        hostId,
-        providerId: thread.providerId,
-        providerThreadId,
-      });
-      confirmNativeSessionArchive(deps.db, {
-        providerThreadId,
-        threadId: thread.id,
-      });
-      continue;
     }
-    const archived = await runThreadProviderArchiveCommand(deps, {
-      allowLiveChildren: options.allowLiveChildren,
-      environment,
-      providerThreadId,
-      thread,
-    });
-    if (archived) {
-      confirmNativeSessionArchive(deps.db, {
-        providerThreadId,
-        threadId: thread.id,
-      });
-    }
+    archivedThreads.set(
+      thread.id,
+      archivePreparedThread(deps, preparedThread, {
+        dispatchProviderArchive: false,
+      }),
+    );
   }
+
+  return archivedThreads;
 }
 
 async function compactThreadContext(
@@ -619,35 +611,22 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
           });
           return context.json({ ok: true });
         }
-        const shouldRequestCleanup = wouldCleanupEnvironment(deps, {
-          environmentId: thread.environmentId,
-          excludeThreadId: thread.id,
-        });
         const environment = resolveArchiveThreadEnvironment(deps, { thread });
         const prepared = prepareThreadAndHiddenSourceForksArchive(deps, {
           environment,
           thread,
         });
-        await archivePreparedProviderSessions(deps, prepared);
-        const archiveResult = archivePreparedThreadAndHiddenSourceForks(
+        const archivedThreads = await archivePreparedProviderThreads(
           deps,
           prepared,
-          { dispatchProviderArchive: false },
         );
+        const archiveResult = archivedThreads.get(thread.id) ?? null;
         if (!archiveResult && !sourceAlreadyArchived) {
           throw new ApiError(404, "thread_not_found", "Thread not found");
         }
         if (sourceAlreadyArchived) {
           deps.terminalSessions.closeArchivedThreadTerminals({
             threadId: thread.id,
-          });
-        }
-        if (shouldRequestCleanup) {
-          requestEnvironmentCleanup(deps, {
-            environmentId: thread.environmentId,
-          });
-          requestEnvironmentCleanupAdvance(deps, {
-            environmentId: thread.environmentId,
           });
         }
         return context.json({ ok: true });
@@ -670,17 +649,18 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         const prepared = prepareThreadAndChildrenArchive(deps, {
           parentThread: thread,
         });
-        await archivePreparedProviderSessions(deps, prepared, {
-          allowLiveChildren: true,
-        });
-        const archivedThreadIds = archivePreparedThreadAndChildren(
+        const archivedThreads = await archivePreparedProviderThreads(
           deps,
           prepared,
-          { dispatchProviderArchive: false },
+          {
+            allowLiveChildren: true,
+          },
         );
         return context.json({
           ok: true,
-          archivedThreadIds,
+          archivedThreadIds: [...archivedThreads.values()].flatMap((thread) =>
+            thread === null ? [] : [thread.id],
+          ),
         });
       }),
     );

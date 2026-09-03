@@ -49,7 +49,6 @@ import { throwEnvironmentNotReady } from "../../services/lib/lifecycle-api-error
 import {
   requestEnvironmentCleanup,
   requestEnvironmentCleanupAdvance,
-  wouldCleanupEnvironment,
 } from "../../services/environments/environment-cleanup-internal.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
 import {
@@ -567,12 +566,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
 
         await withThreadArchiveMutation(existing.id, async () => {
           const current = findThreadByNativeIdentity(deps.db, payload);
-          const shouldRequestCleanup =
-            current !== null &&
-            wouldCleanupEnvironment(deps, {
-              environmentId: current.environmentId,
-              excludeThreadId: current.id,
-            });
           const prepared =
             current !== null && current.archivedAt === null
               ? prepareThreadAndHiddenSourceForksArchive(deps, {
@@ -590,14 +583,6 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
             });
             if (prepared !== null) {
               archivePreparedThreadAndHiddenSourceForks(deps, prepared);
-            }
-            if (shouldRequestCleanup) {
-              requestEnvironmentCleanup(deps, {
-                environmentId: current.environmentId,
-              });
-              requestEnvironmentCleanupAdvance(deps, {
-                environmentId: current.environmentId,
-              });
             }
           }
         });

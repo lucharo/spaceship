@@ -80,11 +80,11 @@ _Created: 2026-09-02 · Updated: 2026-09-02 · Verified: 2026-09-02 · Scope/ver
 
 ## How are active and archived Codex sessions handled?
 
-**Short answer:** Active sessions appear in the main thread list, archived sessions are separated, and archiving delegates to Codex app-server from either the sidebar or `bb provider archive`.
+**Short answer:** Active sessions appear in the main thread list, archived sessions are separated, and native-row archive actions delegate to Codex app-server without importing the session.
 
 Archiving a native row does not adopt it, create a Spaceship thread, or require a working directory. When a lightweight local projection already exists, Spaceship archives Codex once and then reconciles that projection without sending a duplicate provider command. Existing local projections can recover through native unarchive. A direct unarchive action in the archived catalogue, plus rename and fork parity, remains tracked rather than being emulated in Spaceship.
 
-Before asking Codex to archive, Spaceship verifies that the matching local projection and every hidden source fork can be reconciled. Native lifecycle and source-derived operations share one ordering boundary, then use the provider identity and projected thread locks; a concurrent action therefore cannot adopt, reopen, or fork a session while its provider mutation is in flight. Projected archive and unarchive use the daemon's ordered environment lane and change local state only after a connected provider accepts the operation. BB-assigned child threads represent separate sessions, so they are released rather than archived with the parent. Once recorded, a durable confirmation prevents automatic settlement or process restart from sending the same provider archive command twice. The dedicated native archive endpoint always reaches the provider again because the session may have been unarchived outside Spaceship. Crash recovery between provider success and the local confirmation write remains tracked separately. Unarchiving clears the confirmation.
+Before asking Codex to archive, Spaceship verifies that the matching local projection and every hidden source fork can be reconciled. Native lifecycle and source-derived operations share one ordering boundary, then use the provider identity and projected thread locks; a concurrent action therefore cannot adopt, reopen, or fork a session while its provider mutation is in flight. Projected archive and unarchive use the daemon's ordered environment lane and change local state only after a connected provider accepts the operation. A projection whose workspace environment has already been pruned is archived locally rather than forwarding an operation that Spaceship cannot yet reverse directly; use the native-session action or `bb provider archive` when the provider itself must be archived. Multi-thread archive reconciles each accepted provider mutation locally before continuing, and workspace cleanup is evaluated after the complete local cascade. BB-assigned child threads represent separate sessions, so they are released rather than archived with the parent. Once recorded, a durable confirmation prevents automatic settlement or process restart from sending the same provider archive command twice. The dedicated native archive endpoint always reaches the provider again because the session may have been unarchived outside Spaceship. Crash recovery between provider success and the local confirmation write remains tracked separately. Unarchiving clears the confirmation.
 
 ### Sources
 
@@ -92,6 +92,7 @@ Before asking Codex to archive, Spaceship verifies that the matching local proje
 - `bb provider archive <providerId> <providerThreadId>` — CLI access to the same native operation.
 - [Lifecycle parity issue](https://github.com/lucharo/spaceship/issues/4) — remaining direct unarchive, rename, and fork work.
 - [Archive recovery issue](https://github.com/lucharo/spaceship/issues/16) — durable recovery for interruption between provider success and local reconciliation.
+- [Native lifecycle locking issue](https://github.com/lucharo/spaceship/issues/17) — replace the safe process-wide ordering boundary with deterministic keyed concurrency.
 
 _Created: 2026-09-02 · Updated: 2026-09-03 · Verified: 2026-09-03_
 

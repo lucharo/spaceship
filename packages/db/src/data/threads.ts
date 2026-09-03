@@ -432,7 +432,7 @@ export function findThreadByNativeIdentity(
   identity: NativeThreadIdentity,
 ): ThreadRow | null {
   return (
-    findThreadsByNativeIdentities(db, {
+    findOrRepairThreadsByNativeIdentities(db, {
       hostId: identity.hostId,
       providerId: identity.providerId,
       providerThreadIds: [identity.providerThreadId],
@@ -492,6 +492,90 @@ export function findThreadsByNativeIdentities(
     }
   }
   return byProviderThreadId;
+}
+
+/**
+ * Repair projections created before native host identity was persisted. A
+ * provider thread id is globally stable for a provider, so a single legacy
+ * null-host match can be safely attached to the host that rediscovered it.
+ * Ambiguous legacy matches remain untouched rather than guessing.
+ */
+export function findOrRepairThreadsByNativeIdentities(
+  db: ThreadWriteConnection,
+  identities: NativeThreadIdentities,
+): ReadonlyMap<string, ThreadRow> {
+  const matches = new Map(findThreadsByNativeIdentities(db, identities));
+  const missingProviderThreadIds = identities.providerThreadIds.filter(
+    (providerThreadId) => !matches.has(providerThreadId),
+  );
+  if (missingProviderThreadIds.length === 0) {
+    return matches;
+  }
+
+  const latestProviderIdentities = db
+    .select({
+      threadId: events.threadId,
+      latestSequence: max(events.sequence).as("latest_sequence"),
+    })
+    .from(events)
+    .where(isNotNull(events.providerThreadId))
+    .groupBy(events.threadId)
+    .as("latest_legacy_provider_identities");
+  const legacyMatches = db
+    .select({
+      providerThreadId: events.providerThreadId,
+      thread: getTableColumns(threads),
+    })
+    .from(threads)
+    .innerJoin(events, eq(events.threadId, threads.id))
+    .innerJoin(
+      latestProviderIdentities,
+      and(
+        eq(latestProviderIdentities.threadId, threads.id),
+        eq(latestProviderIdentities.latestSequence, events.sequence),
+      ),
+    )
+    .where(
+      and(
+        isNull(threads.nativeSessionHostId),
+        eq(threads.providerId, identities.providerId),
+        inArray(events.providerThreadId, missingProviderThreadIds),
+        isNull(threads.deletedAt),
+      ),
+    )
+    .orderBy(desc(threads.updatedAt))
+    .all();
+
+  const candidatesByProviderThreadId = new Map<string, ThreadRow[]>();
+  for (const legacyMatch of legacyMatches) {
+    if (legacyMatch.providerThreadId === null) continue;
+    const candidates =
+      candidatesByProviderThreadId.get(legacyMatch.providerThreadId) ?? [];
+    if (!candidates.some((candidate) => candidate.id === legacyMatch.thread.id)) {
+      candidates.push(legacyMatch.thread);
+    }
+    candidatesByProviderThreadId.set(legacyMatch.providerThreadId, candidates);
+  }
+
+  for (const [providerThreadId, candidates] of candidatesByProviderThreadId) {
+    if (candidates.length !== 1) continue;
+    const repaired = db
+      .update(threads)
+      .set({ nativeSessionHostId: identities.hostId })
+      .where(
+        and(
+          eq(threads.id, candidates[0].id),
+          isNull(threads.nativeSessionHostId),
+        ),
+      )
+      .returning()
+      .get();
+    if (repaired !== undefined) {
+      matches.set(providerThreadId, repaired);
+    }
+  }
+
+  return matches;
 }
 
 export function getThread(db: ThreadWriteConnection, id: string) {

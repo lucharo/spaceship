@@ -60,6 +60,7 @@ export interface PreparedArchiveThread {
 }
 
 export interface PreparedThreadAndChildrenArchive {
+  rootThreadId: string;
   threads: PreparedArchiveThread[];
 }
 
@@ -185,7 +186,29 @@ function archiveThreadWithLifecycleEffects(
   });
   emitPluginThreadArchived(archivedThread);
 
+  if (
+    args.environment !== null &&
+    wouldCleanupEnvironment(deps, {
+      environmentId: args.environment.id,
+    })
+  ) {
+    requestEnvironmentCleanup(deps, {
+      environmentId: args.environment.id,
+    });
+    requestEnvironmentCleanupAdvance(deps, {
+      environmentId: args.environment.id,
+    });
+  }
+
   return archivedThread;
+}
+
+export function archivePreparedThread(
+  deps: AppDeps,
+  prepared: PreparedArchiveThread,
+  options: ArchiveThreadLifecycleOptions = {},
+): Thread | null {
+  return archiveThreadWithLifecycleEffects(deps, prepared, options);
 }
 
 /**
@@ -212,6 +235,7 @@ export function prepareThreadAndHiddenSourceForksArchive(
     sourceThreadId: args.thread.id,
   });
   return {
+    rootThreadId: args.thread.id,
     threads: [args.thread, ...hiddenSourceThreads].map((thread, index) => ({
       environment:
         index === 0
@@ -228,16 +252,13 @@ export function archivePreparedThreadAndHiddenSourceForks(
   options: ArchiveThreadLifecycleOptions = {},
 ): Thread | null {
   let archivedSourceThread: Thread | null = null;
-  for (const [index, { environment, thread }] of prepared.threads.entries()) {
+  for (const entry of prepared.threads) {
     const archivedThread = archiveThreadWithLifecycleEffects(
       deps,
-      {
-        environment,
-        thread,
-      },
+      entry,
       options,
     );
-    if (index === 0) {
+    if (entry.thread.id === prepared.rootThreadId) {
       archivedSourceThread = archivedThread;
     }
   }
@@ -301,6 +322,7 @@ export function prepareThreadAndChildrenArchive(
     threads.push(args.parentThread);
   }
   return {
+    rootThreadId: args.parentThread.id,
     threads: threads.map((thread) => ({
       environment: resolveArchiveThreadEnvironment(deps, { thread }),
       thread,
@@ -314,7 +336,6 @@ export function archivePreparedThreadAndChildren(
   options: ArchiveThreadLifecycleOptions = {},
 ): string[] {
   const archivedThreadIds: string[] = [];
-  const affectedEnvironmentIds = new Set<string>();
 
   for (const { environment, thread } of prepared.threads) {
     const result = archiveThreadWithLifecycleEffects(
@@ -329,20 +350,6 @@ export function archivePreparedThreadAndChildren(
       continue;
     }
     archivedThreadIds.push(result.id);
-    if (environment !== null) {
-      affectedEnvironmentIds.add(environment.id);
-    }
-  }
-
-  for (const environmentId of affectedEnvironmentIds) {
-    if (
-      wouldCleanupEnvironment(deps, {
-        environmentId,
-      })
-    ) {
-      requestEnvironmentCleanup(deps, { environmentId });
-      requestEnvironmentCleanupAdvance(deps, { environmentId });
-    }
   }
 
   return archivedThreadIds;

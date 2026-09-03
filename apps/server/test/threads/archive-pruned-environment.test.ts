@@ -16,12 +16,14 @@ import type { ThreadStatus } from "@bb/domain";
 import { apiErrorSchema } from "@bb/server-contract";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
+import { listQueuedThreadCommands } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
   seedHostSession,
   seedProjectWithSource,
   seedThread,
+  seedThreadRuntimeState,
 } from "../helpers/seed.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
@@ -42,6 +44,11 @@ function seedThreadWithPrunedEnvironment(
     environmentId: environment.id,
     projectId: project.id,
     status: "idle",
+  });
+  seedThreadRuntimeState(deps, {
+    environmentId: environment.id,
+    providerThreadId: `native-${thread.id}`,
+    threadId: thread.id,
   });
   // The environment was destroyed while the thread stayed unarchived, and the
   // 7-day prune TTL elapsed.
@@ -100,6 +107,9 @@ describe("archive after environment prune", () => {
       expect(response.status).toBe(200);
       expect(await readJson(response)).toEqual({ ok: true });
       expect(getThread(harness.deps.db, thread.id)?.archivedAt).not.toBeNull();
+      expect(
+        listQueuedThreadCommands(harness, "thread.archive", thread.id),
+      ).toEqual([]);
     });
   });
 
@@ -116,6 +126,9 @@ describe("archive after environment prune", () => {
         archivedThreadIds: [thread.id],
       });
       expect(getThread(harness.deps.db, thread.id)?.archivedAt).not.toBeNull();
+      expect(
+        listQueuedThreadCommands(harness, "thread.archive", thread.id),
+      ).toEqual([]);
     });
   });
 

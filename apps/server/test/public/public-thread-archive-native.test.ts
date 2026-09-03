@@ -506,6 +506,78 @@ describe("public native thread archive", () => {
     });
   });
 
+  it("reconciles each successful archive-all provider mutation before continuing", async () => {
+    await withTestHarness(async (harness) => {
+      const {
+        project,
+        environment,
+        thread: parent,
+      } = seedThreadFixture(harness, {
+        session: { id: "host-native-archive-all-partial-failure" },
+      });
+      const child = seedThread(harness.deps, {
+        environmentId: environment.id,
+        parentThreadId: parent.id,
+        projectId: project.id,
+        status: "idle",
+      });
+      const childProviderThreadId = "native-thread-archive-all-child";
+      const parentProviderThreadId = "native-thread-archive-all-parent";
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: childProviderThreadId,
+        threadId: child.id,
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: parentProviderThreadId,
+        threadId: parent.id,
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/threads/${parent.id}/archive-all`,
+        { method: "POST" },
+      );
+      const childArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.archive" && command.threadId === child.id,
+      );
+      await reportQueuedCommandSuccess(
+        harness,
+        childArchive as never,
+        {} as never,
+      );
+
+      const parentArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.archive" && command.threadId === parent.id,
+      );
+      expect(getThread(harness.db, child.id)?.archivedAt).not.toBeNull();
+      expect(
+        hasNativeSessionArchiveConfirmation(harness.db, {
+          providerThreadId: childProviderThreadId,
+          threadId: child.id,
+        }),
+      ).toBe(true);
+      await reportQueuedCommandError(harness, parentArchive, {
+        errorCode: "provider_archive_failed",
+        errorMessage: "Provider rejected parent archive",
+      });
+
+      expect((await responsePromise).status).toBe(502);
+      expect(getThread(harness.db, parent.id)?.archivedAt).toBeNull();
+      expect(getThread(harness.db, child.id)?.archivedAt).not.toBeNull();
+      expect(
+        hasNativeSessionArchiveConfirmation(harness.db, {
+          providerThreadId: parentProviderThreadId,
+          threadId: parent.id,
+        }),
+      ).toBe(false);
+    });
+  });
+
   it("serializes archive-all and native adoption for the same projection", async () => {
     await withTestHarness(async (harness) => {
       const { host, environment, thread } = seedThreadFixture(harness, {

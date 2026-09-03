@@ -1,4 +1,4 @@
-import { getThread } from "@bb/db";
+import { getEnvironment, getThread } from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import {
   apiErrorSchema,
@@ -417,7 +417,9 @@ describe("public thread parenting routes", () => {
       });
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
+        managed: true,
         projectId: project.id,
+        workspaceProvisionType: "managed-worktree",
       });
       const sourceThread = seedThread(harness.deps, {
         environmentId: environment.id,
@@ -442,6 +444,9 @@ describe("public thread parenting routes", () => {
       expect(
         getThread(harness.db, sideChatThread.id)?.archivedAt,
       ).not.toBeNull();
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+        "retiring",
+      );
     });
   });
 

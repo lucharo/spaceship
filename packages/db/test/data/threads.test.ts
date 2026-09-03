@@ -12,6 +12,7 @@ import {
   findThreadsByNativeIdentities,
   getThread,
   getThreadExecutionOverride,
+  getThreadNativeSessionHostId,
   hasActiveThreadAttention,
   hasNativeSessionArchiveConfirmation,
   setThreadExecutionOverride,
@@ -184,7 +185,7 @@ describe("threads", () => {
     );
   });
 
-  it("retains native identity after its environment is pruned", () => {
+  it("repairs legacy native identity after its environment is pruned", () => {
     const { db, host, project } = setup();
     const environment = createEnvironment(db, noopNotifier, {
       projectId: project.id,
@@ -209,6 +210,12 @@ describe("threads", () => {
       }),
     ).toEqual({ deleted: 1 });
     expect(getThread(db, first.thread.id)?.environmentId).toBeNull();
+    db.$client
+      .prepare(
+        "UPDATE threads SET native_session_host_id = NULL WHERE id = ?",
+      )
+      .run(first.thread.id);
+    expect(getThreadNativeSessionHostId(db, first.thread.id)).toBeNull();
 
     const reopened = adoptNativeThread(db, noopNotifier, {
       projectId: project.id,
@@ -221,6 +228,7 @@ describe("threads", () => {
     expect(reopened.created).toBe(false);
     expect(reopened.thread.id).toBe(first.thread.id);
     expect(reopened.thread.environmentId).toBeNull();
+    expect(getThreadNativeSessionHostId(db, first.thread.id)).toBe(host.id);
   });
 
   it("matches only the latest provider identity for an adopted thread", () => {
