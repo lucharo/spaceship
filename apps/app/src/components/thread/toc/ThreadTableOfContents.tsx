@@ -608,8 +608,9 @@ export function ThreadTableOfContents({
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [pendingJump, setPendingJump] = useState<{
     rowId: string;
-    threadId: string;
+    scope: symbol;
   } | null>(null);
+  const navigationScope = useMemo(() => Symbol(threadId), [threadId]);
   const {
     aboveOverflow,
     belowOverflow,
@@ -741,7 +742,7 @@ export function ThreadTableOfContents({
         }
         return;
       }
-      setPendingJump({ rowId: id, threadId });
+      setPendingJump({ rowId: id, scope: navigationScope });
       const mountedRow = waitForTimelineRowElement({
         rowId: id,
         scrollElement: getScrollElement(),
@@ -806,7 +807,7 @@ export function ThreadTableOfContents({
         }
       }
     },
-    [bottomAnchor, onNavigateToRow, threadId],
+    [bottomAnchor, navigationScope, onNavigateToRow],
   );
 
   if (userItems.length < TOC_MIN_USER_MESSAGES) {
@@ -892,7 +893,7 @@ export function ThreadTableOfContents({
                       {items.map((item) => {
                         const active = item.id === activeId;
                         const pending =
-                          pendingJump?.threadId === threadId &&
+                          pendingJump?.scope === navigationScope &&
                           item.id === pendingJump.rowId;
                         return (
                           <li key={item.id}>

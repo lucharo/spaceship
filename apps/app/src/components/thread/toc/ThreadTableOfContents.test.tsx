@@ -1043,6 +1043,23 @@ describe("ThreadTableOfContents", () => {
     });
 
     expect(scrollElementIntoView).not.toHaveBeenCalled();
+
+    view.rerender(
+      <TocHost
+        threadId="thr_old"
+        timelineRows={[userConversationRow(12)]}
+        hasOlderTimelineRows
+        onNavigateToRow={onNavigateToRow}
+      />,
+    );
+    openTocPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Agent messages" }));
+    expect(
+      screen
+        .getByText("Old nested answer")
+        .closest("button")
+        ?.getAttribute("aria-busy"),
+    ).toBe("false");
   });
 
   it("auto-paginates older pages to reach an unloaded message, then scrolls to it", async () => {
