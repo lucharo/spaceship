@@ -390,16 +390,14 @@ function waitForAnimationFrame(): Promise<void> {
   });
 }
 
-export function waitForTimelineRowElement({
+function waitForTimelineRowElement({
   rowId,
   scrollElement,
   signal,
-  timeoutMs = TOC_JUMP_MOUNT_TIMEOUT_MS,
 }: {
   rowId: string;
   scrollElement: HTMLElement | null;
   signal: AbortSignal;
-  timeoutMs?: number;
 }): Promise<HTMLElement | null> {
   const existing = findTimelineRowElement(scrollElement, rowId);
   if (existing || !scrollElement || signal.aborted) {
@@ -425,7 +423,10 @@ export function waitForTimelineRowElement({
 
     signal.addEventListener("abort", handleAbort, { once: true });
     observer.observe(scrollElement, { childList: true, subtree: true });
-    timeoutId = window.setTimeout(() => finish(null), timeoutMs);
+    timeoutId = window.setTimeout(
+      () => finish(null),
+      TOC_JUMP_MOUNT_TIMEOUT_MS,
+    );
     // Close the gap between the first lookup and observer registration.
     const mounted = findTimelineRowElement(scrollElement, rowId);
     if (mounted) finish(mounted);
@@ -757,6 +758,7 @@ export function ThreadTableOfContents({
       setPendingJump({ rowId: id, scope: navigationScope });
       try {
         let loads = 0;
+        let waitedForMountedRow = false;
         while (!row && !jumpAbort.signal.aborted) {
           // A nested row can require an asynchronous turn-summary-details
           // request after its collapsed ancestor opens. Once its source
@@ -767,6 +769,7 @@ export function ThreadTableOfContents({
             !hasOlderRef.current ||
             timelineRowsContainSequence(timelineRowsRef.current, sourceSeq)
           ) {
+            waitedForMountedRow = true;
             row = await waitForTimelineRowElement({
               rowId: id,
               scrollElement: getScrollElement(),
@@ -804,6 +807,7 @@ export function ThreadTableOfContents({
         }
         if (
           !row &&
+          !waitedForMountedRow &&
           !jumpAbort.signal.aborted &&
           timelineRowsContainSequence(timelineRowsRef.current, sourceSeq)
         ) {

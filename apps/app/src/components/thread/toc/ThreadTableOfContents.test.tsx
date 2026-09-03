@@ -39,7 +39,6 @@ import {
   findActiveItemIds,
   selectTocRailItems,
   ThreadTableOfContents,
-  waitForTimelineRowElement,
   type TocItem,
 } from "./ThreadTableOfContents";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
@@ -947,17 +946,54 @@ describe("ThreadTableOfContents", () => {
     expect(scrollElementIntoView).toHaveBeenCalledTimes(1);
   });
 
-  it("bounds the wait for an outline destination that never mounts", async () => {
-    const controller = new AbortController();
+  it("stops waiting when a loaded outline destination never mounts", async () => {
+    setOutline([
+      {
+        id: "missing_nested",
+        sourceSeq: 12,
+        role: "assistant",
+        preview: "Missing nested answer",
+        attachmentSummary: null,
+      },
+      {
+        id: "u2",
+        role: "user",
+        preview: "Second question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u3",
+        role: "user",
+        preview: "Third question",
+        attachmentSummary: null,
+      },
+      {
+        id: "u4",
+        role: "user",
+        preview: "Fourth question",
+        attachmentSummary: null,
+      },
+    ]);
 
-    await expect(
-      waitForTimelineRowElement({
-        rowId: "missing_nested",
-        scrollElement,
-        signal: controller.signal,
-        timeoutMs: 1,
-      }),
-    ).resolves.toBeNull();
+    render(<TocHost timelineRows={[userConversationRow(12)]} />);
+    openTocPanel();
+    fireEvent.click(screen.getByRole("button", { name: "Agent messages" }));
+    const missingButton = (
+      await screen.findByText("Missing nested answer")
+    ).closest("button");
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(missingButton!);
+      expect(missingButton?.getAttribute("aria-busy")).toBe("true");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(missingButton?.getAttribute("aria-busy")).toBe("false");
+      expect(scrollElementIntoView).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("waits for a collapsed outline target to mount before scrolling", async () => {
