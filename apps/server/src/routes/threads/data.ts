@@ -686,7 +686,10 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
         providerDisplayName,
-        turnMessageDetail: "summary",
+        // The outline is itself the compact representation, so retain every
+        // conversation message while projecting it. Summary turn detail may
+        // omit non-terminal messages such as the user's opening prompt.
+        turnMessageDetail: "full",
       });
       const response = buildThreadConversationOutlineFromRows(
         timeline.rows,
