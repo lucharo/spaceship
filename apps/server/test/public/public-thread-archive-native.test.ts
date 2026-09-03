@@ -214,11 +214,10 @@ describe("public native thread archive", () => {
         threadId: thread.id,
       });
 
-      const archiveResponse = await harness.app.request(
+      const archiveResponsePromise = harness.app.request(
         `/api/v1/environments/${environment.id}/archive-threads`,
         { method: "POST" },
       );
-      expect(archiveResponse.status).toBe(200);
       const providerArchive = await waitForQueuedCommand(
         harness,
         ({ command }) =>
@@ -242,6 +241,7 @@ describe("public native thread archive", () => {
         providerArchive as never,
         {} as never,
       );
+      expect((await archiveResponsePromise).status).toBe(200);
 
       if (!settledBeforeArchive) {
         const providerUnarchive = await waitForQueuedCommand(
@@ -272,6 +272,86 @@ describe("public native thread archive", () => {
           threadId: thread.id,
         }),
       ).toBe(false);
+    });
+  });
+
+  it("serializes environment archive and native adoption for the same projection", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, environment, thread } = seedThreadFixture(harness, {
+        session: { id: "host-environment-archive-adopt" },
+        environment: {
+          managed: true,
+          workspaceProvisionType: "managed-worktree",
+        },
+      });
+      const providerThreadId = "native-thread-environment-archive-adopt";
+      const identity = {
+        hostId: host.id,
+        providerId: "codex",
+        providerThreadId,
+      };
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        threadId: thread.id,
+      });
+
+      const archiveResponsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/archive-threads`,
+        { method: "POST" },
+      );
+      const providerArchive = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.archive" && command.threadId === thread.id,
+      );
+
+      let adoptionSettled = false;
+      const adoptionResponsePromise = Promise.resolve(
+        harness.app.request("/api/v1/threads/adopt-native", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(identity),
+        }),
+      ).then((response) => {
+        adoptionSettled = true;
+        return response;
+      });
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(adoptionSettled).toBe(false);
+      expect(
+        listQueuedCommands(harness, "provider.native_sessions.read"),
+      ).toEqual([]);
+
+      await reportQueuedCommandSuccess(
+        harness,
+        providerArchive as never,
+        {} as never,
+      );
+      expect((await archiveResponsePromise).status).toBe(200);
+
+      const providerRead = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "provider.native_sessions.read" &&
+          command.providerThreadId === providerThreadId,
+      );
+      await reportQueuedCommandSuccess(harness, providerRead, {
+        providerThreadId,
+        title: "Environment archived native session",
+        cwd: environment.path,
+        projectId: null,
+        workspaceRoot: environment.path,
+        status: "idle",
+        createdAt: 1_777_000_000,
+        updatedAt: 1_777_000_100,
+        archived: true,
+        source: "cli",
+      });
+
+      expect((await adoptionResponsePromise).status).toBe(409);
+      expect(getThread(harness.db, thread.id)?.archivedAt).not.toBeNull();
     });
   });
 
